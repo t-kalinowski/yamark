@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+<!-- fmt: skip -->
+::: {.callout-note}
+raw
+:::
+
+#   Change ##
+-- stdout
+<!-- fmt: skip -->
+::: {.callout-note}
+raw
+:::
+
+# Change
+-- stderr
+-- status
+0

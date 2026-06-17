@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+See [![diagram alt](images/really-really-really-long-file-name-for-the-diagram.png)](https://example.com/really/really/really/really/long/path) for details.
+-- stdout
+See [![diagram alt](
+  images/really-really-really-long-file-name-for-the-diagram.png
+)](
+  https://example.com/really/really/really/really/long/path
+) for details.
+-- stderr
+-- status
+0

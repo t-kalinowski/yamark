@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.R
+-- stdin
+#!/usr/bin/env Rapp
+#| name: demo
+#| launcher:
+#|  vanilla: true
+#|  default-packages: [base,utils]
+
+switch(
+  command <- "",
+  #| title: Summary Mode
+  #| options: {long: true, values: [a,b]}
+  summary = {}
+)
+-- stdout
+#!/usr/bin/env Rapp
+#| name: demo
+#| launcher:
+#|   vanilla: true
+#|   default-packages: [base, utils]
+
+switch(
+  command <- "",
+  #| title: Summary Mode
+  #| options: {long: true, values: [a, b]}
+  summary = {}
+)
+-- stderr
+-- status
+0

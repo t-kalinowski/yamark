@@ -1,0 +1,52 @@
+-- args
+format --stdin-file-path input.md --wrap none --skip-embedded-formatters
+-- stdin
+[documentation](
+  https://example.com/docs/very/long/path
+)
+
+[![status](
+  https://img.shields.io/badge/status-ok-green.svg
+)](https://example.com/status)
+
+Read the [long guide](
+  https://example.com/guide
+) before continuing with the tutorial.
+
+[^note]: See [`library()` vs `require()`](https://yihui.org/en/2014/07/library-vs-require/) and `$x + y$`.
+
+[^long]: First paragraph of the footnote.
+
+    Second paragraph with [ **strong label** ](https://example.com).
+
+    ```{python}
+    x=1
+    print(x)
+    ```
+-- stdout
+[documentation](
+  https://example.com/docs/very/long/path
+)
+
+[![status](
+  https://img.shields.io/badge/status-ok-green.svg
+)](https://example.com/status)
+
+Read the [long guide](
+  https://example.com/guide
+) before continuing with the tutorial.
+
+[^note]: See [`library()` vs `require()`](https://yihui.org/en/2014/07/library-vs-require/) and `$x + y$`.
+
+[^long]:
+    First paragraph of the footnote.
+
+    Second paragraph with [**strong label**](https://example.com).
+
+    ```{python}
+    x=1
+    print(x)
+    ```
+-- stderr
+-- status
+0

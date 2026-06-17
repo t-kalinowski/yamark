@@ -1,0 +1,43 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+- Install dependencies:
+
+  ```bash
+  npm install
+  ```
+
+- Run the app.
+
+1. Load data.
+1. Build a table:
+
+   | a | b |
+   |---|---|
+   | 1 | 2 |
+
+- Tip:
+  > Quote inside a list.
+- Continue.
+-- stdout
+- Install dependencies:
+
+  ```bash
+  npm install
+  ```
+
+- Run the app.
+
+1. Load data.
+1. Build a table:
+
+   | a   | b   |
+   | --- | --- |
+   | 1   | 2   |
+
+- Tip:
+  > Quote inside a list.
+- Continue.
+-- stderr
+-- status
+0

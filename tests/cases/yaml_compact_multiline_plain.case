@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.yaml --compact
+-- stdin
+items:
+  - first
+    continuation
+-- stdout
+items:
+  - first
+    continuation
+-- stderr
+-- status
+0

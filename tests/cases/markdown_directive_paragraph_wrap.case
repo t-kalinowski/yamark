@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: wrap=paragraph scope=next -->
+First sentence. Second sentence
+continues here.
+
+Third sentence. Fourth sentence.
+-- stdout
+<!-- fmt: wrap=paragraph scope=next -->
+First sentence. Second sentence continues here.
+
+Third sentence.
+Fourth sentence.
+-- stderr
+-- status
+0

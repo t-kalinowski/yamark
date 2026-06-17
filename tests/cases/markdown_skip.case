@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+<!-- fmt: skip -->
+#   Keep ##
+
+#   Change ##
+-- stdout
+<!-- fmt: skip -->
+#   Keep ##
+
+# Change
+-- stderr
+-- status
+0

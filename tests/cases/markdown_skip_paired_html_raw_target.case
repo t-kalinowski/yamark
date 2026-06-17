@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+<!-- fmt: skip -->
+<section>
+raw
+</section>
+
+#   Change ##
+-- stdout
+<!-- fmt: skip -->
+<section>
+raw
+</section>
+
+# Change
+-- stderr
+-- status
+0

@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+---
+editor_options: {markdown: {wrap: sentence}}
+---
+One sentence. Two sentence.
+-- stdout
+---
+editor_options: {markdown: {wrap: sentence}}
+---
+One sentence.
+Two sentence.
+-- stderr
+-- status
+0

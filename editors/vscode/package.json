@@ -1,0 +1,115 @@
+{
+  "name": "yamark",
+  "displayName": "Yamark",
+  "description": "Format YAML, Markdown, and marked embedded Markdown with yamark.",
+  "version": "0.1.0",
+  "publisher": "yamark",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/t-kalinowski/yamark.git"
+  },
+  "bugs": {
+    "url": "https://github.com/t-kalinowski/yamark/issues"
+  },
+  "homepage": "https://t-kalinowski.github.io/yamark/",
+  "categories": [
+    "Formatters"
+  ],
+  "keywords": [
+    "formatter",
+    "markdown",
+    "yaml",
+    "yamark"
+  ],
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:yamark.formatDocument",
+    "onCommand:yamark.formatSelectionAsMarkdown",
+    "onLanguage:markdown",
+    "onLanguage:yaml",
+    "onLanguage:quarto",
+    "onLanguage:python",
+    "onLanguage:r"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "yamark.formatDocument",
+        "title": "Yamark: Format Document"
+      },
+      {
+        "command": "yamark.formatSelectionAsMarkdown",
+        "title": "Yamark: Format Selection as Markdown"
+      },
+      {
+        "command": "yamark.showLog",
+        "title": "Yamark: Show Log"
+      }
+    ],
+    "configuration": {
+      "title": "Yamark",
+      "properties": {
+        "yamark.executable": {
+          "type": "string",
+          "default": "yamark",
+          "description": "Path to the yamark executable when yamark.useBundledExecutable is false."
+        },
+        "yamark.useBundledExecutable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the yamark executable bundled in this extension under bin/<platform>-<arch>/."
+        },
+        "yamark.enabledFileExtensions": {
+          "type": "array",
+          "default": [
+            ".md",
+            ".qmd",
+            ".yaml",
+            ".yml"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "File extensions yamark should format. Add .rmd, .r, or .py to opt into those files."
+        },
+        "yamark.extraArguments": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional arguments passed after `yamark format` and before `--stdin-file-path`."
+        },
+        "yamark.runNextFormatter": {
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable",
+          "description": "Run yamark.nextFormatterExecutable after Yamark when that argv is configured. Override per language inside [lang] settings."
+        },
+        "yamark.nextFormatterExecutable": {
+          "type": "array",
+          "default": [],
+          "scope": "language-overridable",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional command-line argv for a stdin/stdout formatter that runs on Yamark's output when yamark.runNextFormatter is true. The first element is the executable and the remaining elements are arguments. Supports ${file}, ${fileDirname}, ${exe}, and ${extension:publisher.name} placeholders."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build:dev": "scripts/package-dev.sh",
+    "install:local": "scripts/install-local.sh",
+    "install:positron": "CODE_BIN=${CODE_BIN:-positron} scripts/install-local.sh",
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.py --wrap none
+-- stdin
+# fmt: markdown
+DOC = r"""
+Path C:\tmp\file.
+"""
+-- stdout
+# fmt: markdown
+DOC = r"""
+Path C:\tmp\file.
+"""
+-- stderr
+-- status
+0

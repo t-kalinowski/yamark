@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+---
+title: "Snapshot page"
+tags: [rust,yaml,formatters]
+---
+#   Title
+-- stdout
+---
+title: Snapshot page
+tags: [rust, yaml, formatters]
+---
+# Title
+-- stderr
+-- status
+0

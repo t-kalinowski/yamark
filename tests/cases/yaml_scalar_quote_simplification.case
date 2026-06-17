@@ -1,0 +1,41 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+title: "hello"
+subtitle: 'hello world'
+boolish: "true"
+nullish: "null"
+empty: ""
+leading: " space"
+trailing: "space "
+tabbed: "a\tb"
+colon: "a: b"
+comment: "a # b"
+hex: '0x2A'
+octal: '0o52'
+flow_sequence_text: "[one]"
+flow_sequence_close_text: "]one"
+flow_mapping_text: "{one}"
+flow_mapping_close_text: "}one"
+flow_separator_text: ",one"
+-- stdout
+title: hello
+subtitle: hello world
+boolish: "true"
+nullish: "null"
+empty: ""
+leading: " space"
+trailing: "space "
+tabbed: "a\tb"
+colon: "a: b"
+comment: "a # b"
+hex: '0x2A'
+octal: '0o52'
+flow_sequence_text: "[one]"
+flow_sequence_close_text: "]one"
+flow_mapping_text: "{one}"
+flow_mapping_close_text: "}one"
+flow_separator_text: ",one"
+-- stderr
+-- status
+0

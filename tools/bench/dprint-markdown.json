@@ -1,0 +1,8 @@
+{
+  "includes": [
+    "**/*.{md,markdown}"
+  ],
+  "plugins": [
+    "https://plugins.dprint.dev/markdown-0.22.1.wasm"
+  ]
+}

@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+---
+editor_options: {markdown: {wrap: paragraph}}
+---
+First paragraph
+uses two source lines.
+-- stdout
+---
+editor_options: {markdown: {wrap: paragraph}}
+---
+First paragraph uses two source lines.
+-- stderr
+-- status
+0

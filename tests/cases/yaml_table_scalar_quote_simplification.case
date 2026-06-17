@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+# fmt: table
+- {name: alpha,type: string,description: "Short",danger: "true"}
+- {name: beta,type: int,description: "Number",danger: "a: b"}
+-- stdout
+# fmt: table
+- {name: alpha, type: string, description: Short,  danger: "true"}
+- {name: beta,  type: int,    description: Number, danger: "a: b"}
+-- stderr
+-- status
+0

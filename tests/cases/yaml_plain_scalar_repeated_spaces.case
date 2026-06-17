@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.yaml --prose-width 8
+-- stdin
+foo: bar   baz baz
+-- stdout
+foo: bar   baz baz
+-- stderr
+-- status
+0

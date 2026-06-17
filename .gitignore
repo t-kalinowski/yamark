@@ -1,0 +1,16 @@
+/target/
+/tests/yaml-test-suite/data/
+/tests/yaml-test-suite/License
+
+# Generated VS Code extension bundled binaries.
+/editors/vscode/bin/*/
+
+# Rustfmt backup files.
+**/*.rs.bk
+
+# Local OS/editor files.
+.DS_Store
+__pycache__
+.pytest_cache
+.ruff_cache
+.venv

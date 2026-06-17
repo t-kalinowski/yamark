@@ -1,0 +1,156 @@
+---
+title: Benchmarks
+description: Yamark performance against other YAML and Markdown formatters.
+---
+
+```{r}
+#| label: benchmark-data
+#| include: false
+
+source("_benchmark-data.R")
+```
+
+`r bigfile_headline()` `r directory_headline()`
+
+There is one comparison per input kind, and each lists every tool whose own
+CLI formats that input natively, used simply: no formatting options, no
+shims, no adapters. The tool roster therefore differs by input kind.
+
+::: {.panel-tabset}
+
+## Markdown
+
+One generated 4 MB Markdown document (`big.md`): prose paragraphs with
+links - some longer than the line width - and nested lists with mixed
+markers. Each tool's CLI formats the file in place; time includes process
+startup. Time is `r measurement_inline(big_target_rows(markdown_target))`,
+on a fresh copy of the file each run. Memory is median peak RSS.
+
+```{r}
+#| echo: false
+#| results: asis
+write_table(
+  big_table(markdown_target),
+  align = c("l", "r", "r", "r")
+)
+```
+
+## YAML
+
+One generated 4 MB YAML file (`big.yaml`): block maps and sequences,
+block scalars, and comments. Same procedure as the Markdown comparison.
+
+```{r}
+#| echo: false
+#| results: asis
+write_table(
+  big_table(yaml_target),
+  align = c("l", "r", "r", "r")
+)
+```
+
+## Markdown + front matter
+
+The same 4 MB document shape (`big-with-frontmatter.md`) with a
+`r fmt_kb(big_requested_frontmatter_yaml)` deliberately unformatted YAML
+front matter block - about a third of the document's lines are YAML. The
+Front matter column reports what each tool did with that block:
+**formatted** (rewrote it), **untouched** (passed it through), or **not
+preserved** (broke the delimiters).
+
+```{r}
+#| echo: false
+#| results: asis
+write_table(
+  big_table(frontmatter_target, front_matter = TRUE),
+  align = c("l", "r", "r", "c", "r")
+)
+```
+
+The harness derives that column from the output bytes: trailing-whitespace
+trimming does not count as formatting. `dprint`'s Markdown plugin passes
+front matter through unformatted, and `mdformat` (installed without its
+front-matter plugin) reads the opening `---` as a thematic break and
+corrupts the block.
+
+## Directory
+
+`r flow_directory_rows$files[[1]]` generated YAML service-configuration
+files of about 100 KB each
+(`r fmt_mb_round(flow_directory_rows$corpus_bytes[[1]])` in total). Each
+tool is passed the directory root once and discovers the files itself;
+every run is verified to have reformatted all
+`r flow_directory_rows$files[[1]]` files. Time is
+`r measurement_inline()`, on a fresh copy of the corpus each run.
+
+```{r}
+#| echo: false
+#| results: asis
+
+directory_table <- data.frame(
+  Formatter = flow_directory_rows$formatter,
+  Time = fmt_sec(flow_directory_rows$median_seconds),
+  `User CPU` = fmt_sec(flow_directory_rows$median_user_seconds),
+  Throughput = fmt_mbps(flow_directory_rows$mb_per_second),
+  `vs yamark` = vapply(
+    flow_directory_rows$median_seconds,
+    slower_than,
+    character(1),
+    base = directory_yamark_seconds
+  ),
+  check.names = FALSE
+)
+write_table(directory_table, align = c("l", "r", "r", "r", "r"))
+```
+
+Yamark formats the directory in parallel (as do `deno-fmt` and `dprint`),
+so wall time can beat user CPU time; the User CPU column is the
+single-core comparison, and yamark is fastest on that column too.
+Throughput is input MB/s.
+
+:::
+
+## How to read these results
+
+Every number comes from the same harness (`tools/bench/big.py` and
+`tools/bench/run.py` in the repository), running each tool the way a user
+would: its own CLI, default configuration, no formatting options, against
+deterministic generated corpora. The comparison set is the other formatters
+in the space - `r compared_tools_inline()`.
+
+Two harness details keep that comparison clean without changing how any
+tool is invoked:
+
+- `panache` and `dprint` cache format results. The harness redirects each
+  tool's cache into the benchmark work directory and clears it between
+  repetitions, so every timed run formats from scratch rather than
+  replaying a cached result.
+- `dprint` has no built-in plugins, so it runs with a config file that
+  names its first-party plugin for the input kind (Markdown or YAML) and
+  sets nothing else.
+
+Lint fixers with an autofix mode (`pymarkdown`, `markdownlint-cli2`) are
+not formatters, so they are not part of the comparison. The harness can
+still run them via `--tools`.
+
+Measured on a MacBook Pro (`r host_inline()`). `r tool_versions_block()`
+
+The tables render the latest checked-in artifacts -
+`r artifact_link(big_ok_rows)` for the single-file comparisons and
+`r artifact_link(flow_directory_rows)` for the directory comparison - which
+record the full per-run timings, output hashes, git commit, and host
+details. A table renders only if every tool in its roster completed the
+benchmark; degraded runs are never shown as smaller tables.
+
+## Reproducing
+
+```sh
+tools/bench/big.py
+tools/bench/run.py --invocation directory --files 500 --items 540 \
+  --reps 3 --warmups 1 \
+  --tools yamark,yamlfmt,prettier,yamlfix,dprint-yaml,deno-fmt
+```
+
+The corpora are generated deterministically, so the same commands reproduce
+the same inputs anywhere; each script writes a JSON artifact under
+`docs/benchmarks/`.

@@ -1,0 +1,14 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+Alpha beta gamma delta epsilon zeta eta theta iota. See [long link](
+  https://example.com/pathological/segment-00002-segment-00002-segment-00002
+) after link with trailing words here.
+-- stdout
+Alpha beta gamma delta epsilon zeta eta
+theta iota. See [long link](
+  https://example.com/pathological/segment-00002-segment-00002-segment-00002
+) after link with trailing words here.
+-- stderr
+-- status
+0

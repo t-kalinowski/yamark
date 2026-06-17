@@ -1,0 +1,27 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+See [label [nested]](dest) in this paragraph with enough following text to require wrapping if formatting were allowed.
+
+See [**bold** label](dest) in this paragraph with enough following text to require wrapping if formatting were allowed.
+
+See ![alt [nested]](img.png) in this paragraph with enough following text to require wrapping if formatting were allowed.
+
+See ![**bold** alt](img.png) in this paragraph with enough following text to require wrapping if formatting were allowed.
+-- stdout
+See [label [nested]](dest) in this paragraph with enough following text to require wrapping if formatting were allowed.
+
+See [**bold** label](dest) in this
+paragraph with enough following text to
+require wrapping if formatting were
+allowed.
+
+See ![alt [nested]](img.png) in this paragraph with enough following text to require wrapping if formatting were allowed.
+
+See ![**bold** alt](img.png) in this
+paragraph with enough following text to
+require wrapping if formatting were
+allowed.
+-- stderr
+-- status
+0

@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+> | Term | Meaning |
+> |---|---|
+> | ML | Machine learning |
+
+> ```bash
+> quarto preview
+> ```
+
+> - first item
+> - second item
+>
+> Final sentence.
+-- stdout
+> | Term | Meaning          |
+> | ---- | ---------------- |
+> | ML   | Machine learning |
+
+> ```bash
+> quarto preview
+> ```
+
+> - first item
+> - second item
+>
+> Final sentence.
+-- stderr
+-- status
+0

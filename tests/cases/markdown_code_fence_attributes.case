@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+``` {.bash filename="Terminal"}
+quarto render
+```
+
+``` {=typst}
+#pagebreak()
+```
+-- stdout
+```{.bash filename="Terminal"}
+quarto render
+```
+
+```{=typst}
+#pagebreak()
+```
+-- stderr
+-- status
+0

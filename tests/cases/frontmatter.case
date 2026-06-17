@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+---
+title:    Test
+---
+#   Title ##
+-- stdout
+---
+title: Test
+---
+# Title
+-- stderr
+-- status
+0

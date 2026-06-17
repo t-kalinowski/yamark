@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --prose-width 38
+-- stdin
+---
+description: >
+  This is a folded scalar with enough words to rewrap into several shorter lines
+
+authors: Tomasz Kalinowski
+---
+Body text.
+-- stdout
+---
+description: >
+  This is a folded scalar with enough
+  words to rewrap into several shorter
+  lines
+
+authors: Tomasz Kalinowski
+---
+Body text.
+-- stderr
+-- status
+0

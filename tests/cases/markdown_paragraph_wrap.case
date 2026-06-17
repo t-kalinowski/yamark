@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph
+-- stdin
+First sentence. Second sentence
+continues on the next source line.
+
+Second paragraph
+stays separate.
+-- stdout
+First sentence. Second sentence continues on the next source line.
+
+Second paragraph stays separate.
+-- stderr
+-- status
+0

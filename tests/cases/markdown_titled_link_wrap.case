@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+See [the documentation](https://example.com/really/really/really/really/long/path "A helpful title") for details.
+-- stdout
+See [the documentation](
+  https://example.com/really/really/really/really/long/path
+  "A helpful title"
+) for details.
+-- stderr
+-- status
+0

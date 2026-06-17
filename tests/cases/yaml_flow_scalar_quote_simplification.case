@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+items: ["hello", 'hello world', "true", "a: b", "a # b", "x,y"]
+metadata: {name: "alpha", label: 'hello world', flag: "true"}
+-- stdout
+items: [hello, hello world, "true", "a: b", "a # b", "x,y"]
+metadata: {name: alpha, label: hello world, flag: "true"}
+-- stderr
+-- status
+0

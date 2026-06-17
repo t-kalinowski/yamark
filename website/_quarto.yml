@@ -1,0 +1,57 @@
+project:
+  type: website
+  render:
+    - "*.qmd"
+  output-dir: _site
+
+website:
+  title: Yamark
+  description: An extremely fast formatter for YAML and Markdown, written in Rust.
+  site-url: https://t-kalinowski.github.io/yamark/
+  favicon: assets/favicon.svg
+  repo-url: https://github.com/t-kalinowski/yamark
+  repo-branch: main
+  repo-subdir: website
+  repo-actions: [edit, issue]
+  open-graph:
+    image: assets/favicon.svg
+  twitter-card:
+    image: assets/favicon.svg
+    card-style: summary_large_image
+  navbar:
+    left:
+      - text: Home
+        href: index.qmd
+      - text: Showcase
+        href: examples.qmd
+      - text: Usage
+        href: usage.qmd
+      - text: Reference
+        href: reference.qmd
+      - text: CLI Help
+        href: cli-help.qmd
+      - text: Benchmarks
+        href: benchmarks.qmd
+    right:
+      - text: Releases
+        href: https://github.com/t-kalinowski/yamark/releases
+        target: _blank
+      - icon: github
+        href: https://github.com/t-kalinowski/yamark
+        target: _blank
+        aria-label: Yamark on GitHub
+  page-footer:
+    left: "Yamark · MIT-licensed · Tomasz Kalinowski"
+    right: "Built with [Quarto](https://quarto.org)."
+
+format:
+  html:
+    theme:
+      light: cosmo
+      dark: darkly
+    css: styles.css
+    keep-md: true
+    toc: true
+    code-copy: true
+    code-overflow: wrap
+    anchor-sections: true

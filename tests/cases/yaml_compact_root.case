@@ -1,0 +1,10 @@
+-- args
+format --stdin-file-path input.yaml --compact --line-width 80
+-- stdin
+name: a
+type: int
+-- stdout
+{name: a, type: int}
+-- stderr
+-- status
+0

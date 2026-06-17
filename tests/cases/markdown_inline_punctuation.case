@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap 80
+-- stdin
+Use `events.jsonl`, cite [^2], then stop.
+-- stdout
+Use `events.jsonl`, cite [^2], then stop.
+-- stderr
+-- status
+0

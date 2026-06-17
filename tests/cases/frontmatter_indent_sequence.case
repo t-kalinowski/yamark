@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+---
+topic:
+- item
+---
+Text.
+-- stdout
+---
+topic:
+  - item
+---
+Text.
+-- stderr
+-- status
+0

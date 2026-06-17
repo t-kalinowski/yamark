@@ -1,0 +1,29 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "yamark"
+version = "0.1.0"
+description = "Format YAML and Markdown with yamark."
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = ["formatter", "markdown", "yaml"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Topic :: Text Processing :: Markup",
+]
+
+[project.urls]
+Homepage = "https://t-kalinowski.github.io/yamark/"
+Repository = "https://github.com/t-kalinowski/yamark"
+Documentation = "https://t-kalinowski.github.io/yamark/"
+Issues = "https://github.com/t-kalinowski/yamark/issues"
+
+[tool.maturin]
+bindings = "bin"
+strip = true

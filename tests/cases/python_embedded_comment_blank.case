@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.py --wrap none
+-- stdin
+# fmt: markdown
+# #   Title ##
+#
+# Body   text.
+-- stdout
+# fmt: markdown
+# # Title
+#
+# Body   text.
+-- stderr
+-- status
+0

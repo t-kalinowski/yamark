@@ -1,0 +1,21 @@
+---
+title: "404: Page Not Found"
+description: This page does not exist.
+toc: false
+---
+
+The page you are looking for is not here.
+
+Try one of these instead:
+
+- [Home](index.qmd): what Yamark is.
+- [Showcase](examples.qmd): before and after examples.
+- [Usage](usage.qmd): install and run.
+- [Editors](editors.qmd): VS Code, Positron, settings, and logs.
+- [Git Filter](git-filter.qmd): clean/smudge adoption for Markdown.
+- [Reference](reference.qmd): supported syntax, options, directives, and
+  safety.
+- [CLI Help](cli-help.qmd): rendered top-level CLI help.
+- [Benchmarks](benchmarks.qmd): performance against other formatters.
+- [Project on GitHub](https://github.com/t-kalinowski/yamark): source,
+  issues, and releases.

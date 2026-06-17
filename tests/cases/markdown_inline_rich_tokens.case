@@ -1,0 +1,28 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+See [**Beginner-Friendly Examples**](./examples/README.md) before continuing with the tutorial.
+
+Read [`format.POSIXct()`](https://rdrr.io/r/base/strptime.html) before [the *emphasis* section](#emphasis) today.
+
+Press   <kbd>Cmd</kbd>   +   <kbd>K</kbd> to open the launcher.
+
+Use   ~~old option~~   new option instead.
+-- stdout
+See [**Beginner-Friendly Examples**](
+  ./examples/README.md
+) before continuing with the tutorial.
+
+Read [`format.POSIXct()`](
+  https://rdrr.io/r/base/strptime.html
+) before
+[the *emphasis* section](#emphasis)
+today.
+
+Press <kbd>Cmd</kbd> + <kbd>K</kbd> to
+open the launcher.
+
+Use ~~old option~~ new option instead.
+-- stderr
+-- status
+0

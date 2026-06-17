@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.py --wrap 72
+-- stdin
+from textwrap import dedent
+
+# fmt: markdown
+prompt += dedent(f"""
+
+    Stage: verification with pending finding.
+
+    Pending finding:
+    {pending_finding}
+
+    Allowed dispositions are fixed.
+    """)
+-- stdout
+from textwrap import dedent
+
+# fmt: markdown
+prompt += dedent(f"""
+
+    Stage: verification with pending finding.
+
+    Pending finding:
+    {pending_finding}
+
+    Allowed dispositions are fixed.
+    """)
+-- stderr
+-- status
+0

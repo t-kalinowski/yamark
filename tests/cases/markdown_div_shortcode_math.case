@@ -1,0 +1,120 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+::: {.callout-tip}
+## Learn more
+{{< meta title >}}
+
+```{=html}
+<div class="raw">HTML</div>
+```
+
+This paragraph is intentionally long enough to be considered for wrapping by the markdown formatter inside a fenced div.
+:::
+
+:::: columns
+::: {.column width="50%"}
+| a | b |
+|---|---|
+| 1 | 2 |
+:::
+::: {.column width="50%"}
+This paragraph is intentionally long enough to be considered for wrapping by the markdown formatter inside a nested div.
+:::
+::::
+
+This paragraph is intentionally long enough to be considered for wrapping before an opaque shortcode block.
+
+{{< meta title >}}
+
+This paragraph is intentionally long enough to be considered for wrapping after an opaque shortcode block.
+
+{{% notice %}}
+Do   not format this body.
+{{% /notice %}}
+
+$$
+\begin{aligned}
+a^2 + b^2 &= c^2
+\end{aligned}
+$$
+
+\[
+E = mc^2
+\]
+
+\begin{equation}
+x = y
+\end{equation}
+
+- Use the identity:
+
+  $$
+  x^2 + 2x + 1 = (x + 1)^2
+  $$
+-- stdout
+::: {.callout-tip}
+## Learn more
+{{< meta title >}}
+
+```{=html}
+<div class="raw">HTML</div>
+```
+
+This paragraph is intentionally long
+enough to be considered for wrapping by
+the markdown formatter inside a fenced
+div.
+:::
+
+:::: columns
+::: {.column width="50%"}
+| a   | b   |
+| --- | --- |
+| 1   | 2   |
+:::
+
+::: {.column width="50%"}
+This paragraph is intentionally long
+enough to be considered for wrapping by
+the markdown formatter inside a nested
+div.
+:::
+::::
+
+This paragraph is intentionally long
+enough to be considered for wrapping
+before an opaque shortcode block.
+
+{{< meta title >}}
+
+This paragraph is intentionally long
+enough to be considered for wrapping
+after an opaque shortcode block.
+
+{{% notice %}}
+Do   not format this body.
+{{% /notice %}}
+
+$$
+\begin{aligned}
+a^2 + b^2 &= c^2
+\end{aligned}
+$$
+
+\[
+E = mc^2
+\]
+
+\begin{equation}
+x = y
+\end{equation}
+
+- Use the identity:
+
+  $$
+  x^2 + 2x + 1 = (x + 1)^2
+  $$
+-- stderr
+-- status
+0

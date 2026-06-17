@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+```{.markdown .markdown}
+#   Title ##
+```
+-- stdout
+```{.markdown}
+# Title
+```
+-- stderr
+-- status
+0

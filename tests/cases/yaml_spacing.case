@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+a:    b
+list:
+-    item
+-- stdout
+a: b
+list:
+  - item
+-- stderr
+-- status
+0

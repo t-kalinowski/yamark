@@ -1,0 +1,497 @@
+---
+# fmt: skip file
+title: Showcase
+description: >-
+  Real before/after examples covering the file types and directives Yamark
+  exists for.
+---
+
+<!-- fmt: skip file -->
+
+```{r}
+#| label: setup-showcase-examples
+#| include: false
+local_yamark <- file.path("..", "target", "debug", "yamark")
+if (file.exists(local_yamark)) {
+  Sys.setenv(PATH = paste(
+    dirname(normalizePath(local_yamark)),
+    Sys.getenv("PATH"),
+    sep = .Platform$path.sep
+  ))
+}
+
+trim_one_trailing_newline <- function(x) {
+  sub("\n\\z", "", x, perl = TRUE)
+}
+
+markdown_fence <- function(x, lang = "markdown") {
+  runs <- regmatches(x, gregexpr("`+", x, perl = TRUE))[[1]]
+  longest_run <- if (length(runs) == 0) 0 else max(nchar(runs))
+  fence <- strrep("`", max(3, longest_run + 1))
+
+  paste0(fence, lang, "\n", x, "\n", fence)
+}
+
+run_yamark <- function(input, stdin_file_path, args = character()) {
+  stopifnot(is.character(input), length(input) == 1)
+  stopifnot(is.character(stdin_file_path), length(stdin_file_path) == 1)
+  stopifnot(is.character(args))
+
+  stderr_path <- tempfile()
+  on.exit(unlink(stderr_path), add = TRUE)
+
+  out <- system2(
+    "yamark",
+    args = c("format", "--wrap", "72", "--stdin-file-path", stdin_file_path, args),
+    input = strsplit(input, "\n", fixed = TRUE)[[1]],
+    stdout = TRUE,
+    stderr = stderr_path
+  )
+
+  status <- attr(out, "status")
+  if (!is.null(status) && !identical(status, 0L)) {
+    stderr <- paste(readLines(stderr_path, warn = FALSE), collapse = "\n")
+    stop(
+      "yamark exited with status ",
+      status,
+      " for ",
+      stdin_file_path,
+      if (nzchar(stderr)) paste0(":\n", stderr) else "",
+      call. = FALSE
+    )
+  }
+
+  trim_one_trailing_newline(paste(out, collapse = "\n"))
+}
+
+showcase_before_after <- function(before, lang, stdin_file_path, args = character()) {
+  before <- trim_one_trailing_newline(before)
+  after <- run_yamark(before, stdin_file_path, args = args)
+
+  writeLines(c(
+    ":::: {.showcase-before-after}",
+    "**Before**",
+    "",
+    markdown_fence(before, lang),
+    "",
+    "**After**",
+    "",
+    markdown_fence(after, lang),
+    "::::"
+  ))
+}
+```
+
+Yamark formats the files that sit between code and docs: skill files, prompt
+templates, build matrices, configs, and any source file that hosts a prose blob.
+Each section below demonstrates one capability with the smallest before/after
+that shows it off.
+
+## Markdown with YAML frontmatter
+
+The shape of an agent skill, a prompt template, or a Cursor rule: typed
+frontmatter on top, free-form Markdown body underneath. Yamark formats the
+frontmatter as YAML and the body as Markdown in one pass.
+
+```{r}
+#| label: showcase-markdown-frontmatter
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(---
+name: review-pr
+description: Review a pull request and recommend changes inline with the project's style guide, focusing on correctness, readability, and tests.
+tags: [review, pull-request, code]
+---
+
+# Review
+
+Read the diff and flag anything that violates the style guide, has obvious correctness issues, or looks untested. Prefer specific suggestions over vague concerns.
+)---",
+  lang = "markdown",
+  stdin_file_path = "example.md"
+)
+```
+
+## Markdown-valued YAML scalars
+
+A `prompts.yaml` or `agents.yaml` where each entry's value is a
+Markdown blob. Tag the value `!markdown` (or add `# fmt: markdown`) and
+Yamark wraps the value as Markdown - picking folded or literal block
+style based on the content.
+
+```{r}
+#| label: showcase-markdown-yaml-scalars
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(agents:
+  reviewer:
+    instructions: !markdown "Focus on correctness and tests. Flag any change that lacks a regression test. Prefer concrete suggestions: name the function, name the case."
+  summarizer:
+    instructions: !markdown |
+      You write release notes.
+
+      - One bullet per user-visible change.
+      - No internal refactors.
+)---",
+  lang = "yaml",
+  stdin_file_path = "prompts.yaml"
+)
+```
+
+The prose-only value is rewrapped as Markdown. The list keeps a literal
+block (`|`) because folding would destroy the line breaks Markdown depends on.
+
+## YAML scalar presentation
+
+Yamark changes scalar spelling only when the parsed YAML value and tag
+stay equivalent. It can simplify safe quoted strings, keep strings that
+would be misread as booleans, convert hard newlines to literal blocks,
+and fold long prose strings.
+
+```{r}
+#| label: showcase-yaml-scalars
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(title: "hello"
+boolish: "true"
+body: "alpha\nbeta\n"
+summary: "This package formats YAML front matter and configuration files while preserving semantics, comments, and repository-friendly diffs."
+)---",
+  lang = "yaml",
+  stdin_file_path = "scalars.yaml"
+)
+```
+
+Yamark doesn't validate duplicate mapping keys. It keeps pairs in source order
+and may still format their values:
+
+```{r}
+#| label: showcase-duplicate-keys
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(a: [1,2]
+a: [3,4]
+)---",
+  lang = "yaml",
+  stdin_file_path = "duplicates.yaml"
+)
+```
+
+## Embedded Markdown in Python
+
+When the prompt lives next to the code that uses it, Yamark formats
+the prose without touching the surrounding Python. Mark the string with
+`# fmt: markdown`:
+
+```{r}
+#| label: showcase-python-markdown-string
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(# fmt: markdown
+REVIEW_PROMPT = """
+# Review
+
+Read the diff and flag anything that violates the style guide, has obvious correctness issues, or looks untested.
+
+-   Prefer specific suggestions over vague concerns.
+-   Name the function and the case.
+"""
+)---",
+  lang = "python",
+  stdin_file_path = "prompt.py"
+)
+```
+
+Python source outside the marked string is left untouched - run `ruff format`
+for that.
+
+## Embedded Markdown in source comments
+
+The same directive can target a contiguous source comment block. This
+is useful for generated help text or prompt snippets where a string
+literal is not the right host.
+
+```{r}
+#| label: showcase-python-markdown-comments
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(# fmt: markdown
+# #   Filters
+#
+# Apply one or more filters. Put the most specific filter first.
+#
+# -   Each filter is a single expression.
+)---",
+  lang = "python",
+  stdin_file_path = "comments.py"
+)
+```
+
+## Embedded Markdown in R
+
+The same pattern works for R raw strings. Useful for package vignettes,
+package-bundled prompts, and Shiny help text that you want to keep next
+to the code that renders it.
+
+```{r}
+#| label: showcase-r-markdown-string
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(# fmt: markdown
+help_text <- r"(
+# Filters
+
+Apply one or more filters. Filters are evaluated top-to-bottom; the first match wins, so put the most specific filter first.
+
+-   Each filter is a single expression.
+-   Multiple filters combine with AND.
+)"
+)---",
+  lang = "r",
+  stdin_file_path = "help.R"
+)
+```
+
+## Aligned flow-mapping tables
+
+Build matrices, parameter grids, and any sequence of homogeneous flow
+mappings read better as a table. Mark the sequence with `# fmt: table`
+and Yamark aligns columns by key:
+
+```{r}
+#| label: showcase-flow-table
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(# fmt: table
+- {name: alpha,type: string,default: [one,two],description: "Short"}
+- {name: beta,type: int,default: 0,description: "Number"}
+)---",
+  lang = "yaml",
+  stdin_file_path = "table.yaml"
+)
+```
+
+## Compact collections
+
+Short, simple block collections can read better as a single flow line.
+Enable `compact = true` in `yamark.toml` (or pass `--compact`) and
+Yamark collapses eligible block mappings and sequences that fit the
+structural width:
+
+```{r}
+#| label: showcase-compact-collections
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(tags:
+  - llm
+  - authoring
+  - formats
+package:
+  name: yamark
+  language: rust
+)---",
+  lang = "yaml",
+  stdin_file_path = "compact.yaml",
+  args = "--compact"
+)
+```
+
+Collections with comments, aliases, tags, anchors, multiline scalars, or
+block scalars stay in block style.
+
+## Collapse to flow by typing a bracket
+
+Drop an unmatched `[` or `{` where a block sequence or mapping value starts and
+Yamark reads it as a layout hint: collapse this collection onto one line. The
+file doesn't parse as you typed it, but the intent is obvious - Yamark removes
+the opener and emits flow style.
+
+```{r}
+#| label: showcase-collapse-inline-bracket
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(tags: [
+  - llm
+  - authoring
+  - formats
+)---",
+  lang = "yaml",
+  stdin_file_path = "repair.yaml"
+)
+```
+
+The opener may also be detached onto the next line after an empty mapping value
+header:
+
+```{r}
+#| label: showcase-collapse-detached-bracket
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(tags:
+[
+  - llm
+  - authoring
+  - formats
+)---",
+  lang = "yaml",
+  stdin_file_path = "repair-detached.yaml"
+)
+```
+
+Adjacent forms such as `tags:[` and `tags:{` are not repaired as layout hints.
+
+The trick also works in the other direction: a newline inside an existing flow
+collection is read as a request to expand it to block style.
+
+```{r}
+#| label: showcase-expand-flow-newline
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(- {a: b,
+   c: d}
+)---",
+  lang = "yaml",
+  stdin_file_path = "expand.yaml"
+)
+```
+
+See [Reference -> Layout repair](reference.qmd#layout-repair) for the
+acceptance rules.
+
+## Recursive Markdown code fences
+
+YAML fences are formatted as YAML. Markdown fences are formatted
+recursively, so nested YAML inside nested Markdown is formatted too.
+
+``````{r}
+#| label: showcase-recursive-markdown-fences
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(```yaml
+# fmt: table
+- {name: a,type: int,default: 0}
+- {name: long_name,type: string,default: ""}
+```
+
+````markdown
+#   Inner
+
+```yaml
+items: [a,b]
+```
+````
+)---",
+  lang = "markdown",
+  stdin_file_path = "recursive.md"
+)
+``````
+
+## Prettier-backed web and data fences
+
+When `prettier` is on `PATH`, JSON, JSONC, JSON5, GraphQL, CSS, SCSS, Less,
+PostCSS, HTML, JavaScript, JSX, TypeScript, and TSX fenced blocks are handed to
+it. Python and R fences go to Ruff and Air the same way:
+
+````{r}
+#| label: showcase-prettier-fences
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(```json
+{"name":"yamark","tags":["llm","authoring","formats"],"engines":{"node":">=18"}}
+```
+
+```ts
+function format(input:string):string{return input.trim()}
+```
+)---",
+  lang = "markdown",
+  stdin_file_path = "web.md"
+)
+````
+
+A missing `prettier` leaves the fence unchanged. Override or disable a
+language with `[embedded.<language>]` in `yamark.toml`, or skip them all with
+`--skip-embedded-formatters`.
+
+## Embedded source in YAML literal blocks
+
+Configure an embedded formatter for a language in `yamark.toml`
+(`[embedded.r]`, `[embedded.python]`, custom), then mark a literal
+block scalar with `# fmt: r` or `# fmt: python` to format the embedded
+code through the external formatter:
+
+```{r}
+#| label: showcase-yaml-python-scalar
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(# fmt: python
+preflight: |
+  def check(items):return all(x>0 for x in items)
+)---",
+  lang = "yaml",
+  stdin_file_path = "embedded-python.yaml"
+)
+```
+
+Yamark hands the scalar to the configured formatter and only writes if the
+surrounding YAML round-trips cleanly.
+
+## Markdown links, footnotes, and tables
+
+Long inline links are split at Markdown syntax boundaries. Footnote
+definitions wrap under the marker unless the document or CLI asks to
+preserve them.
+
+```{r}
+#| label: showcase-markdown-links-footnotes
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(Please be mindful of our [code of conduct](https://github.com/quarto-dev/quarto-cli/blob/main/.github/CODE_OF_CONDUCT.md) as you interact with other community members.
+
+Body text with a footnote.[^long]
+
+[^long]: This footnote explains that comments were removed because people used comments to hold parsing directives and enough extra words to wrap.
+)---",
+  lang = "markdown",
+  stdin_file_path = "links.md"
+)
+```
+
+Simple GFM pipe tables are aligned by display width. Git clean/smudge filters
+always use compact pipe-table output.
+
+```{r}
+#| label: showcase-markdown-table
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(| package | label |
+|---|---|
+| dplyr | tidy |
+| tidyr | pivoting |
+)---",
+  lang = "markdown",
+  stdin_file_path = "table.md"
+)
+```
+
+---
+
+See [Reference](reference.qmd) for the full directive list, options,
+and safety model.

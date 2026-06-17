@@ -1,0 +1,10 @@
+-- args
+format --stdin-file-path input.yaml --compact --line-width 80
+-- stdin
+- alpha
+- beta
+-- stdout
+[alpha, beta]
+-- stderr
+-- status
+0

@@ -1,0 +1,78 @@
+---
+title: CLI Help
+execute:
+  echo: false
+  warning: false
+  message: false
+  comment: ""
+---
+
+```{r}
+#| label: setup-cli-help
+#| include: false
+yamark_bin <- Sys.getenv("YAMARK_BIN", unset = "")
+if (!nzchar(yamark_bin)) {
+  status <- system2("cargo", c("build", "--manifest-path", "../Cargo.toml"))
+  if (!identical(status, 0L)) {
+    stop("`cargo build` failed with status ", status, call. = FALSE)
+  }
+
+  yamark_exe <- if (.Platform$OS.type == "windows") "yamark.exe" else "yamark"
+  yamark_bin <- file.path("..", "target", "debug", yamark_exe)
+}
+
+yamark_help <- function(...) {
+  args <- c(..., "--help")
+  old_options <- options(cli.num_colors = 256L)
+  on.exit(options(old_options), add = TRUE)
+
+  output <- system2(
+    yamark_bin,
+    args,
+    stdout = TRUE,
+    stderr = TRUE,
+    env = c("CLICOLOR_FORCE=1", "CLICOLOR=1")
+  )
+  status <- attr(output, "status")
+
+  if (!is.null(status)) {
+    stop(
+      "`", yamark_bin, " ", paste(args, collapse = " "), "` failed with status ", status,
+      call. = FALSE
+    )
+  }
+
+  output <- sub("[ \t]+$", "", output, perl = TRUE)
+  output <- htmltools::htmlEscape(output)
+  output <- fansi::sgr_to_html(output, term.cap = "256")
+  knitr::asis_output(paste0(
+    "<pre class=\"yamark-cli-help\"><code>",
+    paste(output, collapse = "\n"),
+    "</code></pre>\n"
+  ))
+}
+```
+
+## `yamark`
+
+```{r}
+#| label: help-yamark
+#| results: asis
+yamark_help()
+```
+
+## `yamark format`
+
+```{r}
+#| label: help-yamark-format
+#| results: asis
+yamark_help("format")
+```
+
+## `yamark git-filter`
+
+```{r}
+#| label: help-yamark-git-filter
+#| results: asis
+yamark_help("git-filter")
+```
