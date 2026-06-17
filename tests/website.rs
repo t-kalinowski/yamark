@@ -136,6 +136,10 @@ fn ci_runs_public_readiness_checks() {
     assert!(ci.contains("contents: read"));
     assert!(ci.contains("concurrency:"));
     assert!(ci.contains("cancel-in-progress: true"));
+    assert!(
+        ci.contains("r-lib/actions/setup-r@v2"),
+        "CI should install R because Rust tests invoke Rscript"
+    );
 
     for command in [
         "cargo fmt --check",
