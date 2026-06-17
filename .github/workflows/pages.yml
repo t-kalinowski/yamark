@@ -37,7 +37,7 @@ jobs:
       - name: Install R packages
         shell: Rscript {0}
         run: |
-          install.packages(c("jsonlite", "knitr", "htmltools", "fansi"))
+          install.packages(c("jsonlite", "knitr", "rmarkdown", "htmltools", "fansi"))
 
       - name: Install Quarto
         uses: quarto-dev/quarto-actions/setup@v2

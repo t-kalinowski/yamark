@@ -181,7 +181,7 @@ fn github_pages_workflow_publishes_website() {
     assert!(pages.contains("id-token: write"));
     assert!(pages.contains("actions/configure-pages@v5"));
     assert!(pages.contains("quarto-dev/quarto-actions/setup@v2"));
-    for package in ["jsonlite", "knitr", "htmltools", "fansi"] {
+    for package in ["jsonlite", "knitr", "rmarkdown", "htmltools", "fansi"] {
         assert!(
             pages.contains(package),
             "Pages workflow should install R package {package}"
