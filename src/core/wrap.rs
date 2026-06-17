@@ -2691,7 +2691,7 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
             }
             lines.push(format!("{last}]("));
             lines.extend(split_link_target_lines(target, width));
-            lines.push(format!("){}{}", suffix, trailing_punctuation));
+            lines.push(format!("){suffix}{trailing_punctuation}"));
             return Some(lines);
         }
     }
@@ -2699,7 +2699,7 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
     let mut lines = Vec::new();
     lines.push(link[..destination_open + 1].to_owned());
     lines.extend(split_link_target_lines(target, width));
-    lines.push(format!("){}{}", suffix, trailing_punctuation));
+    lines.push(format!("){suffix}{trailing_punctuation}"));
     Some(lines)
 }
 

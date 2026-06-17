@@ -909,7 +909,7 @@ fn parse_yaml_skip_directive(fields: &[DirectiveToken]) -> std::result::Result<D
         ["file"] | ["scope=file"] => Ok(Directive::SkipFile),
         ["scope=from-here"] => Err("fmt: skip does not support scope=from-here".to_owned()),
         [field] if field.starts_with("scope=") => {
-            Err(format!("fmt: skip does not support {}", field))
+            Err(format!("fmt: skip does not support {field}"))
         }
         _ => Err("invalid fmt: skip directive".to_owned()),
     }
@@ -921,9 +921,7 @@ fn parse_yaml_off_directive(fields: &[DirectiveToken]) -> std::result::Result<Di
         [] | ["scope=from-here"] => Ok(Directive::Off),
         ["scope=next"] => Err("fmt: off does not support scope=next".to_owned()),
         ["scope=file"] => Err("fmt: off does not support scope=file".to_owned()),
-        [field] if field.starts_with("scope=") => {
-            Err(format!("fmt: off does not support {}", field))
-        }
+        [field] if field.starts_with("scope=") => Err(format!("fmt: off does not support {field}")),
         _ => Err("invalid fmt: off directive".to_owned()),
     }
 }
