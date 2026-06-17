@@ -170,6 +170,32 @@ fn ci_runs_public_readiness_checks() {
 }
 
 #[test]
+fn github_pages_workflow_publishes_website() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let pages = fs::read_to_string(root.join(".github/workflows/pages.yml")).unwrap();
+
+    assert!(pages.contains("branches: [main]"));
+    assert!(pages.contains("workflow_dispatch:"));
+    assert!(pages.contains("contents: read"));
+    assert!(pages.contains("pages: write"));
+    assert!(pages.contains("id-token: write"));
+    assert!(pages.contains("actions/configure-pages@v5"));
+    assert!(pages.contains("quarto-dev/quarto-actions/setup@v2"));
+    for package in ["jsonlite", "knitr", "htmltools", "fansi"] {
+        assert!(
+            pages.contains(package),
+            "Pages workflow should install R package {package}"
+        );
+    }
+    assert!(pages.contains("cargo build --release --bin yamark"));
+    assert!(pages.contains("YAMARK_BIN="));
+    assert!(pages.contains("quarto render website"));
+    assert!(pages.contains("actions/upload-pages-artifact@v3"));
+    assert!(pages.contains("path: website/_site"));
+    assert!(pages.contains("actions/deploy-pages@v4"));
+}
+
+#[test]
 fn website_social_images_exist() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();

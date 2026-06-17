@@ -1,0 +1,64 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy website
+    runs-on: macos-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88"
+
+      - name: Install R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R packages
+        shell: Rscript {0}
+        run: |
+          install.packages(c("jsonlite", "knitr", "htmltools", "fansi"))
+
+      - name: Install Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build Yamark
+        run: |
+          cargo build --release --bin yamark
+          echo "$PWD/target/release" >> "$GITHUB_PATH"
+          echo "YAMARK_BIN=$PWD/target/release/yamark" >> "$GITHUB_ENV"
+
+      - name: Render website
+        run: quarto render website
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/_site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
