@@ -150,6 +150,10 @@ fn ci_runs_public_readiness_checks() {
             "CI should install R package {package}"
         );
     }
+    assert!(
+        ci.contains("uv tool install ruff"),
+        "CI should install ruff because Rust tests invoke the default Python formatter"
+    );
 
     for command in [
         "cargo fmt --check",
