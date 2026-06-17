@@ -140,6 +140,16 @@ fn ci_runs_public_readiness_checks() {
         ci.contains("r-lib/actions/setup-r@v2"),
         "CI should install R because Rust tests invoke Rscript"
     );
+    assert!(
+        ci.contains("install.packages"),
+        "CI should install R packages used by benchmark tests"
+    );
+    for package in ["stringi", "yaml12", "jsonlite", "knitr"] {
+        assert!(
+            ci.contains(package),
+            "CI should install R package {package}"
+        );
+    }
 
     for command in [
         "cargo fmt --check",

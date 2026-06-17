@@ -38,6 +38,11 @@ jobs:
       - name: Install R
         uses: r-lib/actions/setup-r@v2
 
+      - name: Install R packages
+        shell: Rscript {0}
+        run: |
+          install.packages(c("stringi", "yaml12", "jsonlite", "knitr"))
+
       - name: Check formatting
         run: cargo fmt --check
 
