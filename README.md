@@ -102,6 +102,19 @@ tools/bootstrap-yaml-test-suite-data.py --source ~/github/posit-dev/r-yaml12/tes
 
 Use `website/reference.qmd` and the public CLI tests as behavior references.
 
+## Release
+
+Update the package versions in `Cargo.toml`, `pyproject.toml`, and
+`editors/vscode/package.json`, then push a matching `vX.Y.Z` tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow validates the tag, builds binary archives, and creates the
+GitHub release with generated release notes.
+
 ## Editor Integrations
 
 The VS Code and Positron formatter extension lives in

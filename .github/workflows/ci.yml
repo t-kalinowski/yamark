@@ -33,7 +33,7 @@ jobs:
       - name: Install Python tools
         run: |
           uv tool install ruff
-          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+          uv tool dir --bin >> "$GITHUB_PATH"
 
       - name: Install Node
         uses: actions/setup-node@v4

@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check tag matches package versions
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          assert tag.startswith("v"), f"release tag must start with v: {tag}"
+          version = tag.removeprefix("v")
+
+          versions = {
+              "Cargo.toml": tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"],
+              "pyproject.toml": tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"],
+              "editors/vscode/package.json": json.loads(
+                  Path("editors/vscode/package.json").read_text()
+              )["version"],
+          }
+
+          mismatches = {name: value for name, value in versions.items() if value != version}
+          assert not mismatches, f"tag {tag} does not match package versions: {mismatches}"
+          PY
+
+  build:
+    name: Build ${{ matrix.asset }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: x86_64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            asset: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88"
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --bin yamark --target ${{ matrix.target }}
+
+      - name: Package Unix archive
+        if: runner.os != 'Windows'
+        run: |
+          bundle="yamark-${{ github.ref_name }}-${{ matrix.asset }}"
+          mkdir -p "dist" "$bundle"
+          cp "target/${{ matrix.target }}/release/yamark" "$bundle/"
+          cp README.md LICENSE "$bundle/"
+          tar -czf "dist/$bundle.tar.gz" "$bundle"
+
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bundle = "yamark-${{ github.ref_name }}-${{ matrix.asset }}"
+          New-Item -ItemType Directory -Path "dist", $bundle | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/yamark.exe" $bundle
+          Copy-Item "README.md", "LICENSE" $bundle
+          Compress-Archive -Path $bundle -DestinationPath "dist/$bundle.zip"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamark-${{ github.ref_name }}-${{ matrix.asset }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum ./* > SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
