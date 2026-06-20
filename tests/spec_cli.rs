@@ -5993,19 +5993,40 @@ fn embedded_python_comment_markdown_restores_prefixes_for_cr_only_lines() {
 }
 
 #[test]
-fn source_files_reject_bare_external_formatter_directives() {
+fn source_files_run_external_formatter_directives_for_string_targets() {
     let dir = tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
     fs::write(
         &config,
         "\
-[embedded.upper]
-formatter = { command = [\"/bin/sh\", \"-c\", \"tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+[embedded.r]
+formatter = { command = [\"/bin/sh\", \"-c\", \"sed 's/function(x)x+1/function(x) x + 1/'\", \"{path}\"], path_suffix = \".R\" }
 ",
     )
     .unwrap();
 
-    let input = "# fmt: upper\nDOC = \"\"\"\nabc\n\"\"\"\n";
+    let input = "\
+\"\"\"Module docstring.\"\"\"
+
+def read_source() -> str:
+    return run(
+        # fmt: r
+        stdin=\"\"\"
+            f <- function(x)x+1
+        \"\"\",
+    )
+";
+    let expected = "\
+\"\"\"Module docstring.\"\"\"
+
+def read_source() -> str:
+    return run(
+        # fmt: r
+        stdin=\"\"\"
+            f <- function(x) x + 1
+        \"\"\",
+    )
+";
     let (status, stdout, stderr) = run_stdin(
         &[
             "format",
@@ -6016,9 +6037,9 @@ formatter = { command = [\"/bin/sh\", \"-c\", \"tr a-z A-Z\", \"{path}\"], path_
         ],
         input,
     );
-    assert_eq!(status, 1);
-    assert_eq!(stdout, "");
-    assert!(stderr.contains("invalid fmt directive: upper"), "{stderr}");
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
 }
 
 #[test]

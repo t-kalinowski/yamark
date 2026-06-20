@@ -691,6 +691,7 @@ fn parse_markdown_with_mode<'src>(
                 EmitPlan::ExternalPlugin {
                     name: language.unwrap().into_boxed_str(),
                     body: formatter_body,
+                    string_indent: None,
                     normalized_opening,
                     fence_safety: Some(fence.safety()),
                 }

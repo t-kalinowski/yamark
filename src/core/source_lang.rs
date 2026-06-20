@@ -251,9 +251,18 @@ fn parse_source_language_with_mode<'src>(
                     closing_indent,
                 }
             } else if let Some(name) = state_value.embedded_formatter {
+                if !crate::plugins::PluginRegistry::is_known_formatter(config, &name) {
+                    return Err(source_error_at(
+                        source,
+                        literal.body.start,
+                        format!("unknown embedded formatter: {name}"),
+                    ));
+                }
+                let string_indent = external_plugin_string_indent(source, literal);
                 EmitPlan::ExternalPlugin {
                     name: name.into_boxed_str(),
                     body: literal.body,
+                    string_indent: Some(string_indent),
                     normalized_opening: None,
                     fence_safety: None,
                 }
@@ -570,6 +579,16 @@ fn plan_string_markdown<'src>(
     Ok((nested, indent_span, closing_indent))
 }
 
+fn external_plugin_string_indent<'src>(
+    source: &'src SourceBuffer,
+    literal: LiteralCandidate,
+) -> SourceSpan<'src> {
+    let body_text = source.slice(literal.body);
+    let body_text = body_without_delimiter_padding(body_text);
+    let indent = common_body_indent(body_text);
+    common_body_indent_span(source, literal.body, body_text, indent.len())
+}
+
 fn parse_generated_embedded_markdown(
     body: String,
     options: FormatOptions,
@@ -753,7 +772,7 @@ fn closing_delimiter_indent<'src>(
     ))
 }
 
-fn body_without_delimiter_padding(source: &str) -> &str {
+pub(crate) fn body_without_delimiter_padding(source: &str) -> &str {
     let bytes = source.as_bytes();
     let mut start = 0usize;
     let mut last_content_end = 0usize;
@@ -800,7 +819,7 @@ fn common_indent_prefix(left: &str, right: &str) -> String {
     left[..end].to_owned()
 }
 
-fn dedent_body(source: &str, indent: &str) -> String {
+pub(crate) fn dedent_body(source: &str, indent: &str) -> String {
     if indent.is_empty() {
         return source.to_owned();
     }
@@ -1048,6 +1067,11 @@ fn find_python_unsupported_triple_string(
     let line_start = source.lines[line_index].text.start();
     let (local_start, delimiter) = find_python_triple_string_opening(line)?;
     let prefix = python_string_prefix_any(line, local_start);
+    if let Some(local_close) = line[local_start + delimiter.len()..].find(delimiter) {
+        let open_start = line_start + local_start;
+        let close_start = line_start + local_start + delimiter.len() + local_close;
+        return Some(Span::new(open_start, close_start + delimiter.len()));
+    }
     if python_string_prefix_supported(&prefix) {
         return None;
     }

@@ -656,7 +656,7 @@ pub fn parse_hash_directive_checked(line: &str) -> std::result::Result<Option<Di
     let Some(rest) = rest.strip_prefix("fmt:") else {
         return Ok(None);
     };
-    parse_markdown_fmt_directive(rest.trim()).map(Some)
+    parse_source_fmt_directive(rest.trim()).map(Some)
 }
 
 pub fn parse_yaml_hash_directive(line: &str) -> std::result::Result<Option<Directive>, String> {
@@ -816,6 +816,43 @@ fn parse_scope_and_options(
         }
     }
     (scope, delta)
+}
+
+fn parse_source_fmt_directive(rest: &str) -> std::result::Result<Directive, String> {
+    let mut fields = parse_directive_tokens(rest)?;
+    if fields.is_empty() {
+        return Err("invalid fmt directive: empty".to_owned());
+    }
+
+    let action = fields.remove(0);
+    match action.text.as_str() {
+        "skip" => parse_yaml_skip_directive(&fields),
+        "off" => parse_yaml_off_directive(&fields),
+        "on" => parse_yaml_on_directive(&fields),
+        "markdown" => {
+            let (scope, mut delta) = parse_scope_and_options_checked(&fields, Scope::Next)?;
+            reject_markdown_without_options_for_broad_scope(scope, &delta)?;
+            if scope == Scope::Next {
+                delta.markdown_target = Some(true);
+            }
+            Ok(Directive::Markdown { scope, delta })
+        }
+        "template.delimiters" => parse_yaml_template_directive(&fields),
+        "embedded" => parse_yaml_embedded_keyword_directive(&fields, rest),
+        "compact" | "table" => Err(format!("invalid fmt directive: {rest}")),
+        _ if !action.text.contains('=')
+            && !matches!(action.text.as_str(), "canonical" | "markdown") =>
+        {
+            parse_yaml_embedded_name_directive(action.text, &fields, rest)
+        }
+        _ => {
+            let mut option_fields = Vec::with_capacity(fields.len() + 1);
+            option_fields.push(action);
+            option_fields.extend(fields);
+            let (scope, delta) = parse_scope_and_options_checked(&option_fields, Scope::File)?;
+            Ok(Directive::Markdown { scope, delta })
+        }
+    }
 }
 
 fn parse_yaml_fmt_directive(rest: &str) -> std::result::Result<Directive, String> {

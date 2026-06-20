@@ -350,6 +350,7 @@ fn emit_document_inner(
             EmitPlan::ExternalPlugin {
                 name,
                 body,
+                string_indent,
                 normalized_opening,
                 fence_safety,
             } => {
@@ -363,7 +364,23 @@ fn emit_document_inner(
                     );
                 } else {
                     let body_text = source.slice(*body);
-                    let (preamble, formatter_input) = split_renderer_preamble(body_text);
+                    let (formatter_source, body_suffix, indent) =
+                        if let Some(indent) = string_indent {
+                            let formatter_source =
+                                crate::core::source_lang::body_without_delimiter_padding(body_text);
+                            let body_suffix = &body_text[formatter_source.len()..];
+                            (formatter_source, body_suffix, indent.as_str(source))
+                        } else {
+                            (body_text, "", "")
+                        };
+                    let (preamble, formatter_input) = split_renderer_preamble(formatter_source);
+                    let dedented;
+                    let formatter_input = if string_indent.is_some() {
+                        dedented = crate::core::source_lang::dedent_body(formatter_input, indent);
+                        dedented.as_str()
+                    } else {
+                        formatter_input
+                    };
                     let line = source.line_column_at_byte(body.start).0;
                     if let Some(mut formatted) =
                         plugins.run(name.as_ref(), formatter_input, line)?
@@ -382,7 +399,13 @@ fn emit_document_inner(
                             normalized_opening.as_deref(),
                         );
                         out.push_str(preamble);
+                        if string_indent.is_some() {
+                            formatted = crate::core::source_lang::reindent_markdown_body(
+                                &formatted, indent,
+                            );
+                        }
                         out.push_str(&formatted);
+                        out.push_str(body_suffix);
                         out.push_str(source.slice(Span::new(body.end, node.span.end)));
                     } else {
                         emit_external_preserved(

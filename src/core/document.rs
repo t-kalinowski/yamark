@@ -353,6 +353,7 @@ pub enum EmitPlan<'src> {
     ExternalPlugin {
         name: Box<str>,
         body: Span,
+        string_indent: Option<SourceSpan<'src>>,
         normalized_opening: Option<Box<str>>,
         fence_safety: Option<CodeFenceSafety>,
     },
@@ -437,11 +438,13 @@ impl<'src> EmitPlan<'src> {
             Self::ExternalPlugin {
                 name,
                 body,
+                string_indent,
                 normalized_opening,
                 fence_safety,
             } => EmitPlan::ExternalPlugin {
                 name,
                 body,
+                string_indent: string_indent.map(SourceSpan::retag),
                 normalized_opening,
                 fence_safety,
             },

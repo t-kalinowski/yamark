@@ -23,8 +23,9 @@ Path-aware formatting supports:
   JavaScript, TypeScript, and related aliases: format through Ruff, Air, or
   Prettier when a matching embedded formatter is available.
 - `.py`, `.R`, and `.r`: format `#|` hashpipe YAML comment blocks,
-  explicit embedded Markdown comment blocks, and marked string literals. Yamark
-  does not format the surrounding source code.
+  explicit embedded Markdown comment blocks, marked Markdown string literals,
+  and marked string literals through embedded formatters. Yamark does not
+  format the surrounding source code.
 - YAML scalar values tagged `!markdown` or marked with `# fmt: markdown`:
   format the scalar value as Markdown.
 - YAML literal block scalar values marked with `# fmt: <name>` or
@@ -85,6 +86,7 @@ The syntax surface Yamark formats, preserves, or rejects.
 | --- | --- |
 | `#|` hashpipe YAML comments in `.py`, `.R`, and `.r` | Consecutive own-line `#|` comments are parsed as YAML, formatted, and emitted back with the original comment prefix. |
 | Embedded Markdown source comments and strings | Explicit `fmt: markdown` targets are formatted as Markdown with source-comment or string indentation accounted for. |
+| External source strings | Explicit `fmt: <name>` targets format string literals through configured or built-in external formatters with string indentation accounted for. |
 | Surrounding source code | Preserved. Yamark does not format Python or R source outside explicit embedded targets. |
 | Quarto chunk headers | Simple chunk header options such as `echo=FALSE` can be promoted to `#| echo: false` option lines when the chunk is formatted. |
 | Quarto chunk skips | A leading `#| fmt: skip` preserves that chunk locally. |
@@ -499,6 +501,15 @@ PROMPT = """
 #   Title
 
 Read the diff and report correctness issues. Prefer specific examples.
+"""
+```
+
+Format an embedded R string in Python:
+
+```python
+# fmt: r
+source = """
+f <- function(x)x+1
 """
 ```
 
