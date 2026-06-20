@@ -7,7 +7,7 @@ code_bin="${CODE_BIN:-code}"
 out="${VSIX_OUT:-$repo_root/target/vscode/yamark-dev.vsix}"
 
 VSIX_OUT="$out" "$script_dir/package-dev.sh" >/dev/null
-"$code_bin" --install-extension "$out" --force
+NODE_NO_WARNINGS=1 "$code_bin" --install-extension "$out" --force
 
 cat <<'EOF'
 Installed Yamark extension.
