@@ -107,16 +107,17 @@ fn contains_existing_split_link_destination(source: &str) -> bool {
 pub fn normalize_heading_content(source: &str) -> String {
     let text = source.trim();
     let Some((body, attr)) = split_trailing_attribute(text) else {
-        return text.to_owned();
+        return normalize_spaces_preserving_protected_spans(text).into_owned();
     };
     let Some(attr) = normalize_heading_attribute_block(attr) else {
-        return text.to_owned();
+        return normalize_spaces_preserving_protected_spans(text).into_owned();
     };
     let body = trim_heading_closing_hashes(body);
-    if body.trim().is_empty() {
+    let body = normalize_spaces_preserving_protected_spans(body.trim());
+    if body.is_empty() {
         attr
     } else {
-        format!("{} {attr}", body.trim_end())
+        format!("{body} {attr}")
     }
 }
 

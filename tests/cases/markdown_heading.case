@@ -3,9 +3,13 @@ format --stdin-file-path input.md --wrap none
 -- stdin
 #   Title ##
 
+## R Is Rich in  Interactive Surfaces
+
 A   short   paragraph.
 -- stdout
 # Title
+
+## R Is Rich in Interactive Surfaces
 
 A   short   paragraph.
 -- stderr
