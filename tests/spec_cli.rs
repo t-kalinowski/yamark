@@ -1319,6 +1319,26 @@ eta theta iota kappa lambda mu\"
 }
 
 #[test]
+fn markdown_spaced_image_fig_alt_attribute_is_normalized_for_pandoc() {
+    let input = "\
+![](mcp-repl-useR-lightning-assets/chat-scenario.png) { fig-alt=\"A chat interface where a user asks an agent to explore a dataset and build a first model. The agent responds by running several bash tool calls with Rscript.\" }
+";
+    let expected = "\
+![](mcp-repl-useR-lightning-assets/chat-scenario.png){
+  fig-alt=\"A chat interface where a user asks an agent to explore a dataset and build a
+first model. The agent responds by running several bash tool calls with Rscript.\"
+}
+";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", "input.md", "--wrap", "88"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_long_fig_alt_attributes_preserve_document_line_endings() {
     for newline in ["\r\n", "\r"] {
         let input = format!(

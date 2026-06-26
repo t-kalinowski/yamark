@@ -3271,7 +3271,12 @@ fn normalize_link_or_image_at(text: &str, start: usize) -> Option<(usize, String
     normalized.push_str("](");
     normalized.push_str(&target);
     normalized.push(')');
-    if let Some((attribute_end, attribute)) = normalize_attribute_after(text, end) {
+    let attribute = if image {
+        normalize_image_attribute_after(text, end)
+    } else {
+        normalize_attribute_after(text, end)
+    };
+    if let Some((attribute_end, attribute)) = attribute {
         normalized.push_str(&attribute);
         end = attribute_end;
     }
@@ -3345,6 +3350,24 @@ fn normalize_attribute_after(text: &str, start: usize) -> Option<(usize, String)
     let end = balanced_brace_end(rest)?;
     let attribute = &rest[..end];
     normalize_attribute_block(attribute).map(|normalized| (start + end, normalized))
+}
+
+fn normalize_image_attribute_after(text: &str, start: usize) -> Option<(usize, String)> {
+    if let Some(attribute) = normalize_attribute_after(text, start) {
+        return Some(attribute);
+    }
+
+    let mut cursor = start;
+    while matches!(text.as_bytes().get(cursor), Some(b' ' | b'\t')) {
+        cursor += 1;
+    }
+    if cursor == start {
+        return None;
+    }
+
+    let (end, attribute) = normalize_attribute_after(text, cursor)?;
+    let inner = &attribute[1..attribute.len() - 1];
+    is_pandoc_attribute_content(inner).then_some((end, attribute))
 }
 
 fn normalize_attribute_block(attribute: &str) -> Option<String> {
