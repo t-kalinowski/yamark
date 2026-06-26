@@ -2385,6 +2385,7 @@ fn raw_sensitive_at(text: &str) -> bool {
         || trimmed.starts_with("<!--")
         || trimmed.starts_with("<div")
         || trimmed.starts_with("</div")
+        || multiline_html_tag_start(text)
         || paired_html_block_start(text).is_some()
         || link_definition_start(trimmed)
         || trimmed.starts_with("#.")
@@ -2480,6 +2481,9 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     }
     if let Some(tag) = paired_html_block_start(source.line_text(line)) {
         return find_until_html_closing_tag(source, line + 1, end, &tag);
+    }
+    if multiline_html_tag_start(source.line_text(line)) {
+        return find_until_contains(source, line + 1, end, ">");
     }
     if let Some(shortcode) = hugo_shortcode_opening(trimmed)
         && let Some(close) = find_hugo_shortcode_close(source, line + 1, end, shortcode)
@@ -2758,6 +2762,46 @@ fn paired_html_block_start(text: &str) -> Option<String> {
         return None;
     }
     Some(tag.to_owned())
+}
+
+fn multiline_html_tag_start(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    if trimmed.contains('>') || !trimmed.starts_with('<') {
+        return false;
+    }
+    if trimmed.starts_with("<!--")
+        || trimmed.starts_with("<!")
+        || trimmed.starts_with("<?")
+        || crate::core::wrap::commonmark_autolink_span_end(trimmed, 0).is_some()
+    {
+        return false;
+    }
+    let mut name_start = '<'.len_utf8();
+    if trimmed.as_bytes().get(name_start) == Some(&b'/') {
+        name_start += '/'.len_utf8();
+    }
+    let Some(first) = trimmed[name_start..].chars().next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+    let mut name_end = name_start;
+    while name_end < trimmed.len() {
+        let ch = trimmed[name_end..]
+            .chars()
+            .next()
+            .expect("name_end is on a char boundary");
+        if !(ch.is_ascii_alphanumeric() || ch == '-') {
+            break;
+        }
+        name_end += ch.len_utf8();
+    }
+    let after_name = &trimmed[name_end..];
+    !(after_name.starts_with([':', '@']))
+        && (after_name.is_empty()
+            || after_name.starts_with(char::is_whitespace)
+            || after_name.starts_with('/'))
 }
 
 fn find_until_html_closing_tag(

@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+<img alt="A chat interface where a user asks an agent to explore a
+dataset and build a first model. The agent responds by running several
+bash tool calls with Rscript."
+src="mcp-repl-useR-lightning-assets/chat-scenario.png" style="width:
+100%; fig-align='center'"
+>
+-- stdout
+<img alt="A chat interface where a user asks an agent to explore a
+dataset and build a first model. The agent responds by running several
+bash tool calls with Rscript."
+src="mcp-repl-useR-lightning-assets/chat-scenario.png" style="width:
+100%; fig-align='center'"
+>
+-- stderr
+-- status
+0
