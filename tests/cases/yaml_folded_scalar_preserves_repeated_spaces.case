@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.yaml --prose-width 14
+-- stdin
+description: >-
+  Lorem ipsum    dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+-- stdout
+description: >-
+  Lorem
+  ipsum    dolor
+  sit amet,
+  consectetur
+  adipiscing
+  elit, sed do
+  eiusmod tempor
+  incididunt ut
+  labore et
+  dolore magna
+  aliqua.
+-- stderr
+-- status
+0

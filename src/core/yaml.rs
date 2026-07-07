@@ -5806,64 +5806,37 @@ fn render_folded_prose_scalar(
     }
     let metadata = scalar_metadata(source, scalar.value);
     let raw = source.slice(metadata.content).trim();
-    let prose = match scalar.style {
+    let prose: Cow<'_, str> = match scalar.style {
         YamlScalarStyle::Plain => {
             if scalar.semantic != YamlScalarSemantic::String {
                 return None;
             }
-            if raw.contains(['\n', '\r', '\t']) {
+            if !foldable_yaml_prose(raw) {
                 return None;
             }
-            if raw.chars().count() <= options.prose_width || !raw.contains(char::is_whitespace) {
-                return None;
-            }
-            let normalized = normalize_yaml_prose(raw);
-            if normalized != raw {
-                return None;
-            }
-            normalized
+            Cow::Borrowed(raw)
         }
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
             if let Some(decoded) = simple_quoted_scalar_inner(raw) {
-                if decoded.chars().count() <= options.prose_width {
+                if !foldable_yaml_prose(decoded) {
                     return None;
                 }
-                if decoded != decoded.trim()
-                    || decoded.contains(['\n', '\r', '\t'])
-                    || decoded
-                        .chars()
-                        .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\t'))
-                {
-                    return None;
-                }
-                let normalized = normalize_yaml_prose(decoded);
-                if normalized != decoded {
-                    return None;
-                }
-                normalized
+                Cow::Borrowed(decoded)
             } else {
                 let decoded = decode_quoted_scalar(raw)?;
-                if decoded.chars().count() <= options.prose_width {
+                if !foldable_yaml_prose(&decoded) {
                     return None;
                 }
-                if decoded != decoded.trim()
-                    || decoded.contains(['\n', '\r', '\t'])
-                    || decoded
-                        .chars()
-                        .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\t'))
-                {
-                    return None;
-                }
-                let normalized = normalize_yaml_prose(&decoded);
-                if normalized != decoded {
-                    return None;
-                }
-                decoded
+                Cow::Owned(decoded)
             }
         }
         YamlScalarStyle::LiteralBlock | YamlScalarStyle::FoldedBlock => return None,
     };
-    if prose.is_empty() || prose.chars().count() <= options.prose_width {
+    if prose.chars().count() <= options.prose_width {
+        return None;
+    }
+    let lines = wrap_yaml_prose(&prose, options.prose_width.max(1));
+    if lines.len() <= 1 {
         return None;
     }
     let newline = line_ending_or_default(source, node.span, options);
@@ -5873,7 +5846,6 @@ fn render_folded_prose_scalar(
         indentation(source.line_text(line_index)) + options.indent_width
     });
     let indent = " ".repeat(indent);
-    let lines = wrap_yaml_prose(&prose, options.prose_width.max(1));
     let mut out = String::new();
     out.push_str(&render_explicit_core_scalar(source, scalar, ">-"));
     out.push_str(newline);
@@ -5969,14 +5941,18 @@ fn folded_block_body_prose(body: &str) -> Option<FoldedBlockProse> {
         }
         let line_indent = line_body.bytes().take_while(|byte| *byte == b' ').count();
         let indent = *indent.get_or_insert(line_indent);
-        if line_indent < indent {
+        if line_indent != indent {
             return None;
         }
-        parts.push(line_body[indent..].trim());
+        let content = &line_body[indent..];
+        if content != content.trim() {
+            return None;
+        }
+        parts.push(content);
     }
     let indent = indent?;
-    let prose = normalize_yaml_prose(&parts.join(" "));
-    (!prose.is_empty()).then_some(FoldedBlockProse {
+    let prose = parts.join(" ");
+    (!prose.is_empty() && foldable_yaml_prose(&prose)).then_some(FoldedBlockProse {
         text: prose,
         indent,
         final_newline,
@@ -5984,41 +5960,75 @@ fn folded_block_body_prose(body: &str) -> Option<FoldedBlockProse> {
     })
 }
 
-fn normalize_yaml_prose(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut pending_space = false;
-    for ch in source.chars() {
-        if ch.is_whitespace() {
-            pending_space = true;
-        } else {
-            if pending_space && !out.is_empty() {
-                out.push(' ');
-            }
-            out.push(ch);
-            pending_space = false;
-        }
-    }
-    out
+fn foldable_yaml_prose(source: &str) -> bool {
+    !source.is_empty()
+        && source == source.trim()
+        && !source.contains(['\n', '\r', '\t'])
+        && !source.chars().any(char::is_control)
 }
 
 fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
+    let chars = source.char_indices().collect::<Vec<_>>();
+    let breaks = safe_yaml_space_breaks(&chars);
     let mut lines = Vec::new();
-    let mut current = String::new();
-    for word in source.split_whitespace() {
-        if current.is_empty() {
-            current.push_str(word);
-        } else if current.chars().count() + 1 + word.chars().count() <= width {
-            current.push(' ');
-            current.push_str(word);
-        } else {
-            lines.push(current);
-            current = word.to_owned();
-        }
+    let mut start_byte = 0;
+    let mut start_char = 0;
+    let width = width.max(1);
+
+    while chars.len().saturating_sub(start_char) > width {
+        let target_char = start_char + width;
+        let break_at = breaks
+            .iter()
+            .copied()
+            .take_while(|candidate| candidate.char_index <= target_char)
+            .filter(|candidate| candidate.char_index > start_char)
+            .last()
+            .or_else(|| {
+                breaks
+                    .iter()
+                    .copied()
+                    .find(|candidate| candidate.char_index > start_char)
+            });
+        let Some(break_at) = break_at else {
+            break;
+        };
+
+        lines.push(source[start_byte..break_at.byte].to_owned());
+        start_byte = break_at.byte + 1;
+        start_char = break_at.char_index + 1;
     }
-    if !current.is_empty() {
-        lines.push(current);
+
+    if start_byte < source.len() {
+        lines.push(source[start_byte..].to_owned());
     }
     lines
+}
+
+#[derive(Clone, Copy)]
+struct SafeYamlSpaceBreak {
+    byte: usize,
+    char_index: usize,
+}
+
+fn safe_yaml_space_breaks(chars: &[(usize, char)]) -> Vec<SafeYamlSpaceBreak> {
+    chars
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (byte, ch))| {
+            if *ch != ' ' || index == 0 || index + 1 == chars.len() {
+                return None;
+            }
+            let previous = chars[index - 1].1;
+            let next = chars[index + 1].1;
+            if previous == ' ' || next == ' ' {
+                return None;
+            }
+            Some(SafeYamlSpaceBreak {
+                byte: *byte,
+                char_index: index,
+            })
+        })
+        .collect()
 }
 
 fn line_ending_or_default(

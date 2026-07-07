@@ -87,6 +87,29 @@ ref: *items
 items: [a,b]
 """,
     ),
+    (
+        "folded-scalar-double-space",
+        """description: >-
+  Lorem ipsum  dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+""",
+    ),
+    (
+        "folded-scalar-sentence-spacing",
+        """description: >-
+  Lorem ipsum dolor sit amet.  Consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+""",
+    ),
+    (
+        "folded-scalar-wide-space-run",
+        """description: >-
+  Lorem ipsum    dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+""",
+    ),
+    (
+        "plain-scalar-wide-space-run",
+        """description: Lorem ipsum    dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+""",
+    ),
 ]
 
 
