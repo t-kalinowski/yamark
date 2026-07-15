@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap 40
+-- stdin
+![](assets/generated/chat-heredoc-script.png) { fig-alt="A chat interface where the assistant first uses an inline Rscript bash tool call, then shows a short reasoning summary, then uses
+another bash tool call to write and run a temporary R script." }
+-- stdout
+![](assets/generated/chat-heredoc-script.png) { fig-alt="A chat interface where the assistant first uses an inline Rscript bash tool call, then shows a short reasoning summary, then uses
+another bash tool call to write and run a temporary R script." }
+-- stderr
+-- status
+0

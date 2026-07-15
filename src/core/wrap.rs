@@ -3097,6 +3097,9 @@ fn closing_punctuation(ch: char) -> bool {
 fn contains_unsupported_inline_construct(text: &str) -> bool {
     let mut index = 0usize;
     while index < text.len() {
+        if multiline_brace_span_at(text, index) {
+            return true;
+        }
         if let Some(end) = unsupported_scan_protected_token_end(text, index) {
             index = end;
             continue;
@@ -3111,6 +3114,17 @@ fn contains_unsupported_inline_construct(text: &str) -> bool {
         index += ch.len_utf8();
     }
     false
+}
+
+fn multiline_brace_span_at(text: &str, index: usize) -> bool {
+    if escaped_at(text, index) || !text[index..].starts_with('{') {
+        return false;
+    }
+    let Some(end) = balanced_brace_end(&text[index..]) else {
+        return false;
+    };
+    // Multiline brace spans can be Pandoc or Quarto attributes; leave them raw.
+    text[index..index + end].contains(['\n', '\r'])
 }
 
 fn unsupported_scan_protected_token_end(text: &str, index: usize) -> Option<usize> {
