@@ -29,7 +29,7 @@ Preserve and document these anchors:
 - V1 initial spec: `0af138c4057d2f36730de81dba681890f4e3c34f`
 - V1 initial implementation: `eef874b72aaf2590171a9cddd2ea944fa68107ee`
 - V1 drain loop: `fdc9c6210815c08726d2c55e0f4d08c47c987dce`
-- V1 public development endpoint:
+- V1 selected development endpoint:
   `c8096c24e11a3064ff65ec028a13954ac6807c0d`
 - V1 later local maintenance commit:
   `1487b1cdfe908462c64725fdbd555b521c75e9c6`
@@ -72,6 +72,8 @@ On the documentation branch, add:
   `git worktree add` commands for inspecting each version;
 - `evidence/commit-map.csv` with event, repository, full hash, author
   time, commit time, and subject;
+- the source and rendered form of the V1 issue-drain versus V2
+  review/fix workflow diagram used in the article;
 - the public-safe review/fix timing CSV and plot;
 - the extraction script, exact matching/pairing rules, and explicit
   inclusion/exclusion reasons;
