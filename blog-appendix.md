@@ -1,7 +1,7 @@
-# Yamark case study: evidence and methodology
+# Yamark: evidence and methodology
 
 This appendix records the evidence behind
-[the Yamark case study](blogpost.md). It separates repository facts from
+[the Yamark post](blogpost.md). It separates repository facts from
 personal recollection and documents how the review/fix timing chart was
 constructed.
 
