@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::config::Config;
 use crate::core::directives::{
     Directive, DirectiveDelta, DirectiveEngine, DirectiveState, Scope, StateId, TemplateDelimiter,
@@ -1055,6 +1057,9 @@ pub(crate) fn render_markdown_heading(
     options: FormatOptions,
 ) -> String {
     let mut text = source.slice(content).trim().to_owned();
+    if options.markdown_ascii_dashes {
+        text = replace_unicode_dashes(&text);
+    }
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
@@ -1079,6 +1084,9 @@ pub(crate) fn render_markdown_setext_heading(
     options: FormatOptions,
 ) -> String {
     let mut text = source.slice(content).trim().to_owned();
+    if options.markdown_ascii_dashes {
+        text = replace_unicode_dashes(&text);
+    }
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
@@ -1112,22 +1120,34 @@ pub(crate) fn render_markdown_format(
     kind: MarkdownBlockFormatKind,
 ) -> String {
     let input = source.slice(span);
+    let preserve_footnote = kind == MarkdownBlockFormatKind::Paragraph
+        && !options.markdown_format_footnotes
+        && crate::core::wrap::markdown_footnote_definition(input);
+    let input = if options.markdown_ascii_dashes && !preserve_footnote {
+        Cow::Owned(replace_unicode_dashes(input))
+    } else {
+        Cow::Borrowed(input)
+    };
     match kind {
         MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::format_markdown_paragraph(input, options)
+            crate::core::wrap::format_markdown_paragraph(&input, options)
         }
-        MarkdownBlockFormatKind::Table => crate::core::wrap::format_markdown_table(input, options),
+        MarkdownBlockFormatKind::Table => crate::core::wrap::format_markdown_table(&input, options),
         MarkdownBlockFormatKind::PandocTable => {
-            crate::core::wrap::format_markdown_pandoc_table(input, options)
+            crate::core::wrap::format_markdown_pandoc_table(&input, options)
         }
-        MarkdownBlockFormatKind::List => crate::core::wrap::format_markdown_list(input, options),
+        MarkdownBlockFormatKind::List => crate::core::wrap::format_markdown_list(&input, options),
         MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::format_markdown_definition_list(input, options)
+            crate::core::wrap::format_markdown_definition_list(&input, options)
         }
         MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::format_markdown_blockquote(input, options)
+            crate::core::wrap::format_markdown_blockquote(&input, options)
         }
     }
+}
+
+fn replace_unicode_dashes(source: &str) -> String {
+    source.replace('—', "---").replace('–', "--")
 }
 
 fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {

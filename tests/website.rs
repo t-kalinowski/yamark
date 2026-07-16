@@ -380,6 +380,7 @@ fn website_documents_user_facing_references() {
     for option in [
         "--wrap",
         "--canonical",
+        "--ascii-dashes",
         "--preserve-footnotes",
         "--line-width",
         "--prose-width",
@@ -502,6 +503,7 @@ fn website_documents_cli_help_on_dedicated_page() {
         "Usage:",
         "Commands:",
         "yamark git-filter setup",
+        "--ascii-dashes",
         "--markdown-wrap-at-column",
     ] {
         assert!(

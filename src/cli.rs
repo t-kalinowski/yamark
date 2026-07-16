@@ -40,6 +40,11 @@ enum Command {
         wrap: Option<WrapArg>,
         #[arg(long)]
         canonical: bool,
+        #[arg(
+            long,
+            help = "Replace em dashes with --- and en dashes with -- in formatted Markdown"
+        )]
+        ascii_dashes: bool,
         #[arg(long)]
         preserve_footnotes: bool,
         #[arg(long, default_value_t = 80, value_parser = parse_positive_usize)]
@@ -223,6 +228,7 @@ where
             None,
             false,
             false,
+            false,
             80,
             72,
             2,
@@ -283,6 +289,7 @@ where
             config,
             wrap,
             canonical,
+            ascii_dashes,
             preserve_footnotes,
             line_width,
             prose_width,
@@ -298,6 +305,7 @@ where
             config,
             wrap,
             canonical,
+            ascii_dashes,
             preserve_footnotes,
             line_width,
             prose_width,
@@ -399,6 +407,7 @@ fn run_format(
     config: Option<PathBuf>,
     wrap: Option<WrapArg>,
     canonical: bool,
+    ascii_dashes: bool,
     preserve_footnotes: bool,
     line_width: usize,
     prose_width: usize,
@@ -422,6 +431,7 @@ fn run_format(
         indent_width,
         yaml_compact: compact,
         markdown_canonical: canonical,
+        markdown_ascii_dashes: ascii_dashes,
         markdown_format_footnotes: !preserve_footnotes,
         markdown_preserve_footnotes: preserve_footnotes,
         skip_embedded_formatters,

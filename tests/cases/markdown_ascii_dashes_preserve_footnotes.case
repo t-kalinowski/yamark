@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap 40 --ascii-dashes --preserve-footnotes
+-- stdin
+[^note]: Preserve this em dash—and this en dash in 1–3 byte-for-byte.
+-- stdout
+[^note]: Preserve this em dash—and this en dash in 1–3 byte-for-byte.
+-- stderr
+-- status
+0

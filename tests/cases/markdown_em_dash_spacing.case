@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap 80
+-- stdin
+prompt like `>` or `>>>`—heuristics that break anytime
+
+prompt like `>` or `>>>` — heuristics that break anytime
+-- stdout
+prompt like `>` or `>>>`—heuristics that break anytime
+
+prompt like `>` or `>>>` — heuristics that break anytime
+-- stderr
+-- status
+0

@@ -46,6 +46,7 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
       <span style='font-weight: bold;'>--config</span> &lt;PATH&gt;
       <span style='font-weight: bold;'>--wrap</span> &lt;WRAP&gt;
       <span style='font-weight: bold;'>--canonical</span>
+      <span style='font-weight: bold;'>--ascii-dashes</span>                 Replace em dashes with --- and en dashes with -- in formatted Markdown
       <span style='font-weight: bold;'>--preserve-footnotes</span>
       <span style='font-weight: bold;'>--line-width</span> &lt;LINE_WIDTH&gt;      [default: 80]
       <span style='font-weight: bold;'>--prose-width</span> &lt;PROSE_WIDTH&gt;    [default: 72]

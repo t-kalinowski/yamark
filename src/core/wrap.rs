@@ -13,7 +13,7 @@ pub(crate) fn markdown_paragraph_format_supported(source: &str, options: FormatO
 
 fn try_format_markdown_paragraph(source: &str, options: FormatOptions) -> Option<String> {
     let (body, newline) = strip_final_newline(source);
-    if footnote_definition(body) {
+    if markdown_footnote_definition(body) {
         return if options.markdown_format_footnotes {
             format_markdown_footnote(source, options)
         } else {
@@ -1364,7 +1364,7 @@ fn thematic_break_line(trimmed: &str) -> bool {
     count >= 3
 }
 
-fn footnote_definition(source: &str) -> bool {
+pub(crate) fn markdown_footnote_definition(source: &str) -> bool {
     let trimmed = source.trim_start();
     let indent = source.len() - trimmed.len();
     indent <= 3 && trimmed.starts_with("[^") && trimmed.contains("]:")
@@ -3002,6 +3002,7 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
     let mut pending_prefix = String::new();
     let mut index = 0usize;
     while index < text.len() {
+        let whitespace_start = index;
         while index < text.len() {
             let ch = text[index..].chars().next()?;
             if !ch.is_whitespace() {
@@ -3014,7 +3015,12 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
         }
 
         let end = inline_token_end(text, index)?;
-        attach_inline_token(&mut tokens, &mut pending_prefix, &text[index..end]);
+        attach_inline_token(
+            &mut tokens,
+            &mut pending_prefix,
+            &text[index..end],
+            index == whitespace_start,
+        );
         index = end;
     }
     if !pending_prefix.is_empty() {
@@ -3045,7 +3051,7 @@ fn simple_inline_tokens(text: &str) -> Vec<InlineToken<'_>> {
     let mut tokens = Vec::new();
     let mut pending_prefix = String::new();
     for token in text.split_whitespace() {
-        attach_inline_token(&mut tokens, &mut pending_prefix, token);
+        attach_inline_token(&mut tokens, &mut pending_prefix, token, false);
     }
     if !pending_prefix.is_empty() {
         if let Some(previous) = tokens.last_mut() {
@@ -3061,7 +3067,12 @@ fn attach_inline_token<'a>(
     tokens: &mut Vec<InlineToken<'a>>,
     pending_prefix: &mut String,
     token: &'a str,
+    adjacent: bool,
 ) {
+    if adjacent && let Some(previous) = tokens.last_mut() {
+        previous.push_str(token);
+        return;
+    }
     if token.chars().all(opening_punctuation) {
         pending_prefix.push_str(token);
         return;

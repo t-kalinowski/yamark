@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap none --ascii-dashes
+-- stdin
+# Heading—range 1–3
+
+An em dash—and an en dash in 1–3.
+-- stdout
+# Heading---range 1--3
+
+An em dash---and an en dash in 1--3.
+-- stderr
+-- status
+0

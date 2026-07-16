@@ -131,6 +131,7 @@ yamark format --wrap paragraph docs/
 yamark format --wrap sentence docs/
 yamark format --wrap 88 docs/
 yamark format --canonical docs/
+yamark format --ascii-dashes docs/
 yamark format --preserve-footnotes docs/
 yamark format --line-width 100 docs/
 yamark format --prose-width 80 docs/
@@ -148,6 +149,7 @@ yamark format --config path/to/yamark.toml docs/
 | `--wrap sentence` | Put each Markdown sentence on its own line. |
 | `--wrap <n>` | Wrap Markdown prose to column `<n>`. |
 | `--canonical` | Enable canonical Markdown spelling for safe Markdown spans. YAML scalar spelling has its own rules, with limited canonical-mode behavior for short folded prose rewrapping. |
+| `--ascii-dashes` | Replace em dashes with `---` and en dashes with `--` in formatted Markdown. |
 | `--preserve-footnotes` | Preserve Markdown footnote definitions byte-for-byte. |
 | `--line-width <n>` | Set structural YAML width. Flow collections expand when they exceed it. |
 | `--prose-width <n>` | Set folded YAML scalar prose width. |
