@@ -2,8 +2,8 @@
 
 Like any curious person in this space, I have been experimenting with
 LLM-assisted coding. In particular, I have been interested in
-long-running, unattended tasks: setups where agents work for hours or
-days without human intervention.
+long-running agent workflows: repeated sessions that can work for hours,
+or across several days, with little intervention between checkpoints.
 
 One of those experiments produced something I now use every day.
 
@@ -145,10 +145,11 @@ flowchart TB
   end
 ```
 
-The retained sessions start on May 21. The driver did not enter Git
-until May 28, after it had already been used. The loop ran in several
-bursts through May 30, with a six-day pause in the middle; it was not
-one process running continuously for nine days.
+The retained sessions for this review-and-fix loop begin on May 21 EDT.
+The driver did not enter Git until May 28, after it had already been
+used. The loop ran in several bursts through May 30, with a six-day
+pause in the middle; it was not one process running continuously for
+nine days.
 
 The timing is the part I remembered most clearly—and also too neatly.
 Early reviews were short and fixes were long. Later reviews were
@@ -166,14 +167,21 @@ covering pairs 25–34.
 | First 10-pair block (1–10), median      |      4m 25s |  10m 33s |
 | Last full 10-pair block (61–70), median |      8m 50s |   5m 15s |
 | Pair before the terminal review         |      7m 11s |   2m 49s |
-| Terminal review                         |  6h 52m 20s |        — |
 
-These are wall times. The terminal review remained open for 6h 52m,
-although its own reported task duration was 55m 36s. The fix immediately
-before the terminal review took 2m 49s. That review reported no
-remaining gaps in the implementation. The
+These are wall times. The terminal session remained open for 6h 52m,
+although its own reported task duration was 55m 36s and the record
+contains long gaps. I treat it as the endpoint of the sequence, not as
+nearly seven hours of continuous review. It reported no remaining
+product-code gaps against the then-current `SPEC.md`. The
 [methodology appendix](blog-appendix.md) contains the pairing rules,
 exclusions, complete timing table, and how I reconstructed the data.
+
+The review-and-fix loop was only one phase of V2. Before it, I spent a
+high-touch period refining the parser, source representation, and
+emission model with agents. After it, the project moved into a different
+benchmark-gated loop: try a performance change, measure it, keep or
+revert it, and record the result. In fact, 468 of V2's 593 commits came
+after the final review-loop fix.
 
 ## Then I changed the spec again
 
@@ -226,10 +234,10 @@ to use the formatter before I could tell whether many of these decisions
 were right. Watching it being implemented also exposed where the
 architecture helped and where it got in the way.
 
-I suppose this is not very different from the old agile point that
-useful feedback starts when working software exists. What felt different
-was the speed. Once I liked the basic parser and source model, most of
-the changes I discovered in daily use were small patches.
+This is not very different from the old agile observation that useful
+feedback starts when working software exists. What felt different was
+the speed. Once I liked the basic parser and source model, most of the
+changes I discovered in daily use were small patches.
 
 `SPEC.md` was deleted on June 6, and another 36 commits followed before
 that repository's final commit on June 15. Since then, ordinary use has
@@ -238,10 +246,11 @@ HTML, heading whitespace, spaces in wrapped YAML scalars, and multiline
 brace attributes. Those are exactly the sorts of preferences and edge
 cases I could not have specified convincingly in advance.
 
-I now inspect those patches, ask the agent to add and run public-API
-regression tests, and tell it to commit directly to `main`. There is no
-conventional pull-request or second-reviewer process for these tweaks. I
-have not noticed a significant regression in daily use.
+For these small follow-up patches in a solo project, I inspect the
+changes, ask the agent to add and run public-API regression tests, and
+commit directly to `main`. Daily use still found a regression: wrapping
+a YAML scalar collapsed repeated spaces. It was local enough to fix with
+focused tests and a patch rather than another architectural reset.
 
 ## Why Rust
 
@@ -278,6 +287,6 @@ internal-combustion-engine equivalent comes later. For now, it smells a
 little and is probably bad to breathe for too long. The analogy has more
 mileage than I first thought.
 
-If you are experimenting with agents that run for hours or
-days—especially separate review and fix sessions, or better ways to
-record what happened—I would like to compare notes.
+If you are experimenting with long-running agent workflows that stretch
+across hours or days—especially separate review and fix sessions, or
+better ways to record what happened—I would like to compare notes.
