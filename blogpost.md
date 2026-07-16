@@ -36,10 +36,8 @@ about.
 
 ## V1: build it, use it, drain the queue
 
-I remembered V1 as beginning with a basic prompt, followed by a slowly
-growing issue queue. The history says otherwise.
-
-The first commit, on May 6, added a 1,416-line `SPEC.md`. Forty-seven
+V1 began with a substantial specification, not the issue queue. The
+first commit, on May 6, added a 1,416-line `SPEC.md`. Forty-seven
 minutes later, the initial implementation commit added 3,410 lines. The
 first retained implementation prompt was simply: “Implement SPEC.md.
 Spawn subagents where appropriate to do orthogonal chunks of work.” The
@@ -60,37 +58,30 @@ behavior changes, it required a failing public-API test before
 implementation; all completed work had to be tested and committed before
 the issue was closed. The Git history stayed linear on `main`.
 
-What I did not remember was how much of the queue the agents created.
-The first 32 issues were loaded in about 70 minutes, several by
-decomposing an existing YAML support document. Annoyances I encountered
-in daily use fed the queue, but this was not a story in which I
-patiently typed every issue by hand.
+Agents created or decomposed much of the queue. The first 32 issues were
+loaded in about 70 minutes, several from an existing YAML support
+document. Annoyances I encountered in daily use also fed the queue.
 
-By May 18—the endpoint I used for this reconstruction—V1 had reached 448
-commits over twelve days. I enabled it globally and it worked well
-enough that I wanted to share it. Then I inspected its architecture.
+By May 18, V1 had reached 448 commits over twelve days. I enabled it
+globally and it worked well enough that I wanted to share it. Then I
+inspected its architecture.
 
-Here my memory was particularly unfair. V1 was not “regexes on top of
-regexes,” and it was not “not a parser in any sense.” It did not even
-depend on Rust's regex crate. It had hand-written YAML scanners and
-parsers, source-slice emission, and a Markdown engine.
-
-The real problem was architectural drift. V1 had become a monolithic
-collection of scanners, parsers, semantic passes, and formatting
-heuristics. By the end, `fast_yaml.rs` was 10,085 lines,
+V1 had hand-written YAML scanners and parsers, source-slice emission,
+and a Markdown engine. The problem was architectural drift. It had
+become a monolithic collection of scanners, parsers, semantic passes,
+and formatting heuristics. By the end, `fast_yaml.rs` was 10,085 lines,
 `fast_markdown.rs` was 5,207, and `formatter.rs` was 4,582. It parsed
-the input; it just no longer had the simple, source-oriented shape I
+the input, but it no longer had the simple, source-oriented shape I
 wanted.
 
 So I started V2.
 
 ## V2: review the whole specification, fix what remains
 
-My recollection is that I gave ChatGPT Pro the V1 tests and behaviors
-and asked it to turn them into a specification, then spent another long
-session describing the architecture I wanted. The local history cannot
-verify which chat surface produced the documents or how long that took.
-It does show the resulting artifacts.
+I used ChatGPT Pro to turn V1's behavior and tests into a specification,
+then described the parser and emission architecture I wanted. The
+retained local record begins with the resulting artifacts, so it does
+not establish the exact preceding conversation or its duration.
 
 The new repository was called `yamark2`. It was fresh, but not empty:
 its first commit on May 18 already contained a 1,203-line `SPEC.md`, a
@@ -151,14 +142,11 @@ used. The loop ran in several bursts through May 30, with a six-day
 pause in the middle; it was not one process running continuously for
 nine days.
 
-The timing is the part I remembered most clearly—and also too neatly.
-Early reviews were short and fixes were long. Later reviews were
-generally longer, while fixes were generally shorter. But the raw series
-is noisy; two smooth lines did not steadily cross.
+Across the sequence, reviews generally became longer while fixes became
+shorter, although the individual timings were noisy.
 
-There was a crossover, but not the clean one I remembered: the ten-pair
-rolling review median first exceeded the fix median in the window
-covering pairs 25–34.
+The ten-pair rolling review median first exceeded the fix median in the
+window covering pairs 25–34.
 
 ![Review and fix timings](blog-assets/review-fix-timings.png)
 
