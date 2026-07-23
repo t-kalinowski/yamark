@@ -3661,7 +3661,12 @@ fn inline_code_span_end_with_attached_suffix(text: &str, mut end: usize) -> usiz
             .chars()
             .next()
             .expect("end is on a char boundary");
-        if !ch.is_alphanumeric() {
+        let is_possessive_apostrophe = matches!(ch, '\'' | '’')
+            && text[end + ch.len_utf8()..]
+                .chars()
+                .next()
+                .is_some_and(|ch| matches!(ch, 's' | 'S'));
+        if !ch.is_alphanumeric() && !is_possessive_apostrophe {
             break;
         }
         end += ch.len_utf8();

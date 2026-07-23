@@ -2,8 +2,17 @@
 format --stdin-file-path input.md --wrap 80
 -- stdin
 Use `events.jsonl`, cite [^2], then stop.
+
+`ir` creates the environment with `reticulate`'s uv-backed environment
+helper, sets `RETICULATE_PYTHON`, and activates the environment for
+subprocesses. Declare `reticulate` under `packages` when the R script
+loads `reticulate`.
 -- stdout
 Use `events.jsonl`, cite [^2], then stop.
+
+`ir` creates the environment with `reticulate`'s uv-backed environment helper,
+sets `RETICULATE_PYTHON`, and activates the environment for subprocesses.
+Declare `reticulate` under `packages` when the R script loads `reticulate`.
 -- stderr
 -- status
 0
