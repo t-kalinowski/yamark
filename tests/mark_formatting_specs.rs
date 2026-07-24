@@ -278,6 +278,72 @@ protected span while wrapping the surrounding prose.
 }
 
 #[test]
+fn markdown_wrapping_preserves_punctuation_adjacent_to_inline_spans() {
+    let spans = [
+        "`x y`",
+        "*x y*",
+        "[x y](https://example.com)",
+        "$x + y$",
+        "~~x y~~",
+        "<kbd>x y</kbd>",
+        "<https://example.com/path>",
+        r"\alpha",
+        "{#id}",
+        "{{< meta title >}}",
+    ];
+    let affixes = [
+        "'", "’", "‘", "\"", "-", "/", "+", "=", "@", "#", "%", "&", ":", ";", ",", ".", "!", "?",
+    ];
+
+    for span in spans {
+        for left in affixes {
+            for right in affixes {
+                let input = format!("Before {left}{span}{right} after.\n");
+                assert_eq!(
+                    format_markdown(&input, 1_000),
+                    input,
+                    "changed adjacency around {span:?} with {left:?} and {right:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn markdown_wrapping_preserves_generated_inline_adjacency_runs() {
+    let spans = [
+        "`code span`",
+        "*emphasis span*",
+        "[link label](https://example.com)",
+        "$x + y$",
+        "~~struck text~~",
+        "<kbd>key cap</kbd>",
+        "<https://example.com/path>",
+        r"\alpha",
+        "{#id}",
+        "{{< meta title >}}",
+    ];
+    let punctuation = [
+        '\'', '’', '‘', '"', '-', '/', '+', '=', '@', '#', '%', '&', ':', ';', ',', '.', '!', '?',
+    ];
+
+    for seed in 0..128usize {
+        let mut run = String::new();
+        for step in 0..4usize {
+            run.push(punctuation[(seed + step * 5) % punctuation.len()]);
+            run.push_str(spans[(seed * 7 + step * 3) % spans.len()]);
+            run.push(punctuation[(seed * 11 + step * 13 + 1) % punctuation.len()]);
+        }
+        let input = format!("Before {run} after.\n");
+        assert_eq!(
+            format_markdown(&input, 1_000),
+            input,
+            "changed generated adjacency run for seed {seed}"
+        );
+    }
+}
+
+#[test]
 fn markdown_paragraph_spacing_normalizes_blank_line_runs() {
     let input = r#"First paragraph.
 

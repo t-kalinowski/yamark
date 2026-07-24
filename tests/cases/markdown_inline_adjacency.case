@@ -1,0 +1,61 @@
+-- args
+format --stdin-file-path input.md --wrap 200
+-- stdin
+ASCII possessive: `x`'s value.
+
+Curly possessive: `x`’s value.
+
+Plural possessive: `users`' value.
+
+Non-possessive suffix: `x`'t value.
+
+Bare unmatched quote: `x`' value.
+
+Unmatched opening quote: '`x` value.
+
+ASCII quoted code: '`x`' value.
+
+Curly quoted code: ‘`x`’ value.
+
+Detached quotes: before ' `x` ' after.
+
+Hyphenated suffix: `x`-like value.
+
+Emphasis possessive: *x*'s value.
+
+Link possessive: [x](https://example.com)'s value.
+
+Math possessive: $x$'s value.
+
+Adjacent code spans: (`a`,`b`).
+-- stdout
+ASCII possessive: `x`'s value.
+
+Curly possessive: `x`’s value.
+
+Plural possessive: `users`' value.
+
+Non-possessive suffix: `x`'t value.
+
+Bare unmatched quote: `x`' value.
+
+Unmatched opening quote: '`x` value.
+
+ASCII quoted code: '`x`' value.
+
+Curly quoted code: ‘`x`’ value.
+
+Detached quotes: before ' `x` ' after.
+
+Hyphenated suffix: `x`-like value.
+
+Emphasis possessive: *x*'s value.
+
+Link possessive: [x](https://example.com)'s value.
+
+Math possessive: $x$'s value.
+
+Adjacent code spans: (`a`,`b`).
+-- stderr
+-- status
+0

@@ -3472,6 +3472,18 @@ fn normalize_attribute_token(token: &str) -> String {
 }
 
 fn inline_token_end(text: &str, start: usize) -> Option<usize> {
+    // Inline syntax protects its contents; only surrounding whitespace creates
+    // a prose wrapping boundary.
+    let mut end = start;
+    loop {
+        end = inline_token_fragment_end(text, end)?;
+        if end == text.len() || text[end..].chars().next().is_some_and(char::is_whitespace) {
+            return Some(end);
+        }
+    }
+}
+
+fn inline_token_fragment_end(text: &str, start: usize) -> Option<usize> {
     let rest = &text[start..];
     if let Some(end) = strikethrough_span_end(text, start) {
         return Some(end);
@@ -3483,8 +3495,7 @@ fn inline_token_end(text: &str, start: usize) -> Option<usize> {
         return Some(end);
     }
     if rest.starts_with('`') {
-        let end = inline_code_span_end(text, start)?;
-        return Some(inline_code_span_end_with_attached_suffix(text, end));
+        return inline_code_span_end(text, start);
     }
     if rest.starts_with('$') && !escaped_at(text, start) {
         return inline_math_span_end(text, start);
@@ -3653,25 +3664,6 @@ fn delimiter_run_len_at(text: &str, index: usize, marker: u8) -> usize {
         .bytes()
         .take_while(|byte| *byte == marker)
         .count()
-}
-
-fn inline_code_span_end_with_attached_suffix(text: &str, mut end: usize) -> usize {
-    while end < text.len() {
-        let ch = text[end..]
-            .chars()
-            .next()
-            .expect("end is on a char boundary");
-        let is_possessive_apostrophe = matches!(ch, '\'' | '’')
-            && text[end + ch.len_utf8()..]
-                .chars()
-                .next()
-                .is_some_and(|ch| matches!(ch, 's' | 'S'));
-        if !ch.is_alphanumeric() && !is_possessive_apostrophe {
-            break;
-        }
-        end += ch.len_utf8();
-    }
-    end
 }
 
 fn inline_span_end_with_trailing_punctuation(text: &str, mut end: usize) -> usize {
