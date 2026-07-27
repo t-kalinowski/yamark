@@ -36,8 +36,8 @@ enum Command {
         stdin_file_path: Option<PathBuf>,
         #[arg(long, value_name = "PATH")]
         config: Option<PathBuf>,
-        #[arg(long, value_parser = parse_wrap)]
-        wrap: Option<MarkdownWrap>,
+        #[arg(long, default_value = "72", value_parser = parse_wrap)]
+        wrap: MarkdownWrap,
         #[arg(long)]
         canonical: bool,
         #[arg(long)]
@@ -212,7 +212,7 @@ where
             false,
             None,
             None,
-            None,
+            MarkdownWrap::Column(72),
             false,
             false,
             80,
@@ -388,7 +388,7 @@ fn run_format(
     diagnostics: bool,
     stdin_file_path: Option<PathBuf>,
     config: Option<PathBuf>,
-    wrap: Option<MarkdownWrap>,
+    wrap: MarkdownWrap,
     canonical: bool,
     preserve_footnotes: bool,
     line_width: usize,
@@ -407,18 +407,18 @@ fn run_format(
         return ExitCode::from(2);
     }
 
-    let mut options = FormatOptions {
+    let options = FormatOptions {
         line_width,
         prose_width,
         indent_width,
         yaml_compact: compact,
+        markdown_wrap: wrap,
         markdown_canonical: canonical,
         markdown_format_footnotes: !preserve_footnotes,
         markdown_preserve_footnotes: preserve_footnotes,
         skip_embedded_formatters,
         ..FormatOptions::default()
     };
-    apply_wrap(wrap, &mut options);
 
     if let Some(path) = stdin_file_path {
         return run_stdin(path, config, options, diagnostics);
@@ -1397,10 +1397,4 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
 
 fn parse_wrap(value: &str) -> Result<MarkdownWrap, String> {
     MarkdownWrap::parse(value).map_err(str::to_owned)
-}
-
-fn apply_wrap(wrap: Option<MarkdownWrap>, options: &mut FormatOptions) {
-    if let Some(wrap) = wrap {
-        options.markdown_wrap = wrap;
-    }
 }

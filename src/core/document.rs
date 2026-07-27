@@ -151,7 +151,7 @@ impl Default for FormatOptions {
             indent_width: 2,
             markdown_compact_tables: false,
             yaml_compact: false,
-            markdown_wrap: MarkdownWrap::SentenceAndColumn(72),
+            markdown_wrap: MarkdownWrap::Column(72),
             markdown_canonical: false,
             markdown_format_footnotes: true,
             markdown_preserve_footnotes: false,

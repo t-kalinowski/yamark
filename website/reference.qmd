@@ -147,8 +147,8 @@ yamark format --config path/to/yamark.toml docs/
 | `--wrap none` | Disable Markdown prose wrapping. |
 | `--wrap paragraph` | Put each Markdown paragraph on one line. |
 | `--wrap sentence` | Put each Markdown sentence on its own line without column wrapping. |
-| `--wrap sentence:<n>` | Put each Markdown sentence on its own line and wrap long sentences to column `<n>`. This is the default at column 72. |
-| `--wrap <n>` | Wrap Markdown prose to column `<n>` without forcing sentence boundaries. |
+| `--wrap sentence:<n>` | Put each Markdown sentence on its own line and wrap long sentences to column `<n>`. |
+| `--wrap <n>` | Wrap Markdown prose to column `<n>` without forcing sentence boundaries. This is the default at column 72. |
 | `--canonical` | Enable canonical Markdown spelling for safe Markdown spans. YAML scalar spelling has its own rules, with limited canonical-mode behavior for short folded prose rewrapping. |
 | `--preserve-footnotes` | Preserve Markdown footnote definitions byte-for-byte. |
 | `--line-width <n>` | Set structural YAML width. Flow collections expand when they exceed it. |

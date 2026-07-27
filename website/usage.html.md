@@ -37,6 +37,13 @@ Format the current directory:
 yamark format
 ```
 
+By default, Markdown prose wraps at column 72 without forcing sentence
+boundaries. Override this behavior with `--wrap`, for example:
+
+```sh
+yamark format --wrap sentence:88 docs/
+```
+
 Directory traversal respects `.gitignore`, `.ignore`, and global Git ignore
 files by default.
 

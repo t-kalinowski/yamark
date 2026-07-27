@@ -126,6 +126,18 @@ fn format_rejects_unsupported_fast_option() {
 }
 
 #[test]
+fn format_help_shows_default_wrap() {
+    let (status, stdout, stderr) = run_stdin(&["format", "--help"], "");
+    assert_eq!(status, 0, "{stderr}");
+    let wrap = stdout
+        .lines()
+        .find(|line| line.contains("--wrap <WRAP>"))
+        .unwrap();
+    assert!(wrap.contains("[default: 72]"), "{wrap}");
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_directives_and_blocks() {
     let input = "\
 <!-- fmt: canonical=true scope=file -->
