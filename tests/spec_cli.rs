@@ -1859,6 +1859,35 @@ fn markdown_lists_wrap_items_with_nested_lists() {
 }
 
 #[test]
+fn markdown_sentence_column_wraps_continuations_in_lists_with_nested_lists() {
+    let input = "\
+- parent item.
+  This continuation sentence has many words that should wrap.
+  - nested item has many words that should wrap too.
+";
+    let expected = "\
+- parent item.
+  This continuation sentence has many
+  words that should wrap.
+  - nested item has many words that
+    should wrap too.
+";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.md",
+            "--wrap",
+            "sentence:40",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_simple_nested_blockquotes_wrap_under_nested_markers() {
     let input = ">> nested quote has many words that should keep quote depth\n";
     let expected = "\

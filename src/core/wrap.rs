@@ -689,59 +689,17 @@ fn try_format_rich_markdown_list(
             index = end;
             continue;
         }
-        if let Some(formatted) = try_format_single_markdown_list_line(lines[index], options) {
-            changed |= formatted != lines[index].full;
-            out.push_str(&formatted);
-        } else {
-            out.push_str(lines[index].full);
-        }
+        let start = index;
         index += 1;
+        while index < lines.len() && rich_list_child_indent(lines[index].body).is_none() {
+            index += 1;
+        }
+        out.push_str(&try_format_simple_markdown_list(
+            &lines[start..index],
+            options,
+        )?);
     }
     changed.then_some(out)
-}
-
-fn try_format_single_markdown_list_line(
-    line: MarkdownLine<'_>,
-    options: FormatOptions,
-) -> Option<String> {
-    let body = line.body;
-    let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
-    let indent = &body[..indent_len];
-    let trimmed = body[indent_len..].trim_start();
-    let (marker, rest) = list_marker(trimmed)?;
-    let marker = if matches!(marker, "*" | "+") {
-        "-"
-    } else {
-        marker
-    };
-    let item_body = rest.trim_start();
-    let (prefix, content) = if let Some((checkbox, content)) = task_list_checkbox(item_body) {
-        (format!("{indent}{marker} {checkbox} "), content)
-    } else {
-        (format!("{indent}{marker} "), item_body)
-    };
-    let continuation_prefix = " ".repeat(prefix.chars().count());
-    let (content, hard_break) = markdown_hard_break_line_content(content);
-    let text = normalize_spaces_preserving_protected_spans(content);
-    if text.is_empty() {
-        Some(format!(
-            "{}{newline}",
-            prefix.trim_end(),
-            newline = line.newline
-        ))
-    } else {
-        let segment = MarkdownHardBreakSegment {
-            text: text.into_owned(),
-            hard_break,
-        };
-        format_prefixed_markdown_segment(
-            &segment,
-            &prefix,
-            &continuation_prefix,
-            line.newline,
-            options,
-        )
-    }
 }
 
 fn list_needs_rich_format(lines: &[MarkdownLine<'_>]) -> bool {
