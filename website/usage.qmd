@@ -37,6 +37,13 @@ Format the current directory:
 yamark format
 ```
 
+By default, Markdown sentences start on separate lines and long sentences wrap
+at column 72. Override both behaviors with `--wrap`, for example:
+
+```sh
+yamark format --wrap sentence:88 docs/
+```
+
 Directory traversal respects `.gitignore`, `.ignore`, and global Git ignore
 files by default.
 

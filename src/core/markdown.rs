@@ -1667,7 +1667,7 @@ fn normalized_code_fence_opening(
         return None;
     }
     let promote_quarto_options = !matches!(options.markdown_wrap, MarkdownWrap::None)
-        && body.chars().count() > options.markdown_wrap_at_column.max(1);
+        && body.chars().count() > options.markdown_wrap.column_width().unwrap_or(72);
     let normalized_info = normalize_code_fence_info(
         info,
         newline,
@@ -3058,21 +3058,7 @@ fn front_matter_unquoted_text(value: &str) -> &str {
 }
 
 fn apply_front_matter_wrap(delta: &mut DirectiveDelta, value: &str) {
-    match value {
-        "none" => delta.markdown_wrap = Some(crate::core::document::MarkdownWrap::None),
-        "paragraph" => {
-            delta.markdown_wrap = Some(crate::core::document::MarkdownWrap::Paragraph);
-        }
-        "sentence" => delta.markdown_wrap = Some(crate::core::document::MarkdownWrap::Sentence),
-        value => {
-            if let Ok(width) = value.parse::<usize>()
-                && width > 0
-            {
-                delta.markdown_wrap = Some(crate::core::document::MarkdownWrap::Column);
-                delta.markdown_wrap_at_column = Some(width);
-            }
-        }
-    }
+    delta.markdown_wrap = MarkdownWrap::parse(value).ok();
 }
 
 fn parse_front_matter_bool(value: &str) -> Option<bool> {
@@ -3085,7 +3071,6 @@ fn parse_front_matter_bool(value: &str) -> Option<bool> {
 
 fn directive_delta_has_markdown_options(delta: &DirectiveDelta) -> bool {
     delta.markdown_wrap.is_some()
-        || delta.markdown_wrap_at_column.is_some()
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
 }

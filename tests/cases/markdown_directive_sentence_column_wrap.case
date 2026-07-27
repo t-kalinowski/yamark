@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+<!-- fmt: wrap=sentence:32 scope=next -->
+Short first. This second sentence contains enough words to wrap across the requested column. Short last.
+
+This following paragraph stays on its existing line. It is not sentence wrapped.
+-- stdout
+<!-- fmt: wrap=sentence:32 scope=next -->
+Short first.
+This second sentence contains
+enough words to wrap across the
+requested column.
+Short last.
+
+This following paragraph stays on its existing line. It is not sentence wrapped.
+-- stderr
+-- status
+0

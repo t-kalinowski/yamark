@@ -37,7 +37,7 @@ enum Command {
         #[arg(long, value_name = "PATH")]
         config: Option<PathBuf>,
         #[arg(long, value_parser = parse_wrap)]
-        wrap: Option<WrapArg>,
+        wrap: Option<MarkdownWrap>,
         #[arg(long)]
         canonical: bool,
         #[arg(long)]
@@ -200,14 +200,6 @@ enum GitFilterCommand {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
-enum WrapArg {
-    None,
-    Paragraph,
-    Sentence,
-    Column(usize),
-}
-
 pub fn run<I>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = OsString>,
@@ -308,15 +300,14 @@ where
         ),
         Command::GitFilter { command } => match command {
             GitFilterCommand::Clean { stdin_filename } => {
-                run_git_filter(stdin_filename, MarkdownWrap::Sentence, 80)
+                run_git_filter(stdin_filename, MarkdownWrap::Sentence)
             }
             GitFilterCommand::Smudge {
                 stdin_filename,
                 markdown_wrap_at_column,
             } => run_git_filter(
                 stdin_filename,
-                MarkdownWrap::Column,
-                markdown_wrap_at_column,
+                MarkdownWrap::Column(markdown_wrap_at_column),
             ),
             GitFilterCommand::Adopt {
                 repo,
@@ -397,7 +388,7 @@ fn run_format(
     diagnostics: bool,
     stdin_file_path: Option<PathBuf>,
     config: Option<PathBuf>,
-    wrap: Option<WrapArg>,
+    wrap: Option<MarkdownWrap>,
     canonical: bool,
     preserve_footnotes: bool,
     line_width: usize,
@@ -515,7 +506,7 @@ fn run_stdin(
     }
 }
 
-fn run_git_filter(path: PathBuf, wrap: MarkdownWrap, width: usize) -> ExitCode {
+fn run_git_filter(path: PathBuf, wrap: MarkdownWrap) -> ExitCode {
     if crate::core::document::FileKind::for_path(&path) != crate::core::document::FileKind::Markdown
     {
         eprintln!("{}:1:1: error: unsupported Git filter path", path.display());
@@ -523,7 +514,6 @@ fn run_git_filter(path: PathBuf, wrap: MarkdownWrap, width: usize) -> ExitCode {
     }
     let options = FormatOptions {
         markdown_wrap: wrap,
-        markdown_wrap_at_column: width,
         markdown_compact_tables: true,
         respect_frontmatter_markdown_options: false,
         ..FormatOptions::default()
@@ -902,8 +892,8 @@ fn verify_roundtrip(
     let mut failures = Vec::new();
     for path in paths {
         let blob = git_blob(repo_root, source, path)?;
-        let smudged = format_git_filter_text(path, blob.clone(), MarkdownWrap::Column, width)?;
-        let cleaned = format_git_filter_text(path, smudged, MarkdownWrap::Sentence, 80)?;
+        let smudged = format_git_filter_text(path, blob.clone(), MarkdownWrap::Column(width))?;
+        let cleaned = format_git_filter_text(path, smudged, MarkdownWrap::Sentence)?;
         if cleaned != blob {
             failures.push(format!(
                 "{path}: roundtrip failure: clean(smudge(blob)) != blob"
@@ -925,7 +915,7 @@ fn write_smudged_worktree(
 ) -> Result<(), String> {
     for path in paths {
         let blob = git_blob(repo_root, source, path)?;
-        let smudged = format_git_filter_text(path, blob, MarkdownWrap::Column, width)?;
+        let smudged = format_git_filter_text(path, blob, MarkdownWrap::Column(width))?;
         let worktree_path = repo_root.join(path);
         fs::write(&worktree_path, smudged).map_err(|err| {
             format!(
@@ -945,15 +935,9 @@ fn git_blob(repo_root: &Path, source: BlobSource, path: &str) -> Result<String, 
     git_stdout_os(repo_root, &[OsString::from("show"), OsString::from(spec)])
 }
 
-fn format_git_filter_text(
-    path: &str,
-    input: String,
-    wrap: MarkdownWrap,
-    width: usize,
-) -> Result<String, String> {
+fn format_git_filter_text(path: &str, input: String, wrap: MarkdownWrap) -> Result<String, String> {
     let options = FormatOptions {
         markdown_wrap: wrap,
-        markdown_wrap_at_column: width,
         markdown_compact_tables: true,
         respect_frontmatter_markdown_options: false,
         ..FormatOptions::default()
@@ -1411,24 +1395,12 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
     }
 }
 
-fn parse_wrap(value: &str) -> Result<WrapArg, String> {
-    match value {
-        "none" => Ok(WrapArg::None),
-        "paragraph" => Ok(WrapArg::Paragraph),
-        "sentence" => Ok(WrapArg::Sentence),
-        value => parse_positive_usize(value).map(WrapArg::Column),
-    }
+fn parse_wrap(value: &str) -> Result<MarkdownWrap, String> {
+    MarkdownWrap::parse(value).map_err(str::to_owned)
 }
 
-fn apply_wrap(wrap: Option<WrapArg>, options: &mut FormatOptions) {
-    match wrap {
-        Some(WrapArg::None) => options.markdown_wrap = MarkdownWrap::None,
-        Some(WrapArg::Paragraph) => options.markdown_wrap = MarkdownWrap::Paragraph,
-        Some(WrapArg::Sentence) => options.markdown_wrap = MarkdownWrap::Sentence,
-        Some(WrapArg::Column(width)) => {
-            options.markdown_wrap = MarkdownWrap::Column;
-            options.markdown_wrap_at_column = width;
-        }
-        None => {}
+fn apply_wrap(wrap: Option<MarkdownWrap>, options: &mut FormatOptions) {
+    if let Some(wrap) = wrap {
+        options.markdown_wrap = wrap;
     }
 }

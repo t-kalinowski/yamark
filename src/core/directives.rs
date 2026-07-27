@@ -1,8 +1,5 @@
 use crate::core::document::{Document, FormatOptions, MarkdownWrap};
 
-const WRAP_OPTION_ERROR: &str =
-    "fmt: wrap must be none, paragraph, sentence, or a positive integer";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
 
@@ -92,7 +89,6 @@ pub struct DirectiveState {
     pub markdown_target: bool,
     pub yaml_compact: Option<bool>,
     pub markdown_wrap: Option<MarkdownWrap>,
-    pub markdown_wrap_at_column: Option<usize>,
     pub markdown_canonical: Option<bool>,
     pub markdown_format_footnotes: Option<bool>,
     pub table_compact: Option<bool>,
@@ -105,9 +101,6 @@ impl DirectiveState {
         let mut options = base;
         if let Some(wrap) = self.markdown_wrap {
             options.markdown_wrap = wrap;
-        }
-        if let Some(width) = self.markdown_wrap_at_column {
-            options.markdown_wrap_at_column = width.max(1);
         }
         if let Some(canonical) = self.markdown_canonical {
             options.markdown_canonical = canonical;
@@ -136,7 +129,6 @@ pub struct DirectiveDelta {
     pub markdown_target: Option<bool>,
     pub yaml_compact: Option<bool>,
     pub markdown_wrap: Option<MarkdownWrap>,
-    pub markdown_wrap_at_column: Option<usize>,
     pub markdown_canonical: Option<bool>,
     pub markdown_format_footnotes: Option<bool>,
     pub table_compact: Option<bool>,
@@ -171,9 +163,6 @@ impl DirectiveDelta {
         if let Some(value) = self.markdown_wrap {
             state.markdown_wrap = Some(value);
         }
-        if let Some(value) = self.markdown_wrap_at_column {
-            state.markdown_wrap_at_column = Some(value);
-        }
         if let Some(value) = self.markdown_canonical {
             state.markdown_canonical = Some(value);
         }
@@ -205,9 +194,6 @@ impl DirectiveDelta {
         }
         if other.markdown_wrap.is_some() {
             self.markdown_wrap = other.markdown_wrap;
-        }
-        if other.markdown_wrap_at_column.is_some() {
-            self.markdown_wrap_at_column = other.markdown_wrap_at_column;
         }
         if other.markdown_canonical.is_some() {
             self.markdown_canonical = other.markdown_canonical;
@@ -356,7 +342,6 @@ pub(crate) fn file_scope_delta(directive: &Directive) -> Option<DirectiveDelta> 
 pub(crate) fn directive_delta_affects_markdown(delta: &DirectiveDelta) -> bool {
     delta.markdown_target.is_some()
         || delta.markdown_wrap.is_some()
-        || delta.markdown_wrap_at_column.is_some()
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
         || !delta.add_template_delimiters.is_empty()
@@ -794,16 +779,8 @@ fn parse_scope_and_options(
                 _ => scope,
             };
         } else if let Some(value) = field.strip_prefix("wrap=") {
-            match value {
-                "none" => delta.markdown_wrap = Some(MarkdownWrap::None),
-                "paragraph" => delta.markdown_wrap = Some(MarkdownWrap::Paragraph),
-                "sentence" => delta.markdown_wrap = Some(MarkdownWrap::Sentence),
-                value => {
-                    if let Ok(width) = value.parse::<usize>() {
-                        delta.markdown_wrap = Some(MarkdownWrap::Column);
-                        delta.markdown_wrap_at_column = Some(width);
-                    }
-                }
+            if let Ok(wrap) = MarkdownWrap::parse(value) {
+                delta.markdown_wrap = Some(wrap);
             }
         } else if let Some(value) = field.strip_prefix("canonical=") {
             delta.markdown_canonical = Some(matches!(value, "true" | "yes" | "1"));
@@ -1063,19 +1040,8 @@ fn parse_scope_and_options_checked(
         if let Some(value) = field.strip_prefix("scope=") {
             scope = parse_scope_checked(value)?;
         } else if let Some(value) = field.strip_prefix("wrap=") {
-            match value {
-                "none" => delta.markdown_wrap = Some(MarkdownWrap::None),
-                "paragraph" => delta.markdown_wrap = Some(MarkdownWrap::Paragraph),
-                "sentence" => delta.markdown_wrap = Some(MarkdownWrap::Sentence),
-                value => {
-                    let width = value.parse::<usize>().map_err(|_| WRAP_OPTION_ERROR)?;
-                    if width == 0 {
-                        return Err(WRAP_OPTION_ERROR.to_owned());
-                    }
-                    delta.markdown_wrap = Some(MarkdownWrap::Column);
-                    delta.markdown_wrap_at_column = Some(width);
-                }
-            }
+            delta.markdown_wrap =
+                Some(MarkdownWrap::parse(value).map_err(|message| format!("fmt: {message}"))?);
         } else if let Some(value) = field.strip_prefix("canonical=") {
             delta.markdown_canonical = Some(parse_bool_option(value, "canonical")?);
         } else if field == "canonical" {
@@ -1230,7 +1196,6 @@ fn reject_markdown_without_options_for_broad_scope(
 fn markdown_delta_has_actual_options(delta: &DirectiveDelta) -> bool {
     delta.yaml_compact.is_some()
         || delta.markdown_wrap.is_some()
-        || delta.markdown_wrap_at_column.is_some()
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
         || delta.table_compact.is_some()

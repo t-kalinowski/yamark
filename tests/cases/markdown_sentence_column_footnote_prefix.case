@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:20
+-- stdin
+[^note]:
+    1234567890 123456789
+-- stdout
+[^note]:
+    1234567890
+    123456789
+-- stderr
+-- status
+0

@@ -129,6 +129,7 @@ Rendered `--help` captures are on the [CLI Help](cli-help.qmd) page.
 yamark format --wrap none docs/
 yamark format --wrap paragraph docs/
 yamark format --wrap sentence docs/
+yamark format --wrap sentence:88 docs/
 yamark format --wrap 88 docs/
 yamark format --canonical docs/
 yamark format --preserve-footnotes docs/
@@ -145,8 +146,9 @@ yamark format --config path/to/yamark.toml docs/
 | --- | --- |
 | `--wrap none` | Disable Markdown prose wrapping. |
 | `--wrap paragraph` | Put each Markdown paragraph on one line. |
-| `--wrap sentence` | Put each Markdown sentence on its own line. |
-| `--wrap <n>` | Wrap Markdown prose to column `<n>`. |
+| `--wrap sentence` | Put each Markdown sentence on its own line without column wrapping. |
+| `--wrap sentence:<n>` | Put each Markdown sentence on its own line and wrap long sentences to column `<n>`. This is the default at column 72. |
+| `--wrap <n>` | Wrap Markdown prose to column `<n>` without forcing sentence boundaries. |
 | `--canonical` | Enable canonical Markdown spelling for safe Markdown spans. YAML scalar spelling has its own rules, with limited canonical-mode behavior for short folded prose rewrapping. |
 | `--preserve-footnotes` | Preserve Markdown footnote definitions byte-for-byte. |
 | `--line-width <n>` | Set structural YAML width. Flow collections expand when they exceed it. |
@@ -167,6 +169,9 @@ yamark git-filter clean --stdin-filename docs/file.md
 yamark git-filter smudge --stdin-filename docs/file.md --markdown-wrap-at-column 72
 ```
 
+Git-filter clean remains sentence-only and smudge remains column-only; neither
+uses the combined default.
+
 ## Configuration
 
 Yamark discovers `yamark.toml` from each formatted file's directory upward. Pass
@@ -176,6 +181,9 @@ Top-level tables are `[format]`, `[template]`, `[embedded]`, and `[paths]`.
 Unknown keys fail fast.
 
 ### `[format]`
+
+Markdown wrapping is not configurable in `[format]`; use `--wrap`, document
+front matter, or a scoped directive.
 
 ```toml
 [format]
@@ -276,7 +284,7 @@ Markdown front matter can set document-local Markdown options under
 ---
 editor_options:
   markdown:
-    wrap: sentence
+    wrap: sentence:72
     canonical: true
     footnotes: preserve
 ---
@@ -287,7 +295,7 @@ The supported keys are:
 
 | Key | Values |
 | --- | --- |
-| `wrap` | `none`, `paragraph`, `sentence`, or a positive integer column. |
+| `wrap` | `none`, `paragraph`, `sentence`, `sentence:<n>`, or a positive integer column. |
 | `canonical` | `true`, `false`, `yes`, `no`, `1`, or `0`. |
 | `footnotes` | `wrap`, `format`, `preserve`, `none`, `true`, `false`, `yes`, `no`, `1`, or `0`. |
 
@@ -301,12 +309,15 @@ Yamark also reads `editor.markdown` for compatibility, but only when
 subcommands use their own Markdown wrapping options and do not read these
 document options.
 
+`sentence:<n>` is a Yamark-specific extension. RStudio's visual writer does not
+recognize that combined value.
+
 ## Directives
 
 Directives are comments whose trimmed content starts with `fmt:`.
 
 - Markdown body directives use own-line HTML comments:
-  `<!-- fmt: wrap=sentence scope=file -->`.
+  `<!-- fmt: wrap=sentence:72 scope=file -->`.
 - YAML and source-file directives use own-line hash comments:
   `# fmt: markdown`.
 - YAML also accepts same-line `# fmt: table` and `# fmt: compact table` on a
@@ -329,6 +340,7 @@ Directive grammar details:
 | `fmt: compact scope=from-here` | Enable compact output until another compact directive changes the state. |
 | `fmt: compact=false scope=file` | Disable compact output for the whole YAML file or source-file hashpipe YAML stream. |
 | `fmt: markdown wrap=sentence` | Mark the next YAML scalar as Markdown and set its Markdown options. |
+| `fmt: markdown wrap=sentence:<n>` | Mark the next YAML scalar as Markdown, put each sentence on its own line, and wrap long sentences to column `<n>`. |
 | `fmt: canonical=true` or `fmt: wrap=sentence` | Set Markdown options for the next already-marked Markdown scalar without marking unrelated scalars. |
 | `fmt: skip` | Preserve the next supported target. |
 | `fmt: off` and `fmt: on` | Preserve a region, then resume formatting. |
@@ -394,6 +406,7 @@ Set Markdown options:
 ```markdown
 <!-- fmt: canonical -->
 <!-- fmt: wrap=72 canonical=true scope=file -->
+<!-- fmt: wrap=sentence:72 scope=file -->
 <!-- fmt: scope=from-here wrap=none footnotes=preserve -->
 ```
 
@@ -411,7 +424,10 @@ first: !markdown "This is __strong__."
 second: "This is __not__ Markdown."
 ```
 
-`wrap` accepts `none`, `paragraph`, `sentence`, or a positive integer.
+`wrap` accepts `none`, `paragraph`, `sentence`, `sentence:<n>`, or a positive
+integer. `sentence:<n>` forces sentence boundaries and wraps long sentences to
+column `<n>`; a bare integer performs column wrapping without forcing sentence
+boundaries.
 `canonical` accepts `true`, `false`, `yes`, `no`, `1`, or `0`; the bare
 `canonical` token means `canonical=true`. `footnotes` accepts `wrap`, `format`,
 `preserve`, `none`, `true`, `false`, `yes`, `no`, `1`, or `0`.

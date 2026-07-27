@@ -68,20 +68,7 @@ fn try_format_markdown_paragraph(source: &str, options: FormatOptions) -> Option
     let join_newline = newline_for_join(newline, options);
     let mut out = String::with_capacity(text.len());
     let mut writer = TokenLineWriter::separated(&mut out, join_newline);
-    match options.markdown_wrap {
-        MarkdownWrap::None => writer.write_token_slice(&tokens, "")?,
-        MarkdownWrap::Paragraph => writer.write_token_slice(&tokens, "")?,
-        MarkdownWrap::Sentence => write_sentence_token_lines(&mut writer, &tokens, "")?,
-        MarkdownWrap::Column => {
-            let mut writer = writer.with_block_start_check();
-            write_wrapped_tokens(
-                &mut writer,
-                &tokens,
-                options.markdown_wrap_at_column.max(1),
-                "",
-            )?;
-        }
-    }
+    write_markdown_token_lines(&mut writer, &tokens, options.markdown_wrap, "")?;
     out.push_str(newline);
     escape_first_markdown_block_start(&mut out);
     if single_line_body(body) && formatted_introduces_markdown_block_start(&out) {
@@ -692,7 +679,11 @@ fn try_format_rich_markdown_list(
         if let Some(indent) = rich_list_child_indent(lines[index].body) {
             let end = rich_list_child_block_end(lines, index, indent);
             let nested = strip_rich_list_child_indent(&lines[index..end], indent)?;
-            let formatted = format_markdown_fragment(&nested, options);
+            let mut nested_options = options;
+            nested_options.markdown_wrap = nested_options
+                .markdown_wrap
+                .with_reduced_column_width(indent);
+            let formatted = format_markdown_fragment(&nested, nested_options);
             out.push_str(&reindent_markdown_fragment(&formatted, indent));
             changed = true;
             index = end;
@@ -1009,12 +1000,9 @@ fn try_format_rich_markdown_blockquote(source: &str, options: FormatOptions) -> 
     let indent = indent.unwrap_or("");
     let quote_prefix_width = indent.chars().count() + "> ".chars().count();
     let mut nested_options = options;
-    if matches!(nested_options.markdown_wrap, MarkdownWrap::Column) {
-        nested_options.markdown_wrap_at_column = nested_options
-            .markdown_wrap_at_column
-            .saturating_sub(quote_prefix_width)
-            .max(1);
-    }
+    nested_options.markdown_wrap = nested_options
+        .markdown_wrap
+        .with_reduced_column_width(quote_prefix_width);
     let formatted = format_markdown_fragment(&nested, nested_options);
     let mut out = String::new();
     for line in markdown_lines(&formatted) {
@@ -1471,7 +1459,11 @@ fn format_markdown_footnote_block(
         nested.push_str(join_newline);
     }
 
-    let formatted = format_markdown_fragment(&nested, options);
+    let mut nested_options = options;
+    nested_options.markdown_wrap = nested_options
+        .markdown_wrap
+        .with_reduced_column_width(continuation_prefix.chars().count());
+    let formatted = format_markdown_fragment(&nested, nested_options);
     let mut out = String::new();
     out.push_str(label);
     out.push_str(join_newline);
@@ -1542,12 +1534,47 @@ fn write_sentence_token_lines(
     tokens: &[InlineToken<'_>],
     suffix: &str,
 ) -> Option<()> {
+    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
+        out.write_token_slice(sentence, sentence_suffix)
+    })
+}
+
+fn write_wrapped_sentence_token_lines(
+    out: &mut TokenLineWriter<'_, '_>,
+    tokens: &[InlineToken<'_>],
+    first_width: usize,
+    continuation_width: usize,
+    suffix: &str,
+) -> Option<()> {
+    let mut first_sentence = true;
+    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
+        let sentence_first_width = if first_sentence {
+            first_width
+        } else {
+            continuation_width
+        };
+        first_sentence = false;
+        write_wrapped_tokens_with_first_width(
+            out,
+            sentence,
+            sentence_first_width,
+            continuation_width,
+            sentence_suffix,
+        )
+    })
+}
+
+fn write_sentence_token_slices<'token>(
+    tokens: &[InlineToken<'token>],
+    suffix: &str,
+    mut write: impl FnMut(&[InlineToken<'token>], &str) -> Option<()>,
+) -> Option<()> {
     let mut start = 0usize;
     let mut pending = None::<(usize, usize)>;
     for (index, token) in tokens.iter().enumerate() {
         if token_ends_sentence(token.text()) && !token_is_sentence_abbreviation(token.text()) {
             if let Some((from, to)) = pending.take() {
-                out.write_token_slice(&tokens[from..to], "")?;
+                write(&tokens[from..to], "")?;
             }
             pending = Some((start, index + 1));
             start = index + 1;
@@ -1555,12 +1582,12 @@ fn write_sentence_token_lines(
     }
     if start < tokens.len() {
         if let Some((from, to)) = pending.take() {
-            out.write_token_slice(&tokens[from..to], "")?;
+            write(&tokens[from..to], "")?;
         }
         pending = Some((start, tokens.len()));
     }
     if let Some((from, to)) = pending {
-        out.write_token_slice(&tokens[from..to], suffix)?;
+        write(&tokens[from..to], suffix)?;
     }
     Some(())
 }
@@ -2438,9 +2465,8 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         }
     }
 
-    fn with_block_start_check(mut self) -> Self {
+    fn enable_block_start_check(&mut self) {
         self.check_block_starts = true;
-        self
     }
 
     fn write_line(&mut self, line: &TokenLine<'_>, suffix: &str) -> Option<()> {
@@ -2588,15 +2614,6 @@ impl<'a> WrapLineBuffer<'a> {
     }
 }
 
-fn write_wrapped_tokens(
-    writer: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
-    width: usize,
-    suffix: &str,
-) -> Option<()> {
-    write_wrapped_tokens_with_first_width(writer, tokens, width, width, suffix)
-}
-
 fn write_wrapped_tokens_with_first_width(
     writer: &mut TokenLineWriter<'_, '_>,
     tokens: &[InlineToken<'_>],
@@ -2622,6 +2639,53 @@ fn write_wrapped_tokens_with_first_width(
         lines.repair_current_line_if_markdown_block_start()?;
     }
     lines.finish(writer, suffix)
+}
+
+fn write_markdown_token_lines(
+    writer: &mut TokenLineWriter<'_, '_>,
+    tokens: &[InlineToken<'_>],
+    wrap: MarkdownWrap,
+    suffix: &str,
+) -> Option<()> {
+    let column_width = wrap.column_width();
+    match wrap {
+        MarkdownWrap::None | MarkdownWrap::Paragraph => writer.write_token_slice(tokens, suffix),
+        MarkdownWrap::Sentence => write_sentence_token_lines(writer, tokens, suffix),
+        MarkdownWrap::Column(_) => {
+            let width = column_width.expect("column wrap has a width");
+            let first_width = width
+                .saturating_sub(writer.first_prefix.chars().count())
+                .max(1);
+            let continuation_width = width
+                .saturating_sub(writer.continuation_prefix.chars().count())
+                .max(1);
+            writer.enable_block_start_check();
+            write_wrapped_tokens_with_first_width(
+                writer,
+                tokens,
+                first_width,
+                continuation_width,
+                suffix,
+            )
+        }
+        MarkdownWrap::SentenceAndColumn(_) => {
+            let width = column_width.expect("sentence-and-column wrap has a width");
+            let first_width = width
+                .saturating_sub(writer.first_prefix.chars().count())
+                .max(1);
+            let continuation_width = width
+                .saturating_sub(writer.continuation_prefix.chars().count())
+                .max(1);
+            writer.enable_block_start_check();
+            write_wrapped_sentence_token_lines(
+                writer,
+                tokens,
+                first_width,
+                continuation_width,
+                suffix,
+            )
+        }
+    }
 }
 
 fn token_slice_width(tokens: &[InlineToken<'_>]) -> usize {
@@ -2965,29 +3029,7 @@ fn format_prefixed_markdown_segment(
     let mut out = String::new();
     let mut writer =
         TokenLineWriter::terminated(&mut out, first_prefix, continuation_prefix, newline);
-    match options.markdown_wrap {
-        MarkdownWrap::None => writer.write_token_slice(&tokens, suffix)?,
-        MarkdownWrap::Paragraph => writer.write_token_slice(&tokens, suffix)?,
-        MarkdownWrap::Sentence => write_sentence_token_lines(&mut writer, &tokens, suffix)?,
-        MarkdownWrap::Column => {
-            let first_width = options
-                .markdown_wrap_at_column
-                .saturating_sub(first_prefix.chars().count())
-                .max(1);
-            let continuation_width = options
-                .markdown_wrap_at_column
-                .saturating_sub(continuation_prefix.chars().count())
-                .max(1);
-            let mut writer = writer.with_block_start_check();
-            write_wrapped_tokens_with_first_width(
-                &mut writer,
-                &tokens,
-                first_width,
-                continuation_width,
-                suffix,
-            )?;
-        }
-    }
+    write_markdown_token_lines(&mut writer, &tokens, options.markdown_wrap, suffix)?;
     Some(out)
 }
 

@@ -5,8 +5,7 @@ use yamark::workspace::format_source_for_path;
 
 fn markdown_options(width: usize) -> FormatOptions {
     FormatOptions {
-        markdown_wrap: MarkdownWrap::Column,
-        markdown_wrap_at_column: width,
+        markdown_wrap: MarkdownWrap::Column(width),
         ..FormatOptions::default()
     }
 }

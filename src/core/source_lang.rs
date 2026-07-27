@@ -5,8 +5,7 @@ use crate::core::directives::{
     parse_hash_directive_checked,
 };
 use crate::core::document::{
-    Document, DocumentKind, EmitPlan, FormatOptions, MarkdownWrap, Node, NodeKind, SourceNodeKind,
-    SourceText,
+    Document, DocumentKind, EmitPlan, FormatOptions, Node, NodeKind, SourceNodeKind, SourceText,
 };
 use crate::core::source::{LineEnding, SourceBuffer, SourceSpan, Span};
 use crate::diagnostic::Result;
@@ -705,12 +704,9 @@ fn markdown_options_with_reduced_width(
     mut options: FormatOptions,
     prefix_width: usize,
 ) -> FormatOptions {
-    if matches!(options.markdown_wrap, MarkdownWrap::Column) {
-        options.markdown_wrap_at_column = options
-            .markdown_wrap_at_column
-            .saturating_sub(prefix_width)
-            .max(1);
-    }
+    options.markdown_wrap = options
+        .markdown_wrap
+        .with_reduced_column_width(prefix_width);
     options
 }
 

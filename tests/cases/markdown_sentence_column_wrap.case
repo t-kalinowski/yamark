@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:32
+-- stdin
+Short first. This second sentence contains enough words to wrap across the requested column. Short last.
+-- stdout
+Short first.
+This second sentence contains
+enough words to wrap across the
+requested column.
+Short last.
+-- stderr
+-- status
+0

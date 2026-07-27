@@ -58,7 +58,72 @@ pub enum MarkdownWrap {
     None,
     Paragraph,
     Sentence,
-    Column,
+    Column(usize),
+    SentenceAndColumn(usize),
+}
+
+impl MarkdownWrap {
+    const PARSE_ERROR: &'static str = concat!(
+        "wrap must be none, paragraph, sentence, a positive integer, ",
+        "or sentence:<positive integer>"
+    );
+
+    pub fn parse(value: &str) -> Result<Self, &'static str> {
+        match value {
+            "none" => Ok(Self::None),
+            "paragraph" => Ok(Self::Paragraph),
+            "sentence" => Ok(Self::Sentence),
+            value => {
+                if let Some(value) = value.strip_prefix("sentence:") {
+                    return parse_wrap_width(value)
+                        .map(Self::SentenceAndColumn)
+                        .ok_or(Self::PARSE_ERROR);
+                }
+                parse_wrap_width(value)
+                    .map(Self::Column)
+                    .ok_or(Self::PARSE_ERROR)
+            }
+        }
+    }
+
+    pub fn column_width(self) -> Option<usize> {
+        let width = match self {
+            Self::Column(width) | Self::SentenceAndColumn(width) => width,
+            Self::None | Self::Paragraph | Self::Sentence => return None,
+        };
+        assert!(width > 0, "Markdown wrap column width must be positive");
+        Some(width)
+    }
+
+    pub fn breaks_at_sentences(self) -> bool {
+        matches!(self, Self::Sentence | Self::SentenceAndColumn(_))
+    }
+
+    pub fn with_reduced_column_width(self, prefix_width: usize) -> Self {
+        match self {
+            Self::Column(width) => {
+                assert!(width > 0, "Markdown wrap column width must be positive");
+                Self::Column(width.saturating_sub(prefix_width).max(1))
+            }
+            Self::SentenceAndColumn(width) => {
+                assert!(width > 0, "Markdown wrap column width must be positive");
+                Self::SentenceAndColumn(width.saturating_sub(prefix_width).max(1))
+            }
+            Self::None | Self::Paragraph | Self::Sentence => self,
+        }
+    }
+}
+
+impl std::str::FromStr for MarkdownWrap {
+    type Err = &'static str;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
+fn parse_wrap_width(value: &str) -> Option<usize> {
+    value.parse::<usize>().ok().filter(|width| *width > 0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +134,6 @@ pub struct FormatOptions {
     pub markdown_compact_tables: bool,
     pub yaml_compact: bool,
     pub markdown_wrap: MarkdownWrap,
-    pub markdown_wrap_at_column: usize,
     pub markdown_canonical: bool,
     pub markdown_format_footnotes: bool,
     pub markdown_preserve_footnotes: bool,
@@ -87,8 +151,7 @@ impl Default for FormatOptions {
             indent_width: 2,
             markdown_compact_tables: false,
             yaml_compact: false,
-            markdown_wrap: MarkdownWrap::Column,
-            markdown_wrap_at_column: 72,
+            markdown_wrap: MarkdownWrap::SentenceAndColumn(72),
             markdown_canonical: false,
             markdown_format_footnotes: true,
             markdown_preserve_footnotes: false,

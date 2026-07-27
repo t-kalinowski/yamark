@@ -169,6 +169,47 @@ This is **strong** and *emphasis*!
 }
 
 #[test]
+fn markdown_sentence_column_wrap_is_idempotent_and_preserves_crlf() {
+    let input = "Short first. This second sentence contains enough words to wrap across the requested column. Short last.\r\n";
+    let expected = "Short first.\r\nThis second sentence contains\r\nenough words to wrap across the\r\nrequested column.\r\nShort last.\r\n";
+    let args = [
+        "format",
+        "--stdin-file-path",
+        "input.md",
+        "--wrap",
+        "sentence:32",
+    ];
+
+    let (status, stdout, stderr) = run_stdin(&args, input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+
+    let (status, stdout, stderr) = run_stdin(&args, &stdout);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn markdown_sentence_column_wrap_rejects_invalid_widths() {
+    for wrap in ["sentence:0", "sentence:", "sentence:nope", "sentence:24:32"] {
+        let (status, stdout, stderr) = run_stdin(
+            &["format", "--stdin-file-path", "input.md", "--wrap", wrap],
+            "One sentence. Another sentence.\n",
+        );
+        assert_eq!(status, 2, "{wrap}: {stderr}");
+        assert_eq!(stdout, "", "{wrap}");
+        assert!(
+            stderr.contains(
+                "wrap must be none, paragraph, sentence, a positive integer, or sentence:<positive integer>"
+            ),
+            "{wrap}: {stderr}"
+        );
+    }
+}
+
+#[test]
 fn markdown_canonical_preserves_unsupported_underscore_constructs() {
     let input = "\
 This _literal marker stays.
@@ -1615,8 +1656,9 @@ fn markdown_footnotes_with_multiple_paragraphs_are_wrapped_as_block_bodies() {
     First paragraph has many
     words that should wrap.
 
-    Second paragraph has many
-    words that should wrap.
+    Second paragraph has
+    many words that should
+    wrap.
 
     Third paragraph has many
     words that should wrap.
@@ -3004,7 +3046,7 @@ fn markdown_directive_errors_are_reported() {
         ),
         (
             "<!-- fmt: wrap=0 -->\n# Title\n",
-            "fmt: wrap must be none, paragraph, sentence, or a positive integer",
+            "fmt: wrap must be none, paragraph, sentence, a positive integer, or sentence:<positive integer>",
         ),
         (
             "<!-- fmt: template.delimiters \"<<\" -->\n# Title\n",
@@ -4961,7 +5003,7 @@ fn yaml_directive_errors_are_reported() {
         ),
         (
             "name: value # fmt: wrap=0\n",
-            "fmt: wrap must be none, paragraph, sentence, or a positive integer",
+            "fmt: wrap must be none, paragraph, sentence, a positive integer, or sentence:<positive integer>",
         ),
     ];
 
@@ -6075,6 +6117,34 @@ fn embedded_comment_markdown_wrap_width_accounts_for_prefix() {
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.py", "--wrap", "18"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn embedded_comment_sentence_column_wrap_accounts_for_prefix() {
+    let input = "\
+# fmt: markdown
+    # One short. This second sentence has more words.
+";
+    let expected = "\
+# fmt: markdown
+    # One short.
+    # This second
+    # sentence has
+    # more words.
+";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.py",
+            "--wrap",
+            "sentence:18",
+        ],
         input,
     );
     assert_eq!(status, 0, "{stderr}");

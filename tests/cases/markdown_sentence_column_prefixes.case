@@ -1,0 +1,24 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:32
+-- stdin
+- Short first. This second sentence contains enough words to wrap.
+
+> Short first. This second sentence contains enough words to wrap.
+
+- Parent
+  - 12345678901234 123456789012345
+-- stdout
+- Short first.
+  This second sentence contains
+  enough words to wrap.
+
+> Short first.
+> This second sentence contains
+> enough words to wrap.
+
+- Parent
+  - 12345678901234
+    123456789012345
+-- stderr
+-- status
+0

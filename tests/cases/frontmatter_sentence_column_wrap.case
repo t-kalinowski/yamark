@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+---
+editor_options:
+  markdown:
+    wrap: sentence:32
+---
+Short first. This second sentence contains enough words to wrap across the requested column. Short last.
+-- stdout
+---
+editor_options:
+  markdown:
+    wrap: sentence:32
+---
+Short first.
+This second sentence contains
+enough words to wrap across the
+requested column.
+Short last.
+-- stderr
+-- status
+0
