@@ -5,7 +5,7 @@ description: Yamark performance against other YAML and Markdown formatters.
 
 
 
-**Yamark formats a 4 MB Markdown document in 118 ms and a 4 MB YAML file in 77 ms.** The next-fastest tool on each is `dprint-markdown` (346 ms) and `yamlfmt` (189 ms). On a directory of 500 YAML files (50 MB), yamark finishes in 122 ms; the next-fastest formatter, `deno-fmt`, takes 2.6 s.
+**Yamark formats a 4 MB Markdown document in 106 ms and a 4 MB YAML file in 75 ms.** The next-fastest tool on each is `dprint-markdown` (326 ms) and `yamlfmt` (193 ms). On a directory of 500 YAML files (50 MB), yamark finishes in 137 ms; the next-fastest formatter, `deno-fmt`, takes 2.6 s.
 
 There is one comparison per input kind, and each lists every tool whose own
 CLI formats that input natively, used simply: no formatting options, no
@@ -33,39 +33,39 @@ on a fresh copy of the file each run. Memory is median peak RSS.
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 118 ms </td>
-   <td style="text-align:right;"> 12.8 MB </td>
+   <td style="text-align:right;"> 106 ms </td>
+   <td style="text-align:right;"> 12.6 MB </td>
    <td style="text-align:right;"> 1x </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-markdown </td>
-   <td style="text-align:right;"> 346 ms </td>
+   <td style="text-align:right;"> 326 ms </td>
    <td style="text-align:right;"> 172.8 MB </td>
-   <td style="text-align:right;"> 2.9x slower </td>
+   <td style="text-align:right;"> 3.1x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 383 ms </td>
-   <td style="text-align:right;"> 481.5 MB </td>
-   <td style="text-align:right;"> 3.2x slower </td>
-  </tr>
-  <tr>
-   <td style="text-align:left;"> panache </td>
-   <td style="text-align:right;"> 404 ms </td>
-   <td style="text-align:right;"> 32.3 MB </td>
+   <td style="text-align:right;"> 360 ms </td>
+   <td style="text-align:right;"> 481.6 MB </td>
    <td style="text-align:right;"> 3.4x slower </td>
   </tr>
   <tr>
+   <td style="text-align:left;"> panache </td>
+   <td style="text-align:right;"> 387 ms </td>
+   <td style="text-align:right;"> 32.1 MB </td>
+   <td style="text-align:right;"> 3.7x slower </td>
+  </tr>
+  <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 1.7 s </td>
-   <td style="text-align:right;"> 582.7 MB </td>
-   <td style="text-align:right;"> 14.3x slower </td>
+   <td style="text-align:right;"> 1.6 s </td>
+   <td style="text-align:right;"> 582.3 MB </td>
+   <td style="text-align:right;"> 15.4x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> mdformat </td>
-   <td style="text-align:right;"> 3.1 s </td>
+   <td style="text-align:right;"> 2.9 s </td>
    <td style="text-align:right;"> 152.9 MB </td>
-   <td style="text-align:right;"> 26.4x slower </td>
+   <td style="text-align:right;"> 27.6x slower </td>
   </tr>
 </tbody>
 </table>
@@ -87,39 +87,39 @@ block scalars, and comments. Same procedure as the Markdown comparison.
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 77 ms </td>
+   <td style="text-align:right;"> 75 ms </td>
    <td style="text-align:right;"> 51.6 MB </td>
    <td style="text-align:right;"> 1x </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfmt </td>
-   <td style="text-align:right;"> 189 ms </td>
-   <td style="text-align:right;"> 269.0 MB </td>
-   <td style="text-align:right;"> 2.4x slower </td>
+   <td style="text-align:right;"> 193 ms </td>
+   <td style="text-align:right;"> 283.8 MB </td>
+   <td style="text-align:right;"> 2.6x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 759 ms </td>
-   <td style="text-align:right;"> 142.2 MB </td>
-   <td style="text-align:right;"> 9.8x slower </td>
+   <td style="text-align:right;"> 761 ms </td>
+   <td style="text-align:right;"> 141.7 MB </td>
+   <td style="text-align:right;"> 10.1x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-yaml </td>
    <td style="text-align:right;"> 1.2 s </td>
    <td style="text-align:right;"> 118.7 MB </td>
-   <td style="text-align:right;"> 15.2x slower </td>
+   <td style="text-align:right;"> 15.4x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfix </td>
-   <td style="text-align:right;"> 7.5 s </td>
+   <td style="text-align:right;"> 7.4 s </td>
    <td style="text-align:right;"> 269.5 MB </td>
-   <td style="text-align:right;"> 96.4x slower </td>
+   <td style="text-align:right;"> 98.3x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 20.5 s </td>
-   <td style="text-align:right;"> 1066.4 MB </td>
-   <td style="text-align:right;"> 265.6x slower </td>
+   <td style="text-align:right;"> 20.1 s </td>
+   <td style="text-align:right;"> 845.5 MB </td>
+   <td style="text-align:right;"> 267.2x slower </td>
   </tr>
 </tbody>
 </table>
@@ -146,8 +146,8 @@ preserved** (broke the delimiters).
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 121 ms </td>
-   <td style="text-align:right;"> 15.3 MB </td>
+   <td style="text-align:right;"> 109 ms </td>
+   <td style="text-align:right;"> 15.1 MB </td>
    <td style="text-align:center;"> formatted </td>
    <td style="text-align:right;"> 1x </td>
   </tr>
@@ -156,35 +156,35 @@ preserved** (broke the delimiters).
    <td style="text-align:right;"> 347 ms </td>
    <td style="text-align:right;"> 172.9 MB </td>
    <td style="text-align:center;"> untouched </td>
-   <td style="text-align:right;"> 2.9x slower </td>
+   <td style="text-align:right;"> 3.2x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 422 ms </td>
-   <td style="text-align:right;"> 585.7 MB </td>
+   <td style="text-align:right;"> 415 ms </td>
+   <td style="text-align:right;"> 586.3 MB </td>
    <td style="text-align:center;"> formatted </td>
-   <td style="text-align:right;"> 3.5x slower </td>
+   <td style="text-align:right;"> 3.8x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 1.9 s </td>
-   <td style="text-align:right;"> 580.7 MB </td>
+   <td style="text-align:right;"> 1.8 s </td>
+   <td style="text-align:right;"> 579.4 MB </td>
    <td style="text-align:center;"> formatted </td>
-   <td style="text-align:right;"> 15.3x slower </td>
+   <td style="text-align:right;"> 17.0x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> mdformat </td>
    <td style="text-align:right;"> 3.8 s </td>
-   <td style="text-align:right;"> 180.5 MB </td>
+   <td style="text-align:right;"> 179.9 MB </td>
    <td style="text-align:center;"> not preserved </td>
-   <td style="text-align:right;"> 31.2x slower </td>
+   <td style="text-align:right;"> 34.6x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> panache </td>
-   <td style="text-align:right;"> 6.6 s </td>
+   <td style="text-align:right;"> 6.5 s </td>
    <td style="text-align:right;"> 40.8 MB </td>
    <td style="text-align:center;"> formatted </td>
-   <td style="text-align:right;"> 54.3x slower </td>
+   <td style="text-align:right;"> 59.9x slower </td>
   </tr>
 </tbody>
 </table>
@@ -218,45 +218,45 @@ the median of 3 measured runs after 1 warmup run, on a fresh copy of the corpus 
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 0.122 s </td>
-   <td style="text-align:right;"> 1.137 s </td>
-   <td style="text-align:right;"> 409.6 MB/s </td>
+   <td style="text-align:right;"> 0.137 s </td>
+   <td style="text-align:right;"> 1.150 s </td>
+   <td style="text-align:right;"> 365.7 MB/s </td>
    <td style="text-align:right;"> 1x </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 2.589 s </td>
-   <td style="text-align:right;"> 33.620 s </td>
+   <td style="text-align:right;"> 2.596 s </td>
+   <td style="text-align:right;"> 33.016 s </td>
    <td style="text-align:right;"> 19.3 MB/s </td>
-   <td style="text-align:right;"> 21.2x slower </td>
+   <td style="text-align:right;"> 19.0x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-yaml </td>
-   <td style="text-align:right;"> 3.019 s </td>
-   <td style="text-align:right;"> 39.495 s </td>
-   <td style="text-align:right;"> 16.6 MB/s </td>
-   <td style="text-align:right;"> 24.7x slower </td>
+   <td style="text-align:right;"> 2.865 s </td>
+   <td style="text-align:right;"> 38.764 s </td>
+   <td style="text-align:right;"> 17.4 MB/s </td>
+   <td style="text-align:right;"> 21.0x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfmt </td>
-   <td style="text-align:right;"> 3.898 s </td>
-   <td style="text-align:right;"> 4.302 s </td>
-   <td style="text-align:right;"> 12.8 MB/s </td>
-   <td style="text-align:right;"> 31.9x slower </td>
+   <td style="text-align:right;"> 3.978 s </td>
+   <td style="text-align:right;"> 4.401 s </td>
+   <td style="text-align:right;"> 12.6 MB/s </td>
+   <td style="text-align:right;"> 29.1x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 45.623 s </td>
-   <td style="text-align:right;"> 66.232 s </td>
-   <td style="text-align:right;"> 1.10 MB/s </td>
-   <td style="text-align:right;"> 373.9x slower </td>
+   <td style="text-align:right;"> 47.320 s </td>
+   <td style="text-align:right;"> 72.922 s </td>
+   <td style="text-align:right;"> 1.06 MB/s </td>
+   <td style="text-align:right;"> 346.3x slower </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfix </td>
-   <td style="text-align:right;"> 183.685 s </td>
-   <td style="text-align:right;"> 180.549 s </td>
+   <td style="text-align:right;"> 184.442 s </td>
+   <td style="text-align:right;"> 181.767 s </td>
    <td style="text-align:right;"> 0.27 MB/s </td>
-   <td style="text-align:right;"> 1505.5x slower </td>
+   <td style="text-align:right;"> 1349.9x slower </td>
   </tr>
 </tbody>
 </table>
@@ -294,8 +294,8 @@ still run them via `--tools`.
 Measured on a MacBook Pro (Apple M4 Max, macOS arm64). Tool versions: `yamark 0.1.0`, `deno 2.9.4 (stable, release, aarch64-apple-darwin)`, `dprint 0.55.2`, `yamlfmt 0.21.0 (Homebrew)`, `prettier 3.8.3`, `yamlfix 1.19.1`, `panache 2.46.0`, `mdformat 1.0.0`.
 
 The tables render the latest checked-in artifacts -
-[`3c3a4bc`](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/big/3c3a4bccabc9501f5be83060b957e7cfb8cb67af.json) for the single-file comparisons and
-[`3c3a4bc`](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/yaml/3c3a4bccabc9501f5be83060b957e7cfb8cb67af.json) for the directory comparison - which
+[`f49e731`](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/big/f49e7312990e2919990146c35f99e2770bef1b75.json) for the single-file comparisons and
+[`f49e731`](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/yaml/f49e7312990e2919990146c35f99e2770bef1b75.json) for the directory comparison - which
 record the full per-run timings, output hashes, git commit, and host
 details. A table renders only if every tool in its roster completed the
 benchmark; degraded runs are never shown as smaller tables.
