@@ -186,7 +186,7 @@ rewriting unchanged files.
 
 
 
-**Yamark formats a 4 MB Markdown document in 115 ms and a 4 MB YAML file in 83 ms.** The next-fastest tool on each is `dprint-markdown` (338 ms) and `yamlfmt` (177 ms). On a directory of 500 YAML files (50 MB), yamark finishes in 123 ms; the next-fastest formatter, `deno-fmt`, takes 2.1 s.
+**Yamark formats a 4 MB Markdown document in 118 ms and a 4 MB YAML file in 77 ms.** The next-fastest tool on each is `dprint-markdown` (346 ms) and `yamlfmt` (189 ms). On a directory of 500 YAML files (50 MB), yamark finishes in 122 ms; the next-fastest formatter, `deno-fmt`, takes 2.6 s.
 
 Same harness, same input, every tool's own CLI used simply, and
 the median of 3 measured runs after 1 warmup run. Full tables per input kind - Markdown, YAML,
