@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+output:
+  jsonrpc: "2.0"
+  id: 2
+  result:
+    tools:
+      - name: console
+        description: Echo the supplied arguments.
+        inputSchema:
+          $schema: "https://json-schema.org/draft/2020-12/schema"
+          additionalProperties: true
+          type: object
+-- stdout
+output:
+  jsonrpc: "2.0"
+  id: 2
+  result:
+    tools:
+      - name: console
+        description: Echo the supplied arguments.
+        inputSchema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          additionalProperties: true
+          type: object
+-- stderr
+-- status
+0

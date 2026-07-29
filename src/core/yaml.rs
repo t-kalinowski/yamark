@@ -4913,7 +4913,19 @@ fn emit_yaml_inline_sequence_mapping(
     };
 
     let first_prefix = format!("{}- ", " ".repeat(indent));
-    let continuation_prefix = " ".repeat(indent + options.indent_width);
+    let mapping_indent = indent + options.indent_width;
+    let child_indent = mapping_indent + options.indent_width;
+    let continuation_prefix = " ".repeat(mapping_indent);
+    let pair_child_indent = |pair: &YamlMappingPair<'_>| {
+        if pair
+            .value
+            .is_some_and(|value| matches!(ast.node(value).kind, YamlAstKind::Sequence(_)))
+        {
+            mapping_indent
+        } else {
+            child_indent
+        }
+    };
     if first.explicit {
         emit_trivia(out, source, &first.leading_trivia);
         emit_yaml_explicit_mapping_pair(
@@ -4924,8 +4936,8 @@ fn emit_yaml_inline_sequence_mapping(
             first,
             YamlLinePrefix::Text(&first_prefix),
             YamlLinePrefix::Text(&continuation_prefix),
-            indent + options.indent_width,
-            indent + options.indent_width * 2,
+            pair_child_indent(first),
+            child_indent,
             options,
             plugins,
             stats,
@@ -4939,8 +4951,8 @@ fn emit_yaml_inline_sequence_mapping(
             first,
             true,
             YamlLinePrefix::Text(&first_prefix),
-            indent + options.indent_width,
-            indent + options.indent_width * 2,
+            pair_child_indent(first),
+            child_indent,
             options,
             plugins,
             stats,
@@ -4955,8 +4967,8 @@ fn emit_yaml_inline_sequence_mapping(
             pair,
             true,
             YamlLinePrefix::Text(&continuation_prefix),
-            indent + options.indent_width,
-            indent + options.indent_width * 2,
+            pair_child_indent(pair),
+            child_indent,
             options,
             plugins,
             stats,
