@@ -5744,6 +5744,33 @@ fn git_filter_formats_only_markdown() {
 }
 
 #[test]
+fn git_filter_wrap_ignores_format_config() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nwrap = \"none\"\n",
+    )
+    .unwrap();
+
+    let output = yamark()
+        .current_dir(dir.path())
+        .args(["git-filter", "clean", "--stdin-filename", "input.md"])
+        .write_stdin("First sentence. Second sentence.\n")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "First sentence.\nSecond sentence.\n"
+    );
+}
+
+#[test]
 fn invalid_config_keys_fail() {
     let dir = tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
@@ -5765,6 +5792,84 @@ fn invalid_config_keys_fail() {
         "{stderr}"
     );
     assert!(stderr.contains("unknown format config key: format.unknown"));
+}
+
+#[test]
+fn discovered_format_config_sets_markdown_wrap() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nwrap = \"sentence\"\n",
+    )
+    .unwrap();
+    let path = dir.path().join("input.md");
+    fs::write(&path, "First sentence. Second sentence.\n").unwrap();
+
+    let output = yamark()
+        .args(["format", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(path).unwrap(),
+        "First sentence.\nSecond sentence.\n"
+    );
+}
+
+#[test]
+fn command_line_wrap_overrides_format_config() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("yamark.toml");
+    fs::write(&config, "[format]\nwrap = \"none\"\n").unwrap();
+
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.md",
+            "--config",
+            config.to_str().unwrap(),
+            "--wrap",
+            "sentence",
+        ],
+        "First sentence. Second sentence.\n",
+    );
+
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, "First sentence.\nSecond sentence.\n");
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn format_config_rejects_invalid_markdown_wrap() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("yamark.toml");
+    fs::write(&config, "[format]\nwrap = \"wide\"\n").unwrap();
+
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.md",
+            "--config",
+            config.to_str().unwrap(),
+        ],
+        "# Title\n",
+    );
+
+    assert_eq!(status, 1);
+    assert_eq!(stdout, "");
+    assert!(
+        stderr.contains(
+            "wrap must be none, paragraph, sentence, a positive integer, or sentence:<positive integer>"
+        ),
+        "{stderr}"
+    );
 }
 
 #[test]

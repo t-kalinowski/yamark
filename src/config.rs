@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::core::directives::TemplateDelimiter;
+use crate::core::document::MarkdownWrap;
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
 use crate::plugins::{ExternalFormatter, ExternalFormatterMode, builtin_formatter};
 
@@ -21,6 +22,7 @@ pub struct Config {
 #[derive(Debug, Clone, Default)]
 pub struct FormatConfig {
     pub compact: Option<bool>,
+    pub markdown_wrap: Option<MarkdownWrap>,
     pub markdown_horizontal_rule: Option<&'static str>,
 }
 
@@ -238,7 +240,10 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
         .as_table()
         .ok_or_else(|| YamarkError::new("format config must be a table"))?;
     for key in table.keys() {
-        if !matches!(key.as_str(), "compact" | "markdown_horizontal_rule") {
+        if !matches!(
+            key.as_str(),
+            "compact" | "wrap" | "markdown_horizontal_rule"
+        ) {
             return Err(YamarkError::new(format!(
                 "unknown format config key: format.{key}"
             )));
@@ -249,6 +254,14 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
             value
                 .as_bool()
                 .ok_or_else(|| YamarkError::new("format.compact must be a boolean"))?,
+        );
+    }
+    if let Some(value) = table.get("wrap") {
+        let value = value
+            .as_str()
+            .ok_or_else(|| YamarkError::new("format.wrap must be a string"))?;
+        format.markdown_wrap = Some(
+            MarkdownWrap::parse(value).map_err(|err| YamarkError::new(format!("format.{err}")))?,
         );
     }
     if let Some(value) = table.get("markdown_horizontal_rule") {

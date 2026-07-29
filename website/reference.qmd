@@ -182,15 +182,15 @@ Unknown keys fail fast.
 
 ### `[format]`
 
-Markdown wrapping is not configurable in `[format]`; use `--wrap`, document
-front matter, or a scoped directive.
-
 ```toml
 [format]
+wrap = "sentence:88"
 compact = true
 markdown_horizontal_rule = "***"
 ```
 
+- `wrap`: string. Accepts `none`, `paragraph`, `sentence`, `sentence:<n>`, or a
+  positive integer column. An explicit `--wrap` option overrides this value.
 - `compact`: boolean. Enables YAML compact mode for path-aware formatting.
   The CLI `--compact` flag enables compact mode even when config sets it to
   `false`.
