@@ -16,11 +16,29 @@ The extension contributes:
 | --- | --- |
 | `Yamark: Format Document` | Run the Yamark document formatter for the active file. |
 | `Yamark: Format Selection as Markdown` | Format the active non-empty selection as Markdown only. |
+| `Yamark: Open Filtered Working Tree Diff` | Compare an unstaged file with its smudged Git index baseline. |
 | `Yamark: Show Log` | Open the Yamark output channel. |
 
 `Yamark: Format Selection as Markdown` does not run configured native formatter
 chains. It is for prompt text, comments, or Markdown-like prose inside a
 broader source file.
+
+## Git filter diffs
+
+VS Code's built-in unstaged preview reads the clean index blob and the smudged
+working-tree file as separate documents. For a path managed by
+`filter=yamark-md`, this can show wrapping changes that are not part of the Git
+diff.
+
+Right-click a modified tracked file under **Changes** and run
+`Yamark: Open Filtered Working Tree Diff`. The command reads the index through
+Git's checkout filters and compares that smudged baseline with the working-tree
+file. Use VS Code's normal diff for files under **Staged Changes**; both sides
+of that comparison are clean Git blobs.
+
+The Yamark command does not replace VS Code's default row click or gutter
+markers. VS Code does not expose those parts of its Git integration to another
+extension.
 
 ## Executable
 

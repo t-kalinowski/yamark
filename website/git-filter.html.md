@@ -44,6 +44,27 @@ output to keep storage diffs small.
 Unsupported paths fail. The filter is for Markdown-like files, not YAML or
 source files.
 
+## VS Code diff preview
+
+Command-line `git diff` applies the clean filter to the working-tree side, so
+it compares clean content with clean content. VS Code's built-in unstaged
+preview instead reads the clean index blob and the smudged file on disk as
+separate documents. That comparison can show wrapping changes across the file.
+
+The Yamark VS Code extension contributes
+`Yamark: Open Filtered Working Tree Diff`. Right-click a modified tracked file
+under **Changes** and run that command. It reads the index with
+`git cat-file --filters`, which applies the checkout filter, and opens a
+smudged-to-smudged comparison against the working-tree file.
+
+For files under **Staged Changes**, use VS Code's normal diff. VS Code reads
+both HEAD and the index as clean Git blobs, so that comparison is already
+clean-to-clean.
+
+The Yamark command cannot replace VS Code's default row click or gutter
+markers through the public extension API. The underlying VS Code behavior is
+tracked in [microsoft/vscode#302990](https://github.com/microsoft/vscode/issues/302990).
+
 ## Adopt a repository
 
 For a shared repository, the maintainer path is:

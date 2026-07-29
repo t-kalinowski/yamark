@@ -209,6 +209,54 @@ def test_git_filter_adopt_stages_shared_attributes_and_normalized_blobs() -> Non
         )
 
 
+def test_git_filter_exposes_like_for_like_vscode_diff_sources() -> None:
+    with TemporaryDirectory(prefix="yamark-pytest-git-") as temp:
+        repo = Path(temp)
+        path = "docs/post.md"
+
+        init_repo(repo)
+        target = repo / path
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            (
+                "Alpha beta gamma delta epsilon zeta eta theta iota kappa "
+                "lambda mu nu xi omicron pi rho sigma tau. Second sentence?\n"
+            ),
+            encoding="utf-8",
+        )
+        run_git(repo, "add", path)
+        run_git(repo, "commit", "-m", "Initial docs")
+        run_yamark(
+            repo,
+            "git-filter",
+            "adopt",
+            "--markdown-wrap-at-column",
+            "32",
+            path,
+        )
+        run_git(repo, "commit", "-m", "Adopt yamark filter")
+
+        smudged_head = target.read_text(encoding="utf-8")
+        target.write_text(
+            smudged_head.replace("Second sentence?", "Changed sentence?"),
+            encoding="utf-8",
+        )
+
+        assert run_git(repo, "cat-file", "--filters", f":{path}").stdout == smudged_head
+
+        run_git(repo, "add", path)
+        assert run_git(repo, "show", f"HEAD:{path}").stdout == (
+            "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda "
+            "mu nu xi omicron pi rho sigma tau.\n"
+            "Second sentence?\n"
+        )
+        assert run_git(repo, "show", f":{path}").stdout == (
+            "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda "
+            "mu nu xi omicron pi rho sigma tau.\n"
+            "Changed sentence?\n"
+        )
+
+
 def test_git_filter_join_refuses_when_branch_is_behind_upstream() -> None:
     with TemporaryDirectory(prefix="yamark-pytest-git-") as temp:
         root = Path(temp)

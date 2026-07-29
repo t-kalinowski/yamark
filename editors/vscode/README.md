@@ -152,6 +152,22 @@ Yamark leaves the document unchanged and reports `Yamark: no text
 selected.` in the status bar. The selected text is formatted as Markdown
 only; configured native formatter chains are not run for this command.
 
+## Git Filter Diffs
+
+VS Code's built-in unstaged preview compares the clean index blob with the
+smudged working-tree file. For files managed by `filter=yamark-md`, wrapping
+changes can obscure the content change.
+
+Right-click a modified tracked file under **Changes** and run
+`Yamark: Open Filtered Working Tree Diff`. The command reads the index with
+Git's checkout filters and compares that smudged baseline with the working-tree
+file. Use the normal VS Code diff under **Staged Changes**, where both HEAD and
+the index use the clean storage form.
+
+This command does not replace VS Code's default row click or gutter markers.
+VS Code does not expose those parts of its Git integration through the public
+extension API.
+
 ## Composing With Native Formatters
 
 Yamark only formats Markdown prose, YAML frontmatter, and embedded

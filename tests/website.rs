@@ -551,6 +551,7 @@ fn website_documents_editor_and_git_filter_integrations() {
         "Positron",
         "Yamark: Format Document",
         "Yamark: Format Selection as Markdown",
+        "Yamark: Open Filtered Working Tree Diff",
         "yamark.useBundledExecutable",
         "yamark.enabledFileExtensions",
         "yamark.extraArguments",
@@ -596,6 +597,8 @@ fn website_documents_editor_and_git_filter_integrations() {
         "yamark git-filter teardown",
         "git -c filter.yamark-md.clean=cat add",
         "NEWS.md -filter",
+        "Yamark: Open Filtered Working Tree Diff",
+        "git cat-file --filters",
     ] {
         assert!(git_filter.contains(term), "{term} should be documented");
         assert!(

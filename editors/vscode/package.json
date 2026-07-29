@@ -33,6 +33,7 @@
     "onStartupFinished",
     "onCommand:yamark.formatDocument",
     "onCommand:yamark.formatSelectionAsMarkdown",
+    "onCommand:yamark.openGitFilterDiff",
     "onLanguage:markdown",
     "onLanguage:yaml",
     "onLanguage:quarto",
@@ -52,8 +53,21 @@
       {
         "command": "yamark.showLog",
         "title": "Yamark: Show Log"
+      },
+      {
+        "command": "yamark.openGitFilterDiff",
+        "title": "Yamark: Open Filtered Working Tree Diff"
       }
     ],
+    "menus": {
+      "scm/resourceState/context": [
+        {
+          "command": "yamark.openGitFilterDiff",
+          "when": "scmProvider == git && scmResourceGroup == workingTree",
+          "group": "2_view@0"
+        }
+      ]
+    },
     "configuration": {
       "title": "Yamark",
       "properties": {

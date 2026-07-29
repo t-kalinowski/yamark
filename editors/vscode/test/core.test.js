@@ -39,6 +39,29 @@ test("package contributes format selection command", () => {
   );
 });
 
+test("package contributes a filtered working-tree diff command", () => {
+  assert.ok(packageJson.activationEvents.includes("onCommand:yamark.openGitFilterDiff"));
+  assert.deepEqual(
+    packageJson.contributes.commands.find(
+      (entry) => entry.command === "yamark.openGitFilterDiff",
+    ),
+    {
+      command: "yamark.openGitFilterDiff",
+      title: "Yamark: Open Filtered Working Tree Diff",
+    },
+  );
+  assert.deepEqual(
+    packageJson.contributes.menus["scm/resourceState/context"].find(
+      (entry) => entry.command === "yamark.openGitFilterDiff",
+    ),
+    {
+      command: "yamark.openGitFilterDiff",
+      when: "scmProvider == git && scmResourceGroup == workingTree",
+      group: "2_view@0",
+    },
+  );
+});
+
 test("package has public repository metadata", () => {
   assert.equal(packageJson.repository.type, "git");
   assert.equal(packageJson.repository.url, "https://github.com/t-kalinowski/yamark.git");
@@ -53,6 +76,208 @@ test("activates format selection command", () => {
   api.activate({ extensionPath: "/extension", subscriptions: [] });
 
   assert.ok(vscode.commands.registeredCommands.includes("yamark.formatSelectionAsMarkdown"));
+});
+
+test("opens the filtered index beside an unstaged working-tree file", async () => {
+  const processCalls = [];
+  const repositoryRoot = "/repo";
+  const filePath = "/repo/docs/post.md";
+  let gitRepository;
+  const vscode = fakeVscode({
+    extensions: {
+      "vscode.git": {
+        activate: async () => ({
+          getAPI: (version) => {
+            assert.equal(version, 1);
+            return {
+              git: { path: "/usr/bin/git" },
+              getRepository: (uri) => {
+                assert.equal(uri.fsPath, filePath);
+                return gitRepository;
+              },
+            };
+          },
+        }),
+      },
+    },
+  });
+  const repositoryStateChanged = new vscode.EventEmitter();
+  gitRepository = {
+    rootUri: vscode.Uri.file(repositoryRoot),
+    state: { onDidChange: repositoryStateChanged.event },
+  };
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      processCalls.push(call);
+      if (call.args[0] === "check-attr") {
+        return "docs/post.md: filter: yamark-md\n";
+      }
+      assert.equal(call.args[0], "cat-file");
+      return "First sentence wraps across the\nworking-tree width.\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openGitFilterDiff", {
+    resourceUri: vscode.Uri.file(filePath),
+  });
+
+  const diffCall = vscode.commands.executedCommands.find(
+    (call) => call.command === "vscode.diff",
+  );
+  assert.ok(diffCall);
+  const [originalUri, modifiedUri, title] = diffCall.args;
+  assert.equal(originalUri.scheme, "yamark-git-filter");
+  assert.equal(originalUri.fsPath, filePath);
+  assert.equal(modifiedUri.fsPath, filePath);
+  assert.equal(title, "post.md (Filtered Working Tree)");
+
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-git-filter");
+  assert.ok(provider);
+  const changedUris = [];
+  provider.onDidChange((uri) => changedUris.push(uri));
+  repositoryStateChanged.fire();
+  assert.deepEqual(changedUris, [originalUri]);
+  assert.equal(
+    await provider.provideTextDocumentContent(originalUri),
+    "First sentence wraps across the\nworking-tree width.\n",
+  );
+  assert.deepEqual(processCalls, [
+    {
+      command: "/usr/bin/git",
+      args: ["check-attr", "filter", "--", "docs/post.md"],
+      input: "",
+      cwd: repositoryRoot,
+    },
+    {
+      command: "/usr/bin/git",
+      args: ["cat-file", "--filters", ":docs/post.md"],
+      input: "",
+      cwd: repositoryRoot,
+    },
+  ]);
+});
+
+test("preserves a UNC file URI when reading the filtered index", async () => {
+  const repositoryRoot = "//server/share/repo";
+  const filePath = "//server/share/repo/docs/post.md";
+  let gitRepository;
+  const vscode = fakeVscode({
+    extensions: {
+      "vscode.git": {
+        activate: async () => ({
+          getAPI: () => ({
+            git: { path: "/usr/bin/git" },
+            getRepository: () => gitRepository,
+          }),
+        }),
+      },
+    },
+  });
+  const repositoryStateChanged = new vscode.EventEmitter();
+  gitRepository = {
+    rootUri: vscode.Uri.file(repositoryRoot),
+    state: { onDidChange: repositoryStateChanged.event },
+  };
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) =>
+      call.args[0] === "check-attr"
+        ? "docs/post.md: filter: yamark-md\n"
+        : "Filtered index.\n",
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openGitFilterDiff", {
+    resourceUri: vscode.Uri.file(filePath),
+  });
+
+  const diffCall = vscode.commands.executedCommands.find(
+    (call) => call.command === "vscode.diff",
+  );
+  const originalUri = diffCall.args[0];
+  assert.equal(originalUri.authority, "server");
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-git-filter");
+  assert.equal(await provider.provideTextDocumentContent(originalUri), "Filtered index.\n");
+});
+
+test("reuses the filtered document and repository watcher across repeated opens", async () => {
+  const repositoryRoot = "/repo";
+  const filePath = "/repo/docs/post.md";
+  let repositorySubscriptionCount = 0;
+  const vscode = fakeVscode({
+    extensions: {
+      "vscode.git": {
+        activate: async () => ({
+          getAPI: () => ({
+            git: { path: "/usr/bin/git" },
+            getRepository: () => ({
+              rootUri: vscode.Uri.file(repositoryRoot),
+              state: {
+                onDidChange: (listener) => {
+                  repositorySubscriptionCount += 1;
+                  return new vscode.EventEmitter().event(listener);
+                },
+              },
+            }),
+          }),
+        }),
+      },
+    },
+  });
+  const api = createYamarkExtension(vscode, {
+    runProcess: async () => "docs/post.md: filter: yamark-md\n",
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+  const resource = { resourceUri: vscode.Uri.file(filePath) };
+
+  await vscode.commands.executeCommand("yamark.openGitFilterDiff", resource);
+  await vscode.commands.executeCommand("yamark.openGitFilterDiff", resource);
+
+  const originalUris = vscode.commands.executedCommands
+    .filter((call) => call.command === "vscode.diff")
+    .map((call) => call.args[0].toString());
+  assert.deepEqual(originalUris, [originalUris[0], originalUris[0]]);
+  assert.equal(repositorySubscriptionCount, 1);
+});
+
+test("reads a restored filtered diff URI after extension activation", async () => {
+  const repositoryRoot = "/repo";
+  const filePath = "/repo/docs/post.md";
+  let gitRepository;
+  const vscode = fakeVscode({
+    extensions: {
+      "vscode.git": {
+        activate: async () => ({
+          getAPI: () => ({
+            git: { path: "/usr/bin/git" },
+            getRepository: (uri) => {
+              assert.equal(uri.scheme, "file");
+              assert.equal(uri.fsPath, filePath);
+              return gitRepository;
+            },
+          }),
+        }),
+      },
+    },
+  });
+  const repositoryStateChanged = new vscode.EventEmitter();
+  gitRepository = {
+    rootUri: vscode.Uri.file(repositoryRoot),
+    state: { onDidChange: repositoryStateChanged.event },
+  };
+  const api = createYamarkExtension(vscode, {
+    runProcess: async () => "Filtered index.\n",
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+  const restoredUri = vscode.Uri.file(filePath).with({
+    scheme: "yamark-git-filter",
+  });
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-git-filter");
+
+  assert.equal(await provider.provideTextDocumentContent(restoredUri), "Filtered index.\n");
 });
 
 test("legacy command chaining settings are ignored", async () => {
@@ -941,8 +1166,73 @@ function fakeVscode(options = {}) {
   const editorSettings = options.editorSettings || {};
   const documents = options.documents || [];
   const formattingProviders = [];
+  const textDocumentContentProviders = new Map();
   const registeredCommands = [];
   const registeredCommandHandlers = new Map();
+  const executedCommands = [];
+  class EventEmitter {
+    constructor() {
+      this.listeners = new Set();
+      this.event = (listener) => {
+        this.listeners.add(listener);
+        return {
+          dispose: () => this.listeners.delete(listener),
+        };
+      };
+    }
+
+    fire(value) {
+      for (const listener of this.listeners) {
+        listener(value);
+      }
+    }
+
+    dispose() {
+      this.listeners.clear();
+    }
+  }
+  class Uri {
+    constructor({ authority = "", fsPath, scheme, path: uriPath, query = "" }) {
+      this.authority = authority;
+      this.scheme = scheme;
+      this.path = uriPath;
+      this.fsPath = fsPath ?? uriPath;
+      this.query = query;
+    }
+
+    static file(filePath) {
+      const match = filePath.match(/^\/\/([^/]+)(\/.*)$/);
+      return new Uri({
+        authority: match ? match[1] : "",
+        fsPath: filePath,
+        scheme: "file",
+        path: match ? match[2] : filePath,
+      });
+    }
+
+    with(changes) {
+      const scheme = changes.scheme ?? this.scheme;
+      const authority = changes.authority ?? this.authority;
+      return new Uri({
+        authority,
+        fsPath:
+          changes.fsPath ??
+          (authority !== "" && scheme === "file"
+            ? `//${authority}${changes.path ?? this.path}`
+            : authority !== "" && scheme !== "file"
+              ? changes.path ?? this.path
+              : this.fsPath),
+        scheme,
+        path: changes.path ?? this.path,
+        query: changes.query ?? this.query,
+      });
+    }
+
+    toString() {
+      const query = this.query === "" ? "" : `?${this.query}`;
+      return `${this.scheme}://${this.authority}${this.path}${query}`;
+    }
+  }
   return {
     Range: class Range {
       constructor(start, end) {
@@ -964,8 +1254,11 @@ function fakeVscode(options = {}) {
         this.edits.push({ uri, range, newText });
       }
     },
+    EventEmitter,
+    Uri,
     commands: {
       executeCommand: async (command, ...args) => {
+        executedCommands.push({ command, args });
         if (command === "vscode.executeFormatDocumentProvider") {
           return await executeFormatDocumentProvider(
             formattingProviders,
@@ -986,12 +1279,16 @@ function fakeVscode(options = {}) {
         registeredCommandHandlers.set(command, handler);
         return disposable();
       },
+      executedCommands,
       registeredCommands,
     },
     extensions: {
       getExtension: (id) => {
-        const extensionPath = options.extensions && options.extensions[id];
-        return extensionPath ? { extensionPath } : undefined;
+        const extension = options.extensions && options.extensions[id];
+        if (typeof extension === "string") {
+          return { extensionPath: extension };
+        }
+        return extension;
       },
     },
     languages: {
@@ -1046,6 +1343,15 @@ function fakeVscode(options = {}) {
         };
       },
       onDidChangeConfiguration: () => disposable(),
+      registerTextDocumentContentProvider: (scheme, provider) => {
+        textDocumentContentProviders.set(scheme, provider);
+        return {
+          dispose() {
+            textDocumentContentProviders.delete(scheme);
+          },
+        };
+      },
+      registeredTextDocumentContentProviders: textDocumentContentProviders,
     },
   };
 }

@@ -2,6 +2,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const DEFAULT_FILE_EXTENSIONS = Object.freeze([".md", ".qmd", ".yaml", ".yml"]);
+const GIT_FILTER_DOCUMENT_SCHEME = "yamark-git-filter";
 
 function createYamarkExtension(vscode, runtime = {}) {
   const runProcess = runtime.runProcess || runProcessWithSpawn;
@@ -12,6 +13,8 @@ function createYamarkExtension(vscode, runtime = {}) {
   let providerDisposable;
   let providerSuppressionDepth = 0;
   const providerSuppressionReasons = [];
+  const gitFilterDocumentChanged = new vscode.EventEmitter();
+  const gitFilterRepositoryWatches = new Map();
 
   async function provideDocumentFormattingEdits(document, options = {}) {
     const op = options.op || logger.startOp("format");
@@ -162,10 +165,67 @@ function createYamarkExtension(vscode, runtime = {}) {
     }
   }
 
+  async function openGitFilterDiff(resource) {
+    const fileUri = gitFilterFileUri(vscode, resource);
+    const git = await gitFilterRepository(vscode, fileUri);
+    await requireYamarkGitFilter(runProcess, git);
+
+    const originalUri = fileUri.with({
+      scheme: GIT_FILTER_DOCUMENT_SCHEME,
+      query: "",
+    });
+    watchGitFilterRepository(git.repository, originalUri);
+    const title = `${path.basename(fileUri.fsPath)} (Filtered Working Tree)`;
+    await vscode.commands.executeCommand("vscode.diff", originalUri, fileUri, title);
+  }
+
+  async function provideGitFilterDocument(uri) {
+    const fileUri = uri.with({ scheme: "file", query: "" });
+    const git = await gitFilterRepository(vscode, fileUri);
+    watchGitFilterRepository(git.repository, uri);
+    return await runProcess({
+      command: git.executable,
+      args: ["cat-file", "--filters", `:${git.relativePath}`],
+      input: "",
+      cwd: git.root,
+    });
+  }
+
+  function watchGitFilterRepository(repository, uri) {
+    const key = repository.rootUri.toString();
+    let watch = gitFilterRepositoryWatches.get(key);
+    if (!watch) {
+      const uris = new Map();
+      const subscription = repository.state.onDidChange(() => {
+        for (const documentUri of uris.values()) {
+          gitFilterDocumentChanged.fire(documentUri);
+        }
+      });
+      watch = { subscription, uris };
+      gitFilterRepositoryWatches.set(key, watch);
+    }
+    watch.uris.set(uri.toString(), uri);
+  }
+
   function activate(context) {
     extensionRoot = context.extensionPath;
     logger.log(`activate extensionRoot=${extensionRoot} platform=${platform} arch=${arch}`);
     registerProvider();
+    context.subscriptions.push(
+      vscode.workspace.registerTextDocumentContentProvider(GIT_FILTER_DOCUMENT_SCHEME, {
+        onDidChange: gitFilterDocumentChanged.event,
+        provideTextDocumentContent: provideGitFilterDocument,
+      }),
+    );
+    context.subscriptions.push(gitFilterDocumentChanged);
+    context.subscriptions.push({
+      dispose() {
+        for (const watch of gitFilterRepositoryWatches.values()) {
+          watch.subscription.dispose();
+        }
+        gitFilterRepositoryWatches.clear();
+      },
+    });
     context.subscriptions.push({
       dispose() {
         if (providerDisposable) {
@@ -179,6 +239,11 @@ function createYamarkExtension(vscode, runtime = {}) {
     context.subscriptions.push(
       vscode.commands.registerCommand("yamark.formatSelectionAsMarkdown", () =>
         formatSelectionAsMarkdown(),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand("yamark.openGitFilterDiff", (resource) =>
+        openGitFilterDiff(resource),
       ),
     );
     context.subscriptions.push(
@@ -229,6 +294,71 @@ function createYamarkExtension(vscode, runtime = {}) {
     isEnabledDocument: (document) => isEnabledDocument(vscode, document),
     provideDocumentFormattingEdits,
   };
+}
+
+function gitFilterFileUri(vscode, resource) {
+  const document = activeDocument(vscode);
+  const uri = resource && resource.resourceUri
+    ? resource.resourceUri
+    : document && document.uri;
+  if (!uri || uri.scheme !== "file" || !uri.fsPath) {
+    throw new Error("Yamark needs a working-tree file for the filtered Git diff");
+  }
+  return uri;
+}
+
+async function gitFilterRepository(vscode, fileUri) {
+  const extension =
+    vscode.extensions &&
+    typeof vscode.extensions.getExtension === "function" &&
+    vscode.extensions.getExtension("vscode.git");
+  if (!extension || typeof extension.activate !== "function") {
+    throw new Error("Yamark needs VS Code's Git extension for the filtered Git diff");
+  }
+
+  const exports = await extension.activate();
+  if (!exports || typeof exports.getAPI !== "function") {
+    throw new Error("Yamark could not access VS Code's Git extension API");
+  }
+  const api = exports.getAPI(1);
+  const repository = api.getRepository(fileUri);
+  if (!repository) {
+    throw new Error(`Yamark could not find the Git repository for ${fileUri.fsPath}`);
+  }
+
+  const root = path.resolve(repository.rootUri.fsPath);
+  const filePath = path.resolve(fileUri.fsPath);
+  const relativePath = path.relative(root, filePath);
+  if (
+    relativePath === "" ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
+    throw new Error(`${fileUri.fsPath} is not a file inside ${root}`);
+  }
+  if (!api.git || typeof api.git.path !== "string" || api.git.path === "") {
+    throw new Error("Yamark could not locate VS Code's Git executable");
+  }
+
+  return {
+    executable: api.git.path,
+    relativePath: relativePath.split(path.sep).join("/"),
+    repository,
+    root,
+  };
+}
+
+async function requireYamarkGitFilter(runProcess, git) {
+  const output = await runProcess({
+    command: git.executable,
+    args: ["check-attr", "filter", "--", git.relativePath],
+    input: "",
+    cwd: git.root,
+  });
+  if (!output.trimEnd().endsWith(": filter: yamark-md")) {
+    throw new Error(`${git.relativePath} is not configured with filter=yamark-md`);
+  }
 }
 
 function readSettings(vscode, document) {
