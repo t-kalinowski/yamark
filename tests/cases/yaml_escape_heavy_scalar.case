@@ -1,0 +1,28 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+output:
+  jsonrpc: "2.0"
+  id: 3
+  result:
+    content:
+      - type: text
+        text: "{\"python\":\"print('hello')\",\"wait_ms\":0}"
+    isError: false
+json_without_apostrophes: "{\"wait_ms\":0}"
+flow: {text: "{\"python\":\"print('hello')\",\"wait_ms\":0}"}
+-- stdout
+output:
+  jsonrpc: "2.0"
+  id: 3
+  result:
+    content:
+      - type: text
+        text: |-
+          {"python":"print('hello')","wait_ms":0}
+    isError: false
+json_without_apostrophes: '{"wait_ms":0}'
+flow: {text: '{"python":"print(''hello'')","wait_ms":0}'}
+-- stderr
+-- status
+0

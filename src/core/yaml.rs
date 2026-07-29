@@ -5492,8 +5492,7 @@ fn emit_yaml_scalar_plan_output_into(
     if emit_non_string_plain_scalar_plan_output_into(output, source, scalar, node).is_some() {
         return;
     }
-    if let Some(rendered) =
-        render_quoted_newline_literal_scalar(source, scalar, node, options, body_indent)
+    if let Some(rendered) = render_quoted_literal_scalar(source, scalar, node, options, body_indent)
     {
         output.push_str(&rendered);
         return;
@@ -5513,8 +5512,8 @@ fn emit_yaml_scalar_plan_output_into(
         output.push_str(line_ending_for_span(source, node.span));
         return;
     }
-    if let Some(simplified) = simplify_quoted_string_scalar(source, scalar, false) {
-        output.push_str(&simplified);
+    if let Some(normalized) = normalize_quoted_string_scalar(source, scalar, false) {
+        output.push_str(&normalized);
         emit_inline_comment(output, source, scalar.trailing_comment);
         output.push_str(line_ending_for_span(source, node.span));
         return;
@@ -5624,7 +5623,7 @@ fn render_unsafe_plain_string_scalar(
     Some(output)
 }
 
-fn simplify_quoted_string_scalar(
+fn normalize_quoted_string_scalar(
     source: &SourceBuffer,
     scalar: &YamlScalar<'_>,
     flow_context: bool,
@@ -5644,14 +5643,19 @@ fn simplify_quoted_string_scalar(
     if raw.contains(['\n', '\r']) {
         return None;
     }
-    if let Some(decoded) = simple_quoted_scalar_inner(raw) {
-        return plain_string_safe(decoded, flow_context).then(|| decoded.to_owned());
+    let decoded = if let Some(decoded) = simple_quoted_scalar_inner(raw) {
+        Cow::Borrowed(decoded)
+    } else {
+        Cow::Owned(decode_quoted_scalar(raw)?)
+    };
+    if plain_string_safe(&decoded, flow_context) {
+        Some(decoded.into_owned())
+    } else {
+        Some(quote_yaml_string(&decoded, scalar.style))
     }
-    let decoded = decode_quoted_scalar(raw)?;
-    plain_string_safe(&decoded, flow_context).then_some(decoded)
 }
 
-fn render_quoted_newline_literal_scalar(
+fn render_quoted_literal_scalar(
     source: &SourceBuffer,
     scalar: &YamlScalar<'_>,
     node: &YamlAstNode<'_>,
@@ -5674,7 +5678,14 @@ fn render_quoted_newline_literal_scalar(
         return None;
     }
     let decoded = decode_quoted_scalar(raw)?;
-    if !decoded.contains('\n') || decoded.contains('\r') {
+    if !decoded.contains('\n')
+        && (plain_string_safe(&decoded, false)
+            || !decoded.contains('\'')
+            || !decoded.contains(['"', '\\']))
+    {
+        return None;
+    }
+    if decoded.contains('\r') {
         return None;
     }
     if decoded
@@ -6919,8 +6930,8 @@ fn emit_yaml_scalar_inline_into(
     if emit_simple_quoted_string_scalar_into(out, raw, scalar, flow_context).is_some() {
         return Some(());
     }
-    if let Some(simplified) = simplify_quoted_string_scalar(source, scalar, flow_context) {
-        out.push_str(&simplified);
+    if let Some(normalized) = normalize_quoted_string_scalar(source, scalar, flow_context) {
+        out.push_str(&normalized);
         return Some(());
     }
     if !flow_context || scalar.style != YamlScalarStyle::Plain || flow_plain_scalar_safe(raw) {
@@ -7009,7 +7020,7 @@ fn render_yaml_scalar_inline_width(
     if scalar.tag.is_some() || scalar.anchor.is_some() {
         return None;
     }
-    if let Some(width) = simplify_quoted_string_scalar_width(source, scalar, flow_context) {
+    if let Some(width) = normalize_quoted_string_scalar_width(source, scalar, flow_context) {
         return Some(width);
     }
     if !flow_context || scalar.style != YamlScalarStyle::Plain || flow_plain_scalar_safe(raw) {
@@ -7286,7 +7297,7 @@ fn scalar_property_prefix_width(
     }
 }
 
-fn simplify_quoted_string_scalar_width(
+fn normalize_quoted_string_scalar_width(
     source: &SourceBuffer,
     scalar: &YamlScalar<'_>,
     flow_context: bool,
@@ -7307,14 +7318,18 @@ fn simplify_quoted_string_scalar_width(
         return None;
     }
     if let Some(decoded) = simple_quoted_scalar_inner(raw) {
-        return plain_string_safe(decoded, flow_context).then(|| decoded.chars().count());
+        return Some(if plain_string_safe(decoded, flow_context) {
+            decoded.chars().count()
+        } else {
+            quote_yaml_string_width(decoded, scalar.style)
+        });
     }
-    match decoded_quoted_plain_width(raw, flow_context) {
-        Some(DecodedPlainWidth::Simplified(width)) => return Some(width),
-        Some(DecodedPlainWidth::PreserveSource) => return None,
-        None => {}
+    if let Some(state) = decoded_quoted_string_width_state(raw, flow_context)
+        && let Some(width) = state.normalized_string_width(scalar.style)
+    {
+        return Some(width);
     }
-    simplify_quoted_string_scalar(source, scalar, flow_context).map(|value| value.chars().count())
+    normalize_quoted_string_scalar(source, scalar, flow_context).map(|value| value.chars().count())
 }
 
 fn scalar_property_prefix(
@@ -7383,21 +7398,6 @@ fn flow_plain_scalar_safe(value: &str) -> bool {
         previous = Some(ch);
     }
     true
-}
-
-enum DecodedPlainWidth {
-    Simplified(usize),
-    PreserveSource,
-}
-
-fn decoded_quoted_plain_width(raw: &str, flow_context: bool) -> Option<DecodedPlainWidth> {
-    let state = decoded_quoted_string_width_state(raw, flow_context)?;
-    if let Some(width) = state.plain_safe_width() {
-        return Some(DecodedPlainWidth::Simplified(width));
-    }
-    state
-        .known_not_plain_string_safe()
-        .then_some(DecodedPlainWidth::PreserveSource)
 }
 
 fn decoded_quoted_explicit_string_width(raw: &str, flow_context: bool) -> Option<usize> {
@@ -7722,11 +7722,15 @@ impl DecodedStringWidthState {
     }
 
     fn explicit_string_width(&self) -> Option<usize> {
+        self.normalized_string_width(YamlScalarStyle::SingleQuoted)
+    }
+
+    fn normalized_string_width(&self, preferred_style: YamlScalarStyle) -> Option<usize> {
         if let Some(width) = self.plain_safe_width() {
             return Some(width);
         }
         if self.known_not_plain_string_safe() {
-            return Some(self.quoted_width());
+            return Some(self.quoted_width(preferred_style));
         }
         None
     }
@@ -7747,7 +7751,7 @@ impl DecodedStringWidthState {
         self.core_valid.then_some(&self.core_bytes[..self.core_len])
     }
 
-    fn quoted_width(&self) -> usize {
+    fn quoted_width(&self, preferred_style: YamlScalarStyle) -> usize {
         if self.has_control {
             return self.double_chars;
         }
@@ -7755,8 +7759,12 @@ impl DecodedStringWidthState {
         let single_chars = self.width + 2 + self.single_quote_count;
         if self.double_bytes < single_bytes {
             self.double_chars
-        } else {
+        } else if single_bytes < self.double_bytes
+            || preferred_style == YamlScalarStyle::SingleQuoted
+        {
             single_chars
+        } else {
+            self.double_chars
         }
     }
 }
@@ -7908,19 +7916,29 @@ fn hex_digits(mut value: u32) -> usize {
 }
 
 fn quote_yaml_single_for_flow(value: &str) -> Option<String> {
+    Some(quote_yaml_string(value, YamlScalarStyle::SingleQuoted))
+}
+
+fn quote_yaml_single_for_flow_width(value: &str) -> usize {
+    quote_yaml_string_width(value, YamlScalarStyle::SingleQuoted)
+}
+
+fn quote_yaml_string(value: &str, preferred_style: YamlScalarStyle) -> String {
     if value.chars().any(char::is_control) {
-        return Some(quote_yaml_double_for_flow(value));
+        return quote_yaml_double_for_flow(value);
     }
     let single = format!("'{}'", value.replace('\'', "''"));
     let double = quote_yaml_double_for_flow(value);
     if double.len() < single.len() {
-        Some(double)
+        double
+    } else if single.len() < double.len() || preferred_style == YamlScalarStyle::SingleQuoted {
+        single
     } else {
-        Some(single)
+        double
     }
 }
 
-fn quote_yaml_single_for_flow_width(value: &str) -> usize {
+fn quote_yaml_string_width(value: &str, preferred_style: YamlScalarStyle) -> usize {
     let single_bytes = value.len() + 2 + value.matches('\'').count();
     let single_chars = value.chars().count() + 2 + value.matches('\'').count();
     if value.chars().any(char::is_control) {
@@ -7930,8 +7948,10 @@ fn quote_yaml_single_for_flow_width(value: &str) -> usize {
     let (double_bytes, double_chars) = quote_yaml_double_for_flow_metrics(value);
     if double_bytes < single_bytes {
         double_chars
-    } else {
+    } else if single_bytes < double_bytes || preferred_style == YamlScalarStyle::SingleQuoted {
         single_chars
+    } else {
+        double_chars
     }
 }
 

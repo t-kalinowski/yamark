@@ -63,6 +63,16 @@ comment: "a # b"
 """,
     ),
     (
+        "escape-heavy-quoted-string",
+        r"""output:
+  result:
+    content:
+      - type: text
+        text: "{\"python\":\"print('hello')\",\"wait_ms\":0}"
+flow: {text: "{\"python\":\"print('hello')\",\"wait_ms\":0}"}
+""",
+    ),
+    (
         "core-tags",
         """string: !!str hello world
 string_bool: !!str true
