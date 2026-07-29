@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- [posit-dev/mcp-repl](https://github.com/posit-dev/mcp-repl) for
+  persistent worker, sandbox, output, and native R frontend patterns;
+- [Positron's Data Explorer](
+    https://positron.posit.co/data-explorer.html
+  ) and [Plots pane](https://positron.posit.co/plots-pane.html) for
+  human-facing ephemeral data exploration and full-scale plot
+  inspection.
+-- stdout
+- [posit-dev/mcp-repl](https://github.com/posit-dev/mcp-repl) for persistent worker, sandbox, output, and native R frontend patterns;
+- [Positron's Data Explorer](https://positron.posit.co/data-explorer.html) and [Plots pane](https://positron.posit.co/plots-pane.html) for human-facing ephemeral data exploration and full-scale plot inspection.
+-- stderr
+-- status
+0

@@ -2181,6 +2181,10 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
+    let block_start = source.lines[start].full.start();
+    let block = source.slice(Span::new(block_start, source.lines[end - 1].full.end()));
+    let split_link_destinations =
+        crate::core::wrap::markdown_multiline_link_destination_spans(block).collect::<Vec<_>>();
     for line in start + 1..end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
@@ -2212,6 +2216,13 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
         }
         if indent >= base_indent + 4 || raw_sensitive_at(text) || code_fence_at(text).is_some() {
             if list_rich_child_line(text, item_content_indent) {
+                continue;
+            }
+            let line_offset = source.lines[line].text.start() - block_start;
+            if split_link_destinations
+                .iter()
+                .any(|span| span.contains(&line_offset))
+            {
                 continue;
             }
             return false;

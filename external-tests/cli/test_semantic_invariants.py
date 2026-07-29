@@ -243,3 +243,28 @@ def test_cli_preserves_markdown_ast_for_replacement_cases(
     expected: str,
 ) -> None:
     format_and_check("yamark format {path}.md", input_text, expected)
+
+
+def test_sentence_wraps_list_with_multiline_link_destination() -> None:
+    input_text = fixture(
+        """\
+        - [posit-dev/mcp-repl](https://github.com/posit-dev/mcp-repl) for
+          persistent worker, sandbox, output, and native R frontend patterns;
+        - [Positron's Data Explorer](
+            https://positron.posit.co/data-explorer.html
+          ) and [Plots pane](https://positron.posit.co/plots-pane.html) for
+          human-facing ephemeral data exploration and full-scale plot
+          inspection.
+        """
+    )
+    expected = fixture(
+        """\
+        - [posit-dev/mcp-repl](https://github.com/posit-dev/mcp-repl) for persistent worker, sandbox, output, and native R frontend patterns;
+        - [Positron's Data Explorer](https://positron.posit.co/data-explorer.html) and [Plots pane](https://positron.posit.co/plots-pane.html) for human-facing ephemeral data exploration and full-scale plot inspection.
+        """
+    )
+    format_and_check(
+        "yamark format --wrap sentence {path}.md",
+        input_text,
+        expected,
+    )

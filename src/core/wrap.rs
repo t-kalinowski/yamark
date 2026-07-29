@@ -78,17 +78,21 @@ fn try_format_markdown_paragraph(source: &str, options: FormatOptions) -> Option
 }
 
 fn contains_existing_split_link_destination(source: &str) -> bool {
-    for (index, _) in source.match_indices("](") {
+    markdown_multiline_link_destination_spans(source)
+        .next()
+        .is_some()
+}
+
+pub(crate) fn markdown_multiline_link_destination_spans(
+    source: &str,
+) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+    source.match_indices("](").filter_map(|(index, _)| {
         let destination_start = index + 2;
-        let Some(destination_close) = find_simple_destination_close(source, destination_start)
-        else {
-            continue;
-        };
-        if source[destination_start..destination_close].contains(['\n', '\r']) {
-            return true;
-        }
-    }
-    false
+        let destination_close = find_simple_destination_close(source, destination_start)?;
+        source[destination_start..destination_close]
+            .contains(['\n', '\r'])
+            .then_some(destination_start..destination_close)
+    })
 }
 
 pub fn normalize_heading_content(source: &str) -> String {
