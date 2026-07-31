@@ -94,6 +94,43 @@ fn parse_source_for_formatting<'src>(
     }
 }
 
+fn parse_source_for_validation<'src>(
+    source: &'src SourceBuffer,
+    range: Span,
+    kind: DocumentKind,
+    options: FormatOptions,
+    config: &Config,
+    yaml_node_capacity_hint: usize,
+) -> Result<Document<'src>> {
+    validate_compact_source_range(range)?;
+    match kind {
+        DocumentKind::Markdown => {
+            crate::core::markdown::parse_markdown_for_validation(source, range, options, config)
+        }
+        DocumentKind::Yaml => crate::core::yaml::parse_yaml_for_validation(
+            source,
+            range,
+            options,
+            config,
+            yaml_node_capacity_hint,
+        ),
+        DocumentKind::Python => crate::core::source_lang::parse_source_language_for_validation(
+            source,
+            range,
+            crate::core::source_lang::SourceLanguage::Python,
+            options,
+            config,
+        ),
+        DocumentKind::R => crate::core::source_lang::parse_source_language_for_validation(
+            source,
+            range,
+            crate::core::source_lang::SourceLanguage::R,
+            options,
+            config,
+        ),
+    }
+}
+
 pub(crate) fn validate_compact_source_range(range: Span) -> Result<()> {
     if range.end <= MAX_SOURCE_SPAN_OFFSET {
         return Ok(());
@@ -149,6 +186,8 @@ fn format_source_report_impl(
     let range = Span::new(0, source.as_str().len());
     let document =
         parse_source_for_formatting(&source, range, kind, options, config, collect_trace)?;
+    let input_trace = document.trace;
+    let source_lines = source.lines.len();
     #[cfg(feature = "format-trace")]
     let diagnostics = if collect_trace {
         crate::core::format_trace::markdown_decision_diagnostics(&source, &document)
@@ -185,20 +224,25 @@ fn format_source_report_impl(
     let changed = output != source.as_str();
     let mut output_parse_passes = 0;
     if changed && output_requires_yaml_validation(kind, &document, &output) {
+        let document = document.retag_source_lifetime();
+        let before = crate::core::yaml_equivalence::capture_yaml_validation_snapshot(
+            source.into_string(),
+            document,
+        );
+        let yaml_node_capacity_hint = before.node_capacity_hint_for_root_yaml().unwrap_or(0);
         let output_source = SourceBuffer::new(output);
         {
             let output_range = Span::new(0, output_source.as_str().len());
-            let output_document = parse_source_for_formatting(
+            let output_document = parse_source_for_validation(
                 &output_source,
                 output_range,
                 kind,
                 options,
                 config,
-                false,
+                yaml_node_capacity_hint,
             )?;
             crate::core::yaml_equivalence::validate_yaml_documents_equivalent(
-                &source,
-                &document,
+                &before,
                 &output_source,
                 &output_document,
             )?;
@@ -207,15 +251,14 @@ fn format_source_report_impl(
         output = output_source.into_string();
     }
     let trace = (kind == DocumentKind::Yaml && collect_trace).then_some(FormatTrace {
-        source_scans: document.trace.source_scans,
-        parse_passes: document.trace.parse_passes + output_parse_passes,
-        source_lines: source.lines.len(),
-        yaml_scanned_lines: document.trace.yaml_scanned_lines,
-        yaml_semantic_nodes: document.trace.yaml_semantic_nodes,
-        planned_rendered_scalars: document.trace.planned_rendered_scalars,
-        planned_rendered_flow_collections: document.trace.planned_rendered_flow_collections,
-        planned_rendered_block_flow_collections: document
-            .trace
+        source_scans: input_trace.source_scans,
+        parse_passes: input_trace.parse_passes + output_parse_passes,
+        source_lines,
+        yaml_scanned_lines: input_trace.yaml_scanned_lines,
+        yaml_semantic_nodes: input_trace.yaml_semantic_nodes,
+        planned_rendered_scalars: input_trace.planned_rendered_scalars,
+        planned_rendered_flow_collections: input_trace.planned_rendered_flow_collections,
+        planned_rendered_block_flow_collections: input_trace
             .planned_rendered_block_flow_collections,
         emitted_bytes: output.len(),
         emitted_nodes: yaml_emitted_nodes,

@@ -28,7 +28,7 @@ pub fn parse_yaml<'src>(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document<'src>> {
-    parse_yaml_impl(source, range, options, config, true, false)
+    parse_yaml_impl(source, range, options, config, YamlParseMode::CONCRETE)
 }
 
 pub(crate) fn parse_yaml_for_formatting<'src>(
@@ -37,7 +37,7 @@ pub(crate) fn parse_yaml_for_formatting<'src>(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document<'src>> {
-    parse_yaml_impl(source, range, options, config, false, true)
+    parse_yaml_impl(source, range, options, config, YamlParseMode::FORMATTING)
 }
 
 pub(crate) fn parse_yaml_for_formatting_with_trace<'src>(
@@ -46,7 +46,83 @@ pub(crate) fn parse_yaml_for_formatting_with_trace<'src>(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document<'src>> {
-    parse_yaml_impl(source, range, options, config, true, true)
+    parse_yaml_impl(
+        source,
+        range,
+        options,
+        config,
+        YamlParseMode::FORMATTING_WITH_TRACE,
+    )
+}
+
+pub(crate) fn parse_yaml_for_validation<'src>(
+    source: &'src SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+    node_capacity_hint: usize,
+) -> Result<Document<'src>> {
+    parse_yaml_impl(
+        source,
+        range,
+        options,
+        config,
+        YamlParseMode::validation(true, node_capacity_hint),
+    )
+}
+
+pub(crate) fn parse_yaml_for_concrete_validation<'src>(
+    source: &'src SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<Document<'src>> {
+    parse_yaml_impl(
+        source,
+        range,
+        options,
+        config,
+        YamlParseMode::validation(false, 0),
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+struct YamlParseMode {
+    collect_trace: bool,
+    preserve_unsupported_for_formatting: bool,
+    plan_emits: bool,
+    node_capacity_hint: usize,
+}
+
+impl YamlParseMode {
+    const CONCRETE: Self = Self {
+        collect_trace: true,
+        preserve_unsupported_for_formatting: false,
+        plan_emits: true,
+        node_capacity_hint: 0,
+    };
+    const FORMATTING: Self = Self {
+        collect_trace: false,
+        preserve_unsupported_for_formatting: true,
+        plan_emits: true,
+        node_capacity_hint: 0,
+    };
+    const FORMATTING_WITH_TRACE: Self = Self {
+        collect_trace: true,
+        ..Self::FORMATTING
+    };
+
+    const fn validation(
+        preserve_unsupported_for_formatting: bool,
+        node_capacity_hint: usize,
+    ) -> Self {
+        Self {
+            collect_trace: false,
+            preserve_unsupported_for_formatting,
+            plan_emits: false,
+            node_capacity_hint,
+        }
+    }
 }
 
 fn parse_yaml_impl<'src>(
@@ -54,8 +130,7 @@ fn parse_yaml_impl<'src>(
     range: Span,
     options: FormatOptions,
     config: &Config,
-    collect_trace: bool,
-    preserve_unsupported_for_formatting: bool,
+    mode: YamlParseMode,
 ) -> Result<Document<'src>> {
     crate::core::parser::validate_compact_source_range(range)?;
     let mut options = options;
@@ -66,20 +141,20 @@ fn parse_yaml_impl<'src>(
         options.default_line_ending = source.dominant_line_ending.as_str();
     }
     let mut scan = scan_yaml_lines_basic(source, range);
-    if preserve_unsupported_for_formatting && scan.has_tab_indentation(source).is_some() {
+    if mode.preserve_unsupported_for_formatting && scan.has_tab_indentation(source).is_some() {
         scan = scan_yaml_lines(source, range);
         scan.source_scans += 1;
         if !yaml_scan_has_active_fmt_directive(source, &scan) {
             return Ok(preserved_yaml_document(range, options, &scan));
         }
     }
-    if preserve_unsupported_for_formatting
+    if mode.preserve_unsupported_for_formatting
         && yaml_scan_has_unsupported_preserve_syntax(source, &scan)
         && !yaml_scan_has_active_fmt_directive(source, &scan)
     {
         return Ok(preserved_yaml_document(range, options, &scan));
     }
-    let parser = YamlParser::new(source, range, options, config, scan, collect_trace);
+    let parser = YamlParser::new(source, range, options, config, scan, mode);
     let mut doc = parser.parse()?;
     doc.push_node(Node {
         kind: NodeKind::Yaml(YamlNodeKind::Document),
@@ -111,6 +186,31 @@ pub(crate) fn apply_file_scope_delta_to_yaml_document<'src>(
     options: FormatOptions,
     config: &Config,
 ) -> Result<()> {
+    apply_file_scope_delta_to_yaml_document_with_mode(
+        source, document, delta, options, config, true,
+    )
+}
+
+pub(crate) fn apply_file_scope_delta_to_yaml_document_for_validation<'src>(
+    source: &'src SourceBuffer,
+    document: &mut Document<'src>,
+    delta: &DirectiveDelta,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<()> {
+    apply_file_scope_delta_to_yaml_document_with_mode(
+        source, document, delta, options, config, false,
+    )
+}
+
+fn apply_file_scope_delta_to_yaml_document_with_mode<'src>(
+    source: &'src SourceBuffer,
+    document: &mut Document<'src>,
+    delta: &DirectiveDelta,
+    options: FormatOptions,
+    config: &Config,
+    plan_emits: bool,
+) -> Result<()> {
     let owned_source = document.source.take();
     let placeholder = Document::new(DocumentKind::Yaml, document.range);
     let mut doc = std::mem::replace(document, placeholder);
@@ -118,14 +218,15 @@ pub(crate) fn apply_file_scope_delta_to_yaml_document<'src>(
     if let Some(owned_source) = owned_source {
         let doc = doc.retag_source_lifetime();
         let (doc, result) =
-            replan_yaml_document_with_delta(&owned_source, doc, delta, options, config);
+            replan_yaml_document_with_delta(&owned_source, doc, delta, options, config, plan_emits);
         let mut doc = doc.retag_source_lifetime();
         doc.source = Some(owned_source);
         *document = doc;
         return result;
     }
 
-    let (doc, result) = replan_yaml_document_with_delta(source, doc, delta, options, config);
+    let (doc, result) =
+        replan_yaml_document_with_delta(source, doc, delta, options, config, plan_emits);
     *document = doc;
     result
 }
@@ -136,6 +237,7 @@ fn replan_yaml_document_with_delta<'src>(
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
+    plan_emits: bool,
 ) -> (Document<'src>, Result<()>) {
     doc.patch_all_states(delta.clone());
     let Some(ast) = doc.yaml.take() else {
@@ -160,6 +262,7 @@ fn replan_yaml_document_with_delta<'src>(
         ),
         template_spans_possible_by_state: RefCell::new(Vec::new()),
         collect_trace: false,
+        plan_emits,
     };
     parser.patch_existing_ast_states(delta);
     let result = if directive_delta_affects_markdown(delta) {
@@ -167,8 +270,10 @@ fn replan_yaml_document_with_delta<'src>(
     } else {
         Ok(())
     };
-    if result.is_ok() {
+    if result.is_ok() && plan_emits {
         parser.plan_yaml_emits(true);
+    }
+    if result.is_ok() {
         parser.doc.trace.yaml_semantic_nodes = parser.ast.nodes.len();
     }
     let YamlParser {
@@ -187,6 +292,7 @@ fn replan_yaml_document_with_delta<'src>(
         default_template_openers_present: _,
         template_spans_possible_by_state: _,
         collect_trace: _,
+        plan_emits: _,
     } = parser;
     doc.yaml = Some(ast);
     (doc, result)
@@ -530,6 +636,7 @@ struct YamlParser<'src, 'cfg> {
     default_template_openers_present: bool,
     template_spans_possible_by_state: RefCell<Vec<Option<bool>>>,
     collect_trace: bool,
+    plan_emits: bool,
 }
 
 impl<'src, 'cfg> YamlParser<'src, 'cfg> {
@@ -539,7 +646,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         options: FormatOptions,
         config: &'cfg Config,
         scan: YamlLineScan,
-        collect_trace: bool,
+        mode: YamlParseMode,
     ) -> Self {
         let source_scans = scan.source_scans;
         let yaml_scanned_lines = scan.scanned_lines;
@@ -547,8 +654,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let end_line = scan.end_line;
         let mut doc = Document::new(DocumentKind::Yaml, range);
         let mut ast = YamlDocumentAst::new(range);
+        let estimated_nodes = yaml_scanned_lines.saturating_add(yaml_scanned_lines / 16);
         ast.nodes
-            .reserve(yaml_scanned_lines.saturating_add(yaml_scanned_lines / 16));
+            .reserve(estimated_nodes.max(mode.node_capacity_hint));
         doc.options = options;
         doc.trace.source_scans = source_scans;
         doc.trace.parse_passes = 1;
@@ -573,7 +681,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 &config.template_delimiters,
             ),
             template_spans_possible_by_state: RefCell::new(Vec::new()),
-            collect_trace,
+            collect_trace: mode.collect_trace,
+            plan_emits: mode.plan_emits,
         }
     }
 
@@ -625,9 +734,11 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             false
         };
         self.populate_document_root_markers();
-        self.plan_yaml_emits(clear_inline_width_cache);
-        if self.collect_trace {
-            self.record_plan_trace();
+        if self.plan_emits {
+            self.plan_yaml_emits(clear_inline_width_cache);
+            if self.collect_trace {
+                self.record_plan_trace();
+            }
         }
         self.finish_ast();
         self.doc.yaml = Some(self.ast);
@@ -693,7 +804,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn push_planned_yaml_node(&mut self, node: YamlAstNode<'src>) -> YamlNodeId {
         let id = self.ast.push_node(node);
-        self.plan_yaml_node_emit(id);
+        if self.plan_emits {
+            self.plan_yaml_node_emit(id);
+        }
         id
     }
 
@@ -742,14 +855,19 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn plan_parsed_yaml_flow_nodes(&mut self) {
         let mut ids = std::mem::take(&mut self.flow_collection_nodes);
-        for id in ids.iter().copied() {
-            self.plan_yaml_node_emit(id);
+        if self.plan_emits {
+            for id in ids.iter().copied() {
+                self.plan_yaml_node_emit(id);
+            }
         }
         ids.clear();
         self.flow_collection_nodes = ids;
     }
 
     fn plan_yaml_contextual_child_emits(&mut self, id: YamlNodeId) {
+        if !self.plan_emits {
+            return;
+        }
         let node = self.ast.node(id);
         let options = self.doc.state(node.state).yaml_options(self.options);
         match &node.kind {
@@ -1254,6 +1372,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     }
 
     fn plan_yaml_sequence_emit(&mut self, id: YamlNodeId) {
+        if !self.plan_emits {
+            return;
+        }
         self.plan_yaml_node_emit(id);
         self.plan_yaml_contextual_child_emits(id);
     }
@@ -3089,12 +3210,22 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return Err(self.embedded_formatter_target_error(state, block.value));
         }
         let nested = if state_value.markdown_target || tagged_markdown {
-            Some(self.doc.push_nested(crate::core::markdown::parse_markdown(
-                self.source,
-                block.body,
-                state_value.markdown_options(self.options),
-                self.config,
-            )?))
+            let nested = if self.plan_emits {
+                crate::core::markdown::parse_markdown(
+                    self.source,
+                    block.body,
+                    state_value.markdown_options(self.options),
+                    self.config,
+                )?
+            } else {
+                crate::core::markdown::parse_markdown_for_concrete_validation(
+                    self.source,
+                    block.body,
+                    state_value.markdown_options(self.options),
+                    self.config,
+                )?
+            };
+            Some(self.doc.push_nested(nested))
         } else {
             None
         };
@@ -3533,13 +3664,23 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         for (nested, state) in nested_markdown {
             let state = self.doc.state(state).clone();
             let nested_config = config_for_directive_state(self.config, &state);
-            crate::core::markdown::apply_file_scope_delta_to_markdown_document(
-                self.source,
-                &mut self.doc.nested[nested],
-                delta,
-                state.markdown_options(self.options),
-                &nested_config,
-            )?;
+            if self.plan_emits {
+                crate::core::markdown::apply_file_scope_delta_to_markdown_document(
+                    self.source,
+                    &mut self.doc.nested[nested],
+                    delta,
+                    state.markdown_options(self.options),
+                    &nested_config,
+                )?;
+            } else {
+                crate::core::markdown::apply_file_scope_delta_to_markdown_document_for_concrete_validation(
+                        self.source,
+                        &mut self.doc.nested[nested],
+                        delta,
+                        state.markdown_options(self.options),
+                        &nested_config,
+                    )?;
+            }
         }
         Ok(())
     }

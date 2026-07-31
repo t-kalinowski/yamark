@@ -1,29 +1,337 @@
 use std::borrow::Cow;
+use std::ops::Range;
 
 use crate::core::document::{Document, DocumentKind};
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
 use crate::core::yaml_model::{
-    YamlAstKind, YamlAstNode, YamlBlockChomp, YamlDocumentAst, YamlEmitPlan, YamlFlowMapping,
-    YamlFlowSequence, YamlMapping, YamlNodeId, YamlRenderedKind, YamlScalar, YamlScalarSemantic,
-    YamlScalarStyle, YamlSequence,
+    YamlAstKind, YamlBlockChomp, YamlBlockScalarHeader, YamlDocumentAst, YamlEmitPlan,
+    YamlFlowMapping, YamlFlowSequence, YamlMapping, YamlNodeId, YamlRenderedKind, YamlScalar,
+    YamlScalarSemantic, YamlScalarStyle, YamlSequence,
 };
 use crate::diagnostic::{Result, YamarkError};
 
 const INVALID_OUTPUT: &str = "formatter produced invalid YAML";
 const CHANGED_VALUE: &str = "formatter changed the YAML value";
 
+pub(crate) struct YamlValidationSnapshot {
+    sources: Vec<String>,
+    documents: Vec<BeforeYamlDocument>,
+    roots: Vec<Option<YamlNodeId>>,
+    nodes: Vec<BeforeYamlNode>,
+    children: Vec<Option<YamlNodeId>>,
+    pairs: Vec<BeforeYamlPair>,
+    root_yaml_node_capacity: Option<usize>,
+}
+
+impl YamlValidationSnapshot {
+    pub(crate) fn node_capacity_hint_for_root_yaml(&self) -> Option<usize> {
+        self.root_yaml_node_capacity
+    }
+}
+
+struct BeforeYamlDocument {
+    source: usize,
+    range: Span,
+    roots: Option<Range<usize>>,
+}
+
+struct BeforeYamlNode {
+    kind: BeforeYamlKind,
+}
+
+enum BeforeYamlKind {
+    Empty,
+    Scalar(BeforeYamlScalar),
+    Sequence(BeforeYamlSequence),
+    Mapping(BeforeYamlMapping),
+    Alias(SourceSpan<'static>),
+    Opaque(SourceSpan<'static>),
+}
+
+struct BeforeYamlScalar {
+    style: YamlScalarStyle,
+    semantic: YamlScalarSemantic,
+    value: SourceSpan<'static>,
+    block_header: Option<YamlBlockScalarHeader>,
+    body: Option<SourceSpan<'static>>,
+    tag: Option<SourceSpan<'static>>,
+    anchor: Option<SourceSpan<'static>>,
+    emit_rule: ScalarEmitRule,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScalarEmitRule {
+    Exact,
+    ContentMayChange,
+    EmptyMarkdown,
+}
+
+struct BeforeYamlSequence {
+    indent: usize,
+    children: Range<usize>,
+    tag: Option<SourceSpan<'static>>,
+    anchor: Option<SourceSpan<'static>>,
+}
+
+struct BeforeYamlMapping {
+    indent: usize,
+    pairs: Range<usize>,
+    tag: Option<SourceSpan<'static>>,
+    anchor: Option<SourceSpan<'static>>,
+}
+
+struct BeforeYamlPair {
+    key: Option<YamlNodeId>,
+    value: Option<YamlNodeId>,
+}
+
+pub(crate) fn capture_yaml_validation_snapshot(
+    root_source: String,
+    root_document: Document<'static>,
+) -> YamlValidationSnapshot {
+    let root_yaml_node_capacity = (root_document.kind == DocumentKind::Yaml)
+        .then(|| root_document.yaml.as_ref().map(|ast| ast.nodes.len()))
+        .flatten();
+    let mut builder = YamlValidationSnapshotBuilder::new(root_source);
+    builder.capture_document(root_document, 0);
+    builder.finish(root_yaml_node_capacity)
+}
+
+struct YamlValidationSnapshotBuilder {
+    sources: Vec<String>,
+    documents: Vec<BeforeYamlDocument>,
+    roots: Vec<Option<YamlNodeId>>,
+    nodes: Vec<BeforeYamlNode>,
+    children: Vec<Option<YamlNodeId>>,
+    pairs: Vec<BeforeYamlPair>,
+}
+
+impl YamlValidationSnapshotBuilder {
+    fn new(root_source: String) -> Self {
+        Self {
+            sources: vec![root_source],
+            documents: Vec::new(),
+            roots: Vec::new(),
+            nodes: Vec::new(),
+            children: Vec::new(),
+            pairs: Vec::new(),
+        }
+    }
+
+    fn capture_document(&mut self, document: Document<'static>, inherited_source_id: usize) {
+        let Document {
+            kind,
+            range,
+            source,
+            nested,
+            yaml,
+            ..
+        } = document;
+
+        let source_id = source.map_or(inherited_source_id, |source| {
+            let source_id = self.sources.len();
+            self.sources.push(source.into_string());
+            source_id
+        });
+        self.capture_document_parts(kind, range, yaml, nested, source_id);
+    }
+
+    fn capture_document_parts(
+        &mut self,
+        kind: DocumentKind,
+        range: Span,
+        yaml: Option<YamlDocumentAst<'static>>,
+        nested: Vec<Document<'static>>,
+        source_id: usize,
+    ) {
+        if kind == DocumentKind::Yaml {
+            let roots = yaml.map(|ast| self.capture_ast(ast));
+            self.documents.push(BeforeYamlDocument {
+                source: source_id,
+                range,
+                roots,
+            });
+        }
+        for nested_document in nested {
+            self.capture_document(nested_document, source_id);
+        }
+    }
+
+    fn capture_ast(&mut self, ast: YamlDocumentAst<'static>) -> Range<usize> {
+        let node_base = self.nodes.len();
+        self.nodes.reserve(ast.nodes.len());
+        self.roots.reserve(ast.roots.len());
+
+        let roots_start = self.roots.len();
+        self.roots.extend(
+            ast.roots
+                .iter()
+                .map(|root| remap_optional_node(root.node, node_base)),
+        );
+        let roots_end = self.roots.len();
+
+        for node in ast.nodes {
+            let emit_rule = scalar_emit_rule(&node.emit);
+            let kind = match node.kind {
+                YamlAstKind::Empty => BeforeYamlKind::Empty,
+                YamlAstKind::Scalar(scalar) => BeforeYamlKind::Scalar(BeforeYamlScalar {
+                    style: scalar.style,
+                    semantic: scalar.semantic,
+                    value: scalar.value.retag(),
+                    block_header: scalar.block_header,
+                    body: scalar.body.map(SourceSpan::retag),
+                    tag: scalar.tag.map(SourceSpan::retag),
+                    anchor: scalar.anchor.map(SourceSpan::retag),
+                    emit_rule,
+                }),
+                YamlAstKind::Sequence(sequence) => {
+                    assert_eq!(
+                        emit_rule,
+                        ScalarEmitRule::Exact,
+                        "scalar YAML emit rule was attached to a sequence"
+                    );
+                    let start = self.children.len();
+                    self.children.extend(
+                        sequence
+                            .items
+                            .into_iter()
+                            .map(|item| remap_optional_node(item.value, node_base)),
+                    );
+                    BeforeYamlKind::Sequence(BeforeYamlSequence {
+                        indent: sequence.indent,
+                        children: start..self.children.len(),
+                        tag: sequence.tag.map(SourceSpan::retag),
+                        anchor: sequence.anchor.map(SourceSpan::retag),
+                    })
+                }
+                YamlAstKind::FlowSequence(sequence) => {
+                    assert_eq!(
+                        emit_rule,
+                        ScalarEmitRule::Exact,
+                        "scalar YAML emit rule was attached to a flow sequence"
+                    );
+                    let start = self.children.len();
+                    self.children.extend(
+                        sequence
+                            .entries
+                            .into_iter()
+                            .map(|id| Some(remap_node(id, node_base))),
+                    );
+                    BeforeYamlKind::Sequence(BeforeYamlSequence {
+                        indent: 0,
+                        children: start..self.children.len(),
+                        tag: sequence.tag.map(SourceSpan::retag),
+                        anchor: sequence.anchor.map(SourceSpan::retag),
+                    })
+                }
+                YamlAstKind::Mapping(mapping) => {
+                    assert_eq!(
+                        emit_rule,
+                        ScalarEmitRule::Exact,
+                        "scalar YAML emit rule was attached to a mapping"
+                    );
+                    let start = self.pairs.len();
+                    self.pairs
+                        .extend(mapping.pairs.into_iter().map(|pair| BeforeYamlPair {
+                            key: remap_optional_node(pair.key_node, node_base),
+                            value: remap_optional_node(pair.value, node_base),
+                        }));
+                    BeforeYamlKind::Mapping(BeforeYamlMapping {
+                        indent: mapping.indent,
+                        pairs: start..self.pairs.len(),
+                        tag: mapping.tag.map(SourceSpan::retag),
+                        anchor: mapping.anchor.map(SourceSpan::retag),
+                    })
+                }
+                YamlAstKind::FlowMapping(mapping) => {
+                    assert_eq!(
+                        emit_rule,
+                        ScalarEmitRule::Exact,
+                        "scalar YAML emit rule was attached to a flow mapping"
+                    );
+                    let start = self.pairs.len();
+                    self.pairs
+                        .extend(mapping.pairs.into_iter().map(|pair| BeforeYamlPair {
+                            key: Some(remap_node(pair.key, node_base)),
+                            value: remap_optional_node(pair.value, node_base),
+                        }));
+                    BeforeYamlKind::Mapping(BeforeYamlMapping {
+                        indent: 0,
+                        pairs: start..self.pairs.len(),
+                        tag: mapping.tag.map(SourceSpan::retag),
+                        anchor: mapping.anchor.map(SourceSpan::retag),
+                    })
+                }
+                YamlAstKind::Alias(alias) => {
+                    assert_eq!(
+                        emit_rule,
+                        ScalarEmitRule::Exact,
+                        "scalar YAML emit rule was attached to an alias"
+                    );
+                    BeforeYamlKind::Alias(alias.value.retag())
+                }
+                YamlAstKind::Opaque(_) => {
+                    assert_eq!(
+                        emit_rule,
+                        ScalarEmitRule::Exact,
+                        "scalar YAML emit rule was attached to an opaque node"
+                    );
+                    BeforeYamlKind::Opaque(node.span.retag())
+                }
+            };
+            self.nodes.push(BeforeYamlNode { kind });
+        }
+
+        roots_start..roots_end
+    }
+
+    fn finish(self, root_yaml_node_capacity: Option<usize>) -> YamlValidationSnapshot {
+        YamlValidationSnapshot {
+            sources: self.sources,
+            documents: self.documents,
+            roots: self.roots,
+            nodes: self.nodes,
+            children: self.children,
+            pairs: self.pairs,
+            root_yaml_node_capacity,
+        }
+    }
+}
+
+fn remap_node(id: YamlNodeId, base: usize) -> YamlNodeId {
+    YamlNodeId::new(
+        base.checked_add(id.index())
+            .expect("YAML snapshot node index overflowed usize"),
+    )
+}
+
+fn remap_optional_node(id: Option<YamlNodeId>, base: usize) -> Option<YamlNodeId> {
+    id.map(|id| remap_node(id, base))
+}
+
+fn scalar_emit_rule(emit: &YamlEmitPlan) -> ScalarEmitRule {
+    match emit {
+        YamlEmitPlan::Rendered(YamlRenderedKind::EmptyMarkdownScalar) => {
+            ScalarEmitRule::EmptyMarkdown
+        }
+        YamlEmitPlan::NestedMarkdownBlockScalar { .. }
+        | YamlEmitPlan::ExternalBlockScalar
+        | YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar) => {
+            ScalarEmitRule::ContentMayChange
+        }
+        _ => ScalarEmitRule::Exact,
+    }
+}
+
 pub(crate) fn validate_yaml_documents_equivalent(
-    before_source: &SourceBuffer,
-    before_document: &Document<'_>,
+    before: &YamlValidationSnapshot,
     after_source: &SourceBuffer,
     after_document: &Document<'_>,
 ) -> Result<()> {
-    let mut before_documents = Vec::new();
     let mut after_documents = Vec::new();
-    collect_yaml_documents(before_document, before_source, &mut before_documents);
     collect_yaml_documents(after_document, after_source, &mut after_documents);
 
-    if before_documents.len() != after_documents.len() {
+    if before.documents.len() != after_documents.len() {
         return Err(YamarkError::new(CHANGED_VALUE));
     }
 
@@ -38,8 +346,8 @@ pub(crate) fn validate_yaml_documents_equivalent(
         }
     }
 
-    for (before, after) in before_documents.into_iter().zip(after_documents) {
-        if !yaml_documents_equivalent(before, after)? {
+    for (before_document, after_document) in before.documents.iter().zip(after_documents) {
+        if !yaml_documents_equivalent(before, before_document, after_document)? {
             return Err(YamarkError::new(CHANGED_VALUE));
         }
     }
@@ -81,38 +389,48 @@ fn yaml_forbidden_character(ch: char) -> bool {
 }
 
 #[derive(Clone, Copy)]
-struct YamlContext<'doc, 'src> {
+struct BeforeYamlContext<'snapshot> {
+    source: &'snapshot str,
+    snapshot: &'snapshot YamlValidationSnapshot,
+}
+
+#[derive(Clone, Copy)]
+struct AfterYamlContext<'doc, 'src> {
     source: &'doc SourceBuffer,
     ast: &'doc YamlDocumentAst<'src>,
 }
 
 fn yaml_documents_equivalent(
-    before_document: YamlDocumentRef<'_, '_>,
+    before_snapshot: &YamlValidationSnapshot,
+    before_document: &BeforeYamlDocument,
     after_document: YamlDocumentRef<'_, '_>,
 ) -> Result<bool> {
-    let (Some(before_ast), Some(after_ast)) = (
-        before_document.document.yaml.as_ref(),
-        after_document.document.yaml.as_ref(),
-    ) else {
-        return Ok(before_document.document.yaml.is_none()
-            && after_document.document.yaml.is_none()
-            && before_document.source.slice(before_document.document.range)
+    let before_source = &before_snapshot.sources[before_document.source];
+    let Some(before_roots) = before_document.roots.as_ref() else {
+        return Ok(after_document.document.yaml.is_none()
+            && before_document.range.slice(before_source)
                 == after_document.source.slice(after_document.document.range));
     };
-    if before_ast.roots.len() != after_ast.roots.len() {
+    let Some(after_ast) = after_document.document.yaml.as_ref() else {
+        return Ok(false);
+    };
+    if before_roots.len() != after_ast.roots.len() {
         return Ok(false);
     }
 
-    let before = YamlContext {
-        source: before_document.source,
-        ast: before_ast,
+    let before = BeforeYamlContext {
+        source: before_source,
+        snapshot: before_snapshot,
     };
-    let after = YamlContext {
+    let after = AfterYamlContext {
         source: after_document.source,
         ast: after_ast,
     };
-    for (before_root, after_root) in before_ast.roots.iter().zip(&after_ast.roots) {
-        if !optional_nodes_equivalent(before, before_root.node, 0, after, after_root.node, 0)? {
+    for (before_root, after_root) in before_snapshot.roots[before_roots.clone()]
+        .iter()
+        .zip(&after_ast.roots)
+    {
+        if !optional_nodes_equivalent(before, *before_root, 0, after, after_root.node, 0)? {
             return Ok(false);
         }
     }
@@ -120,10 +438,10 @@ fn yaml_documents_equivalent(
 }
 
 fn optional_nodes_equivalent(
-    before: YamlContext<'_, '_>,
+    before: BeforeYamlContext<'_>,
     before_id: Option<YamlNodeId>,
     before_parent_indent: usize,
-    after: YamlContext<'_, '_>,
+    after: AfterYamlContext<'_, '_>,
     after_id: Option<YamlNodeId>,
     after_parent_indent: usize,
 ) -> Result<bool> {
@@ -136,55 +454,59 @@ fn optional_nodes_equivalent(
             after_id,
             after_parent_indent,
         ),
-        (None, Some(after_id)) => Ok(node_is_unadorned_null(after, after_id)),
-        (Some(before_id), None) => Ok(node_is_unadorned_null(before, before_id)),
+        (None, Some(after_id)) => Ok(after_node_is_unadorned_null(after, after_id)),
+        (Some(before_id), None) => Ok(before_node_is_unadorned_null(before, before_id)),
         (None, None) => Ok(true),
     }
 }
 
 fn nodes_equivalent(
-    before: YamlContext<'_, '_>,
+    before: BeforeYamlContext<'_>,
     before_id: YamlNodeId,
     before_parent_indent: usize,
-    after: YamlContext<'_, '_>,
+    after: AfterYamlContext<'_, '_>,
     after_id: YamlNodeId,
     after_parent_indent: usize,
 ) -> Result<bool> {
-    let before_node = before.ast.node(before_id);
+    let before_node = &before.snapshot.nodes[before_id.index()];
     let after_node = after.ast.node(after_id);
 
-    if node_is_unadorned_null(before, before_id) && node_is_unadorned_null(after, after_id) {
+    if before_node_is_unadorned_null(before, before_id)
+        && after_node_is_unadorned_null(after, after_id)
+    {
         return Ok(true);
     }
     if matches!(
-        before_node.emit,
-        YamlEmitPlan::Rendered(YamlRenderedKind::EmptyMarkdownScalar)
+        &before_node.kind,
+        BeforeYamlKind::Scalar(BeforeYamlScalar {
+            emit_rule: ScalarEmitRule::EmptyMarkdown,
+            ..
+        })
     ) {
-        let (YamlAstKind::Scalar(before_scalar), YamlAstKind::Scalar(after_scalar)) =
+        let (BeforeYamlKind::Scalar(before_scalar), YamlAstKind::Scalar(after_scalar)) =
             (&before_node.kind, &after_node.kind)
         else {
             return Ok(false);
         };
-        return Ok(optional_span_text_equal(
+        return Ok(optional_span_text_equal_cross_source(
             before.source,
             before_scalar.tag,
             after.source,
             after_scalar.tag,
-        ) && optional_span_text_equal(
+        ) && optional_span_text_equal_cross_source(
             before.source,
             before_scalar.anchor,
             after.source,
             after_scalar.anchor,
         ) && scalar_is_string_like(after_scalar)
-            && comparable_scalar_value(after, after_scalar, after_parent_indent)
+            && comparable_after_scalar_value(after, after_scalar, after_parent_indent)
                 .is_some_and(|value| comparable_scalar_is_empty_string(&value)));
     }
-    if let (YamlAstKind::Scalar(before_scalar), YamlAstKind::Scalar(after_scalar)) =
+    if let (BeforeYamlKind::Scalar(before_scalar), YamlAstKind::Scalar(after_scalar)) =
         (&before_node.kind, &after_node.kind)
     {
         return scalars_equivalent(
             before,
-            before_node,
             before_scalar,
             before_parent_indent,
             after,
@@ -192,33 +514,47 @@ fn nodes_equivalent(
             after_parent_indent,
         );
     }
-    if let (Some(before_sequence), Some(after_sequence)) = (
-        SequenceRef::from_kind(&before_node.kind),
-        SequenceRef::from_kind(&after_node.kind),
+    if let (BeforeYamlKind::Sequence(before_sequence), Some(after_sequence)) = (
+        &before_node.kind,
+        AfterSequenceRef::from_kind(&after_node.kind),
     ) {
         return sequences_equivalent(before, before_sequence, after, after_sequence);
     }
-    if let (Some(before_mapping), Some(after_mapping)) = (
-        MappingRef::from_kind(&before_node.kind),
-        MappingRef::from_kind(&after_node.kind),
+    if let (BeforeYamlKind::Mapping(before_mapping), Some(after_mapping)) = (
+        &before_node.kind,
+        AfterMappingRef::from_kind(&after_node.kind),
     ) {
         return mappings_equivalent(before, before_mapping, after, after_mapping);
     }
 
     Ok(match (&before_node.kind, &after_node.kind) {
-        (YamlAstKind::Empty, YamlAstKind::Empty) => true,
-        (YamlAstKind::Alias(before_alias), YamlAstKind::Alias(after_alias)) => {
-            before.source.slice(before_alias.value).trim_ascii()
+        (BeforeYamlKind::Empty, YamlAstKind::Empty) => true,
+        (BeforeYamlKind::Alias(before_alias), YamlAstKind::Alias(after_alias)) => {
+            before_alias.span().slice(before.source).trim_ascii()
                 == after.source.slice(after_alias.value).trim_ascii()
         }
-        (YamlAstKind::Opaque(_), YamlAstKind::Opaque(_)) => {
-            before.source.slice(before_node.span) == after.source.slice(after_node.span)
+        (BeforeYamlKind::Opaque(before_span), YamlAstKind::Opaque(_)) => {
+            before_span.span().slice(before.source) == after.source.slice(after_node.span)
         }
         _ => false,
     })
 }
 
-fn node_is_unadorned_null(context: YamlContext<'_, '_>, id: YamlNodeId) -> bool {
+fn before_node_is_unadorned_null(context: BeforeYamlContext<'_>, id: YamlNodeId) -> bool {
+    match &context.snapshot.nodes[id.index()].kind {
+        BeforeYamlKind::Empty => true,
+        BeforeYamlKind::Scalar(scalar) => {
+            scalar.semantic == YamlScalarSemantic::Null
+                && scalar.anchor.is_none()
+                && scalar
+                    .tag
+                    .is_none_or(|tag| tag.span().slice(context.source) == "!!null")
+        }
+        _ => false,
+    }
+}
+
+fn after_node_is_unadorned_null(context: AfterYamlContext<'_, '_>, id: YamlNodeId) -> bool {
     match &context.ast.node(id).kind {
         YamlAstKind::Empty => true,
         YamlAstKind::Scalar(scalar) => {
@@ -233,20 +569,19 @@ fn node_is_unadorned_null(context: YamlContext<'_, '_>, id: YamlNodeId) -> bool 
 }
 
 fn scalars_equivalent(
-    before: YamlContext<'_, '_>,
-    before_node: &YamlAstNode<'_>,
-    before_scalar: &YamlScalar<'_>,
+    before: BeforeYamlContext<'_>,
+    before_scalar: &BeforeYamlScalar,
     before_parent_indent: usize,
-    after: YamlContext<'_, '_>,
+    after: AfterYamlContext<'_, '_>,
     after_scalar: &YamlScalar<'_>,
     after_parent_indent: usize,
 ) -> Result<bool> {
-    if !optional_span_text_equal(
+    if !optional_span_text_equal_cross_source(
         before.source,
         before_scalar.tag,
         after.source,
         after_scalar.tag,
-    ) || !optional_span_text_equal(
+    ) || !optional_span_text_equal_cross_source(
         before.source,
         before_scalar.anchor,
         after.source,
@@ -258,8 +593,8 @@ fn scalars_equivalent(
     let raw_equal = before_scalar.style == after_scalar.style
         && before_scalar.semantic == after_scalar.semantic
         && before_source_scalar_text(before, before_scalar)
-            == before_source_scalar_text(after, after_scalar)
-        && optional_span_text_equal(
+            == after_source_scalar_text(after, after_scalar)
+        && optional_span_text_equal_cross_source(
             before.source,
             before_scalar.body,
             after.source,
@@ -270,29 +605,17 @@ fn scalars_equivalent(
         return Ok(true);
     }
 
-    let after_value = comparable_scalar_value(after, after_scalar, after_parent_indent)
+    let after_value = comparable_after_scalar_value(after, after_scalar, after_parent_indent)
         .ok_or_else(|| YamarkError::new(INVALID_OUTPUT))?;
-    if scalar_content_may_change(before_node, before_scalar, after_scalar) {
+    if before_scalar.emit_rule == ScalarEmitRule::ContentMayChange
+        && before_scalar_is_string_like(before_scalar)
+        && scalar_is_string_like(after_scalar)
+    {
         return Ok(true);
     }
-    let before_value = comparable_scalar_value(before, before_scalar, before_parent_indent)
+    let before_value = comparable_before_scalar_value(before, before_scalar, before_parent_indent)
         .ok_or_else(|| YamarkError::new(CHANGED_VALUE))?;
     Ok(before_value == after_value)
-}
-
-fn scalar_content_may_change(
-    node: &YamlAstNode<'_>,
-    before: &YamlScalar<'_>,
-    after: &YamlScalar<'_>,
-) -> bool {
-    match node.emit {
-        YamlEmitPlan::NestedMarkdownBlockScalar { .. }
-        | YamlEmitPlan::ExternalBlockScalar
-        | YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar) => {
-            scalar_is_string_like(before) && scalar_is_string_like(after)
-        }
-        _ => false,
-    }
 }
 
 fn scalar_is_string_like(scalar: &YamlScalar<'_>) -> bool {
@@ -300,7 +623,30 @@ fn scalar_is_string_like(scalar: &YamlScalar<'_>) -> bool {
         || scalar.semantic == YamlScalarSemantic::Unknown && scalar.tag.is_some()
 }
 
-fn before_source_scalar_text<'a>(context: YamlContext<'a, '_>, scalar: &YamlScalar<'_>) -> &'a str {
+fn before_scalar_is_string_like(scalar: &BeforeYamlScalar) -> bool {
+    scalar.semantic == YamlScalarSemantic::String
+        || scalar.semantic == YamlScalarSemantic::Unknown && scalar.tag.is_some()
+}
+
+fn before_source_scalar_text<'a>(
+    context: BeforeYamlContext<'a>,
+    scalar: &BeforeYamlScalar,
+) -> &'a str {
+    let start = [scalar.tag, scalar.anchor]
+        .into_iter()
+        .flatten()
+        .map(SourceSpan::end)
+        .max()
+        .unwrap_or_else(|| scalar.value.start());
+    Span::new(start.min(scalar.value.end()), scalar.value.end())
+        .slice(context.source)
+        .trim_ascii()
+}
+
+fn after_source_scalar_text<'a>(
+    context: AfterYamlContext<'a, '_>,
+    scalar: &YamlScalar<'_>,
+) -> &'a str {
     let start = [scalar.tag, scalar.anchor]
         .into_iter()
         .flatten()
@@ -330,16 +676,53 @@ fn comparable_scalar_is_empty_string(value: &ComparableScalar<'_>) -> bool {
     )
 }
 
-fn comparable_scalar_value<'a>(
-    context: YamlContext<'a, '_>,
+fn comparable_before_scalar_value<'a>(
+    context: BeforeYamlContext<'a>,
+    scalar: &BeforeYamlScalar,
+    parent_indent: usize,
+) -> Option<ComparableScalar<'a>> {
+    comparable_scalar_value(
+        before_source_scalar_text(context, scalar),
+        scalar.body.map(|body| body.span().slice(context.source)),
+        scalar.style,
+        scalar.semantic,
+        scalar.block_header,
+        parent_indent,
+    )
+}
+
+fn comparable_after_scalar_value<'a>(
+    context: AfterYamlContext<'a, '_>,
     scalar: &YamlScalar<'_>,
     parent_indent: usize,
 ) -> Option<ComparableScalar<'a>> {
-    let decoded = if scalar.body.is_some() {
-        Cow::Owned(decode_block_scalar(context, scalar, parent_indent)?)
+    comparable_scalar_value(
+        after_source_scalar_text(context, scalar),
+        scalar.body.map(|body| context.source.slice(body)),
+        scalar.style,
+        scalar.semantic,
+        scalar.block_header,
+        parent_indent,
+    )
+}
+
+fn comparable_scalar_value<'a>(
+    raw: &'a str,
+    body: Option<&str>,
+    style: YamlScalarStyle,
+    semantic: YamlScalarSemantic,
+    block_header: Option<YamlBlockScalarHeader>,
+    parent_indent: usize,
+) -> Option<ComparableScalar<'a>> {
+    let decoded = if let Some(body) = body {
+        Cow::Owned(decode_block_scalar(
+            body,
+            style,
+            block_header?,
+            parent_indent,
+        )?)
     } else {
-        let raw = before_source_scalar_text(context, scalar);
-        match scalar.style {
+        match style {
             YamlScalarStyle::Plain => {
                 if raw.contains('\u{feff}') {
                     return None;
@@ -353,7 +736,7 @@ fn comparable_scalar_value<'a>(
         }
     };
 
-    Some(match scalar.semantic {
+    Some(match semantic {
         YamlScalarSemantic::String => ComparableScalar::String(decoded),
         YamlScalarSemantic::Null => ComparableScalar::Null,
         YamlScalarSemantic::Boolean => ComparableScalar::Boolean(yaml_bool(decoded.as_ref())?),
@@ -481,15 +864,15 @@ fn decode_hex_escape(chars: &mut std::str::Chars<'_>, digits: usize) -> Option<c
 }
 
 fn decode_block_scalar(
-    context: YamlContext<'_, '_>,
-    scalar: &YamlScalar<'_>,
+    body: &str,
+    style: YamlScalarStyle,
+    header: YamlBlockScalarHeader,
     parent_indent: usize,
 ) -> Option<String> {
-    let body = normalize_line_endings(context.source.slice(scalar.body?));
+    let body = normalize_line_endings(body);
     if body.contains('\u{feff}') {
         return None;
     }
-    let header = scalar.block_header?;
     let source_lines = body.split('\n').collect::<Vec<_>>();
     let first_content_line = source_lines
         .iter()
@@ -531,7 +914,7 @@ fn decode_block_scalar(
         });
     }
 
-    let mut value = match scalar.style {
+    let mut value = match style {
         YamlScalarStyle::LiteralBlock => lines
             .iter()
             .map(|line| line.text.as_str())
@@ -630,12 +1013,12 @@ fn yaml_bool(value: &str) -> Option<bool> {
 }
 
 #[derive(Clone, Copy)]
-enum SequenceRef<'a, 'src> {
+enum AfterSequenceRef<'a, 'src> {
     Block(&'a YamlSequence<'src>),
     Flow(&'a YamlFlowSequence<'src>),
 }
 
-impl<'a, 'src> SequenceRef<'a, 'src> {
+impl<'a, 'src> AfterSequenceRef<'a, 'src> {
     fn from_kind(kind: &'a YamlAstKind<'src>) -> Option<Self> {
         match kind {
             YamlAstKind::Sequence(sequence) => Some(Self::Block(sequence)),
@@ -681,33 +1064,36 @@ impl<'a, 'src> SequenceRef<'a, 'src> {
 }
 
 fn sequences_equivalent(
-    before: YamlContext<'_, '_>,
-    before_sequence: SequenceRef<'_, '_>,
-    after: YamlContext<'_, '_>,
-    after_sequence: SequenceRef<'_, '_>,
+    before: BeforeYamlContext<'_>,
+    before_sequence: &BeforeYamlSequence,
+    after: AfterYamlContext<'_, '_>,
+    after_sequence: AfterSequenceRef<'_, '_>,
 ) -> Result<bool> {
-    if before_sequence.len() != after_sequence.len()
-        || !collection_tag_equal(
+    if before_sequence.children.len() != after_sequence.len()
+        || !collection_tag_equal_cross_source(
             before.source,
-            before_sequence.tag(),
+            before_sequence.tag,
             "!!seq",
             after.source,
             after_sequence.tag(),
         )
-        || !optional_span_text_equal(
+        || !optional_span_text_equal_cross_source(
             before.source,
-            before_sequence.anchor(),
+            before_sequence.anchor,
             after.source,
             after_sequence.anchor(),
         )
     {
         return Ok(false);
     }
-    for index in 0..before_sequence.len() {
+    for (index, before_item) in before.snapshot.children[before_sequence.children.clone()]
+        .iter()
+        .enumerate()
+    {
         if !optional_nodes_equivalent(
             before,
-            before_sequence.item(index),
-            before_sequence.indent(),
+            *before_item,
+            before_sequence.indent,
             after,
             after_sequence.item(index),
             after_sequence.indent(),
@@ -719,12 +1105,12 @@ fn sequences_equivalent(
 }
 
 #[derive(Clone, Copy)]
-enum MappingRef<'a, 'src> {
+enum AfterMappingRef<'a, 'src> {
     Block(&'a YamlMapping<'src>),
     Flow(&'a YamlFlowMapping<'src>),
 }
 
-impl<'a, 'src> MappingRef<'a, 'src> {
+impl<'a, 'src> AfterMappingRef<'a, 'src> {
     fn from_kind(kind: &'a YamlAstKind<'src>) -> Option<Self> {
         match kind {
             YamlAstKind::Mapping(mapping) => Some(Self::Block(mapping)),
@@ -776,43 +1162,45 @@ impl<'a, 'src> MappingRef<'a, 'src> {
 }
 
 fn mappings_equivalent(
-    before: YamlContext<'_, '_>,
-    before_mapping: MappingRef<'_, '_>,
-    after: YamlContext<'_, '_>,
-    after_mapping: MappingRef<'_, '_>,
+    before: BeforeYamlContext<'_>,
+    before_mapping: &BeforeYamlMapping,
+    after: AfterYamlContext<'_, '_>,
+    after_mapping: AfterMappingRef<'_, '_>,
 ) -> Result<bool> {
-    if before_mapping.len() != after_mapping.len()
-        || !collection_tag_equal(
+    if before_mapping.pairs.len() != after_mapping.len()
+        || !collection_tag_equal_cross_source(
             before.source,
-            before_mapping.tag(),
+            before_mapping.tag,
             "!!map",
             after.source,
             after_mapping.tag(),
         )
-        || !optional_span_text_equal(
+        || !optional_span_text_equal_cross_source(
             before.source,
-            before_mapping.anchor(),
+            before_mapping.anchor,
             after.source,
             after_mapping.anchor(),
         )
     {
         return Ok(false);
     }
-    for index in 0..before_mapping.len() {
-        let (before_key, before_value) = before_mapping.pair(index);
+    for (index, before_pair) in before.snapshot.pairs[before_mapping.pairs.clone()]
+        .iter()
+        .enumerate()
+    {
         let (after_key, after_value) = after_mapping.pair(index);
         let keys_equivalent = optional_nodes_equivalent(
             before,
-            before_key,
-            before_mapping.indent(),
+            before_pair.key,
+            before_mapping.indent,
             after,
             after_key,
             after_mapping.indent(),
         )?;
         let values_equivalent = optional_nodes_equivalent(
             before,
-            before_value,
-            before_mapping.indent(),
+            before_pair.value,
+            before_mapping.indent,
             after,
             after_value,
             after_mapping.indent(),
@@ -824,15 +1212,15 @@ fn mappings_equivalent(
     Ok(true)
 }
 
-fn collection_tag_equal(
-    before_source: &SourceBuffer,
-    before: Option<SourceSpan<'_>>,
+fn collection_tag_equal_cross_source(
+    before_source: &str,
+    before: Option<SourceSpan<'static>>,
     removable: &str,
     after_source: &SourceBuffer,
     after: Option<SourceSpan<'_>>,
 ) -> bool {
     let before = before
-        .map(|span| before_source.slice(span))
+        .map(|span| span.span().slice(before_source))
         .filter(|tag| *tag != removable);
     let after = after
         .map(|span| after_source.slice(span))
@@ -840,11 +1228,12 @@ fn collection_tag_equal(
     before == after
 }
 
-fn optional_span_text_equal(
-    before_source: &SourceBuffer,
-    before: Option<SourceSpan<'_>>,
+fn optional_span_text_equal_cross_source(
+    before_source: &str,
+    before: Option<SourceSpan<'static>>,
     after_source: &SourceBuffer,
     after: Option<SourceSpan<'_>>,
 ) -> bool {
-    before.map(|span| before_source.slice(span)) == after.map(|span| after_source.slice(span))
+    before.map(|span| span.span().slice(before_source))
+        == after.map(|span| after_source.slice(span))
 }

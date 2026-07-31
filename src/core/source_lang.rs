@@ -55,10 +55,28 @@ pub(crate) fn parse_source_language_for_formatting<'src>(
     )
 }
 
+pub(crate) fn parse_source_language_for_validation<'src>(
+    source: &'src SourceBuffer,
+    range: Span,
+    language: SourceLanguage,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<Document<'src>> {
+    parse_source_language_with_mode(
+        source,
+        range,
+        language,
+        options,
+        config,
+        EmbeddedMarkdownParseMode::Validation,
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EmbeddedMarkdownParseMode {
     Concrete,
     SemanticOnly,
+    Validation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,7 +190,7 @@ fn parse_source_language_with_mode<'src>(
             }
             if let Some(delta) = delta {
                 patch_source_nodes_after_file_scope_delta(
-                    source, &mut doc, options, config, &delta,
+                    source, &mut doc, options, config, &delta, mode,
                 )?;
             }
             comment_target_allowed = true;
@@ -378,6 +396,7 @@ fn patch_source_nodes_after_file_scope_delta<'src>(
     options: FormatOptions,
     config: &Config,
     delta: &DirectiveDelta,
+    mode: EmbeddedMarkdownParseMode,
 ) -> Result<()> {
     for index in 0..doc.nodes.len() {
         let state = doc.state(doc.nodes[index].state).clone();
@@ -385,13 +404,23 @@ fn patch_source_nodes_after_file_scope_delta<'src>(
             EmitPlan::EmbeddedMarkdownComment { nested, .. }
             | EmitPlan::EmbeddedMarkdownString { nested, .. } => {
                 let nested_config = embedded_config_for_directive_state(config, &state);
-                crate::core::markdown::apply_file_scope_delta_to_markdown_document(
-                    source,
-                    &mut doc.nested[nested],
-                    delta,
-                    state.markdown_options(options),
-                    &nested_config,
-                )?;
+                if mode == EmbeddedMarkdownParseMode::Validation {
+                    crate::core::markdown::apply_file_scope_delta_to_markdown_document_for_validation(
+                        source,
+                        &mut doc.nested[nested],
+                        delta,
+                        state.markdown_options(options),
+                        &nested_config,
+                    )?;
+                } else {
+                    crate::core::markdown::apply_file_scope_delta_to_markdown_document(
+                        source,
+                        &mut doc.nested[nested],
+                        delta,
+                        state.markdown_options(options),
+                        &nested_config,
+                    )?;
+                }
             }
             EmitPlan::EmbeddedYamlComment { .. } => {}
             _ => {}
@@ -625,6 +654,14 @@ fn parse_generated_embedded_markdown(
                 &embedded_config,
             )?
         }
+        EmbeddedMarkdownParseMode::Validation => {
+            crate::core::markdown::parse_markdown_for_validation(
+                &generated_source,
+                range,
+                options,
+                &embedded_config,
+            )?
+        }
     };
     let mut nested = nested.retag_source_lifetime();
     nested.source = Some(generated_source);
@@ -653,6 +690,13 @@ fn parse_generated_embedded_yaml(
         EmbeddedMarkdownParseMode::SemanticOnly => {
             crate::core::yaml::parse_yaml_for_formatting(&generated_source, range, options, config)?
         }
+        EmbeddedMarkdownParseMode::Validation => crate::core::yaml::parse_yaml_for_validation(
+            &generated_source,
+            range,
+            options,
+            config,
+            0,
+        )?,
     };
     let mut nested = nested.retag_source_lifetime();
     nested.source = Some(generated_source);

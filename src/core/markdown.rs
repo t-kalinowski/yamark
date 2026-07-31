@@ -37,10 +37,48 @@ pub(crate) fn parse_markdown_for_formatting<'src>(
     )
 }
 
+pub(crate) fn parse_markdown_for_validation<'src>(
+    source: &'src SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<Document<'src>> {
+    parse_markdown_with_mode(
+        source,
+        range,
+        options,
+        config,
+        MarkdownParseMode::SemanticOnlyValidation,
+    )
+}
+
+pub(crate) fn parse_markdown_for_concrete_validation<'src>(
+    source: &'src SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<Document<'src>> {
+    parse_markdown_with_mode(
+        source,
+        range,
+        options,
+        config,
+        MarkdownParseMode::ConcreteValidation,
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MarkdownParseMode {
     Concrete,
     SemanticOnly,
+    ConcreteValidation,
+    SemanticOnlyValidation,
+}
+
+impl MarkdownParseMode {
+    fn plans_yaml_emits(self) -> bool {
+        matches!(self, Self::Concrete | Self::SemanticOnly)
+    }
 }
 
 fn parse_markdown_with_mode<'src>(
@@ -180,7 +218,7 @@ fn parse_markdown_with_mode<'src>(
             }
             if let Some(delta) = delta {
                 patch_nested_documents_after_file_scope_delta(
-                    source, &mut doc, &delta, options, config,
+                    source, &mut doc, &delta, options, config, mode,
                 )?;
             }
             i += 1;
@@ -767,6 +805,12 @@ fn parse_nested_yaml<'src>(
         MarkdownParseMode::SemanticOnly => {
             crate::core::yaml::parse_yaml_for_formatting(source, range, options, config)
         }
+        MarkdownParseMode::ConcreteValidation => {
+            crate::core::yaml::parse_yaml_for_concrete_validation(source, range, options, config)
+        }
+        MarkdownParseMode::SemanticOnlyValidation => {
+            crate::core::yaml::parse_yaml_for_validation(source, range, options, config, 0)
+        }
     }
 }
 
@@ -787,13 +831,71 @@ pub(crate) fn apply_file_scope_delta_to_markdown_document<'src>(
     options: FormatOptions,
     config: &Config,
 ) -> Result<()> {
+    apply_file_scope_delta_to_markdown_document_with_mode(
+        source,
+        doc,
+        delta,
+        options,
+        config,
+        MarkdownParseMode::SemanticOnly,
+    )
+}
+
+pub(crate) fn apply_file_scope_delta_to_markdown_document_for_validation<'src>(
+    source: &'src SourceBuffer,
+    doc: &mut Document<'src>,
+    delta: &DirectiveDelta,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<()> {
+    apply_file_scope_delta_to_markdown_document_with_mode(
+        source,
+        doc,
+        delta,
+        options,
+        config,
+        MarkdownParseMode::SemanticOnlyValidation,
+    )
+}
+
+pub(crate) fn apply_file_scope_delta_to_markdown_document_for_concrete_validation<'src>(
+    source: &'src SourceBuffer,
+    doc: &mut Document<'src>,
+    delta: &DirectiveDelta,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<()> {
+    apply_file_scope_delta_to_markdown_document_with_mode(
+        source,
+        doc,
+        delta,
+        options,
+        config,
+        MarkdownParseMode::ConcreteValidation,
+    )
+}
+
+fn apply_file_scope_delta_to_markdown_document_with_mode<'src>(
+    source: &'src SourceBuffer,
+    doc: &mut Document<'src>,
+    delta: &DirectiveDelta,
+    options: FormatOptions,
+    config: &Config,
+    mode: MarkdownParseMode,
+) -> Result<()> {
     let owned_source = doc.source.take();
     if let Some(owned_source) = owned_source {
         let placeholder = Document::new(doc.kind, doc.range);
         let mut owned_doc = std::mem::replace(doc, placeholder).retag_source_lifetime();
         owned_doc.source = None;
-        let (owned_doc, result) =
-            replan_markdown_document_with_delta(&owned_source, owned_doc, delta, options, config);
+        let (owned_doc, result) = replan_markdown_document_with_delta(
+            &owned_source,
+            owned_doc,
+            delta,
+            options,
+            config,
+            mode,
+        );
         let mut output_doc = owned_doc.retag_source_lifetime();
         output_doc.source = Some(owned_source);
         *doc = output_doc;
@@ -803,7 +905,7 @@ pub(crate) fn apply_file_scope_delta_to_markdown_document<'src>(
     let placeholder = Document::new(doc.kind, doc.range);
     let doc_value = std::mem::replace(doc, placeholder);
     let (doc_value, result) =
-        replan_markdown_document_with_delta(source, doc_value, delta, options, config);
+        replan_markdown_document_with_delta(source, doc_value, delta, options, config, mode);
     *doc = doc_value;
     result
 }
@@ -814,10 +916,12 @@ fn replan_markdown_document_with_delta<'src>(
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
+    mode: MarkdownParseMode,
 ) -> (Document<'src>, Result<()>) {
     doc.patch_all_states(delta.clone());
-    let result =
-        patch_nested_documents_after_file_scope_delta(source, &mut doc, delta, options, config);
+    let result = patch_nested_documents_after_file_scope_delta(
+        source, &mut doc, delta, options, config, mode,
+    );
     (doc, result)
 }
 
@@ -827,6 +931,7 @@ fn patch_nested_documents_after_file_scope_delta<'src>(
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
+    mode: MarkdownParseMode,
 ) -> Result<()> {
     for index in 0..doc.nodes.len() {
         let state = doc.state(doc.nodes[index].state).clone();
@@ -840,6 +945,7 @@ fn patch_nested_documents_after_file_scope_delta<'src>(
                     delta,
                     state.markdown_options(options),
                     &nested_config,
+                    mode,
                 )?;
             }
             EmitPlan::MarkdownCodeFence {
@@ -854,6 +960,7 @@ fn patch_nested_documents_after_file_scope_delta<'src>(
                     delta,
                     state.markdown_options(options),
                     &nested_config,
+                    mode,
                 )?;
             }
             EmitPlan::MarkdownDiv { nested, .. } => {
@@ -865,6 +972,7 @@ fn patch_nested_documents_after_file_scope_delta<'src>(
                     delta,
                     state.markdown_options(options),
                     &nested_config,
+                    mode,
                 )?;
             }
             _ => {}
@@ -880,22 +988,36 @@ fn apply_file_scope_delta_to_nested_document<'src>(
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
+    mode: MarkdownParseMode,
 ) -> Result<()> {
     match doc.nested[nested].kind {
-        DocumentKind::Markdown => apply_file_scope_delta_to_markdown_document(
+        DocumentKind::Markdown => apply_file_scope_delta_to_markdown_document_with_mode(
             source,
             &mut doc.nested[nested],
             delta,
             options,
             config,
+            mode,
         )?,
-        DocumentKind::Yaml => crate::core::yaml::apply_file_scope_delta_to_yaml_document(
-            source,
-            &mut doc.nested[nested],
-            delta,
-            options,
-            config,
-        )?,
+        DocumentKind::Yaml => {
+            if mode.plans_yaml_emits() {
+                crate::core::yaml::apply_file_scope_delta_to_yaml_document(
+                    source,
+                    &mut doc.nested[nested],
+                    delta,
+                    options,
+                    config,
+                )?;
+            } else {
+                crate::core::yaml::apply_file_scope_delta_to_yaml_document_for_validation(
+                    source,
+                    &mut doc.nested[nested],
+                    delta,
+                    options,
+                    config,
+                )?;
+            }
+        }
         DocumentKind::Python | DocumentKind::R => return Ok(()),
     };
     Ok(())

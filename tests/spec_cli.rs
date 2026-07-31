@@ -7686,6 +7686,32 @@ formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], pa
 }
 
 #[test]
+fn yaml_markdown_scalar_formats_nested_yaml_with_directive() {
+    let input = "\
+# fmt: markdown
+body: |
+  ```yaml
+  %YAML 1.2
+  ---
+  key:    value
+  ```
+";
+    let expected = "\
+# fmt: markdown
+body: |
+  ```yaml
+  %YAML 1.2
+  ---
+  key: value
+  ```
+";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_output_reparse_rejects_invalid_embedded_formatter_output() {
     let dir = tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
