@@ -48,6 +48,11 @@ jobs:
         run: |
           install.packages(c("stringi", "yaml12", "jsonlite", "knitr"))
 
+      - name: Install Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.10.18
+
       - name: Check formatting
         run: cargo fmt --check
 

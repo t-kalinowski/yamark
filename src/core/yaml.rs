@@ -1577,6 +1577,12 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return Ok(None);
         }
 
+        if text.starts_with('\u{feff}') {
+            // A line-leading U+FEFF can be parsed as scalar or key content. Treating
+            // its UTF-8 bytes as indentation can drop or reinterpret that content.
+            return self.parse_bom_prefixed_opaque(leading).map(Some);
+        }
+
         if let Some(hint) =
             flow_collapse_hint_from_standalone_opener(self.source, self.line, self.end, indent)
         {
@@ -1605,6 +1611,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return self
                 .parse_mapping(actual_indent, leading, container_is_target)
                 .map(Some);
+        }
+
+        if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
+            return self.parse_block_scalar(block).map(Some);
         }
 
         if let Some(block) = flow_collection_block_from_value(
@@ -1924,7 +1934,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             end = self.ast.node(value).span.end();
             Some(value)
         } else if let Some(block) =
-            block_scalar_at_value(self.source, self.line, self.end, value_start)
+            block_scalar_at_value(self.source, self.line, self.end, value_start, indent)
         {
             let value = self.parse_block_scalar(block)?;
             end = self.ast.node(value).span.end();
@@ -2182,9 +2192,13 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             )?;
             end = self.ast.node(value).span.end();
             Some(value)
-        } else if let Some(block) =
-            block_scalar_at_value(self.source, self.line, self.end, value_start)
-        {
+        } else if let Some(block) = block_scalar_at_value(
+            self.source,
+            self.line,
+            self.end,
+            value_start,
+            key_start_column,
+        ) {
             let value = self.parse_block_scalar(block)?;
             end = self.ast.node(value).span.end();
             Some(value)
@@ -2471,7 +2485,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
-            } else if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
+            } else if let Some(block) =
+                block_scalar_at_value(self.source, self.line, self.end, value_start, indent)
+            {
                 let value = self.parse_block_scalar(block)?;
                 end = self.ast.node(value).span.end();
                 Some(value)
@@ -2481,14 +2497,14 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
-            } else if let Some(value) =
-                self.parse_sequence_item_inline_mapping(indent, value_start)?
-            {
+            } else if compact_sequence_marker_at(text, value_start).is_some() {
+                let value = self.parse_compact_sequence(value_start)?;
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
-            } else if compact_sequence_marker_at(text, value_start).is_some() {
-                let value = self.parse_compact_sequence(value_start)?;
+            } else if let Some(value) =
+                self.parse_sequence_item_inline_mapping(indent, value_start)?
+            {
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
@@ -2697,7 +2713,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
-            } else if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
+            } else if let Some(block) =
+                block_scalar_at_value(self.source, self.line, self.end, value_start, indent)
+            {
                 let value = self.parse_block_scalar(block)?;
                 end = self.ast.node(value).span.end();
                 Some(value)
@@ -2707,14 +2725,14 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
-            } else if let Some(value) =
-                self.parse_sequence_item_inline_mapping(indent, value_start)?
-            {
+            } else if compact_sequence_marker_at(text, value_start).is_some() {
+                let value = self.parse_compact_sequence(value_start)?;
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
-            } else if compact_sequence_marker_at(text, value_start).is_some() {
-                let value = self.parse_compact_sequence(value_start)?;
+            } else if let Some(value) =
+                self.parse_sequence_item_inline_mapping(indent, value_start)?
+            {
                 value_on_marker_line = true;
                 end = self.ast.node(value).span.end();
                 Some(value)
@@ -3074,6 +3092,50 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             ));
         }
         self.line = self.source.line_at_byte(block.end.saturating_sub(1)) + 1;
+        Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
+            YamlAstKind::Opaque(YamlOpaque {
+                reason: YamlOpaqueReason::UnsupportedLine,
+            }),
+            block,
+            leading,
+            state,
+        )))
+    }
+
+    fn parse_bom_prefixed_opaque(&mut self, leading: Vec<YamlTrivia<'src>>) -> Result<YamlNodeId> {
+        let line = self.source.lines[self.line];
+        let end_line = (self.line + 1..self.end)
+            .find(|line| {
+                let text = self.source.line_text(*line);
+                indentation(text) == 0 && document_marker_line_info(text).is_some()
+            })
+            .unwrap_or(self.end);
+        let block = Span::new(
+            line.full.start(),
+            self.source.lines[end_line - 1].full.end(),
+        );
+        let state = self
+            .engine
+            .state_for_yaml_node(&mut self.doc, DirectiveTargetKind::YamlUnsupported);
+        let state_value = self.doc.state(state);
+        let mut scan = scan_yaml_lines(self.source, block);
+        if let Some(first) = scan.lines.first_mut()
+            && self.source.slice(first.content).starts_with('\u{feff}')
+        {
+            first.indent = first.indent.saturating_sub('\u{feff}'.len_utf8());
+        }
+        if state_value.markdown_target
+            || state_value.embedded_formatter.is_some()
+            || state_value.table_compact.is_some()
+            || yaml_scan_has_active_fmt_directive(self.source, &scan)
+        {
+            return Err(yaml_error_at(
+                self.source,
+                line.text.start(),
+                "formatting this BOM-prefixed YAML root is unsupported",
+            ));
+        }
+        self.line = end_line;
         Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
             YamlAstKind::Opaque(YamlOpaque {
                 reason: YamlOpaqueReason::UnsupportedLine,
@@ -5005,6 +5067,17 @@ fn emit_yaml_node(
                             out.push_str(line_ending_for_span(source, item.line));
                         }
                     }
+                    YamlAstKind::Scalar(scalar) => {
+                        out.push(' ');
+                        stats.emitted_nodes += 1;
+                        emit_yaml_scalar_after_prefix(
+                            out,
+                            context,
+                            scalar,
+                            value_node,
+                            Some(indent + options.indent_width),
+                        )?;
+                    }
                     YamlAstKind::FlowSequence(_) | YamlAstKind::FlowMapping(_) => {
                         if matches!(
                             value_node.emit,
@@ -5081,7 +5154,7 @@ fn emit_yaml_inline_sequence_mapping(
     };
 
     let first_prefix = format!("{}- ", " ".repeat(indent));
-    let mapping_indent = indent + options.indent_width;
+    let mapping_indent = indent + 2;
     let child_indent = mapping_indent + options.indent_width;
     let continuation_prefix = " ".repeat(mapping_indent);
     let pair_child_indent = |pair: &YamlMappingPair<'_>| {
@@ -5677,9 +5750,26 @@ fn emit_yaml_scalar_plan_output_into(
 ) {
     if let Some(body) = scalar.body {
         output.push_str(&render_yaml_block_scalar_value_header(source, scalar));
-        if let Some(rewrapped) = render_rewrapped_folded_block_scalar(source, scalar, node, options)
+        let body_indent = body_indent.map(|body_indent| {
+            scalar
+                .block_header
+                .and_then(|header| header.indent)
+                .map(|indent| body_indent.saturating_sub(options.indent_width) + indent as usize)
+                .unwrap_or(body_indent)
+        });
+        if let Some(rewrapped) =
+            render_rewrapped_folded_block_scalar(source, scalar, node, options, body_indent)
         {
             output.push_str(&rewrapped);
+        } else if let Some(body_indent) = body_indent
+            && let Some(source_indent) = explicit_block_scalar_body_indent(scalar)
+                .or_else(|| block_scalar_body_indent(source.slice(body)))
+        {
+            output.push_str(&reindent_block_lines(
+                source.slice(body),
+                source_indent,
+                body_indent,
+            ));
         } else {
             output.push_str(source.slice(body));
         }
@@ -5703,7 +5793,7 @@ fn emit_yaml_scalar_plan_output_into(
         output.push_str(&rendered);
         return;
     }
-    if emit_plain_scalar_plan_output_into(output, source, scalar, node).is_some() {
+    if emit_plain_scalar_plan_output_into(output, source, scalar, node, body_indent).is_some() {
         return;
     }
     if scalar.body.is_none()
@@ -5727,7 +5817,16 @@ fn emit_yaml_scalar_plan_output_into(
         output.push_str(&rendered);
         return;
     }
-    output.push_str(source.slice(scalar.value).trim_ascii());
+    let raw = source.slice(scalar.value).trim_ascii();
+    let continuation_indent_delta = if raw.contains(['\r', '\n']) {
+        yaml_scalar_continuation_indent_delta(output, source, scalar, body_indent)
+    } else {
+        0
+    };
+    output.push_str(&reindent_yaml_scalar_continuations(
+        raw,
+        continuation_indent_delta,
+    ));
     emit_inline_comment(output, source, scalar.trailing_comment);
     output.push_str(line_ending_for_span(source, node.span));
 }
@@ -5737,6 +5836,7 @@ fn emit_plain_scalar_plan_output_into(
     source: &SourceBuffer,
     scalar: &YamlScalar<'_>,
     node: &YamlAstNode<'_>,
+    body_indent: Option<usize>,
 ) -> Option<()> {
     if scalar.body.is_some()
         || scalar.header.is_some()
@@ -5762,12 +5862,83 @@ fn emit_plain_scalar_plan_output_into(
                 output.push_str(&rendered);
                 return Some(());
             }
-            output.push_str(raw);
+            let continuation_indent_delta = if raw.contains(['\r', '\n']) {
+                yaml_scalar_continuation_indent_delta(output, source, scalar, body_indent)
+            } else {
+                0
+            };
+            output.push_str(&reindent_yaml_scalar_continuations(
+                raw,
+                continuation_indent_delta,
+            ));
         }
     }
     emit_inline_comment(output, source, scalar.trailing_comment);
     output.push_str(line_ending_for_span(source, node.span));
     Some(())
+}
+
+fn yaml_scalar_continuation_indent_delta(
+    output: &str,
+    source: &SourceBuffer,
+    scalar: &YamlScalar<'_>,
+    body_indent: Option<usize>,
+) -> isize {
+    let source_line = source.line_at_byte(scalar.value.start());
+    let source_line_info = source.lines[source_line];
+    let source_indent = indentation(source.line_text(source_line));
+    let value_column = scalar
+        .value
+        .start()
+        .saturating_sub(source_line_info.text.start());
+    let output_indent = if value_column == source_indent {
+        body_indent.unwrap_or_else(|| yaml_output_line_indent(output))
+    } else {
+        yaml_output_line_indent(output)
+    };
+    output_indent as isize - source_indent as isize
+}
+
+fn yaml_output_line_indent(output: &str) -> usize {
+    let line_start = output
+        .rfind(['\r', '\n'])
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    output[line_start..]
+        .bytes()
+        .take_while(|byte| *byte == b' ')
+        .count()
+}
+
+fn reindent_yaml_scalar_continuations(raw: &str, indent_delta: isize) -> Cow<'_, str> {
+    if indent_delta == 0 || !raw.contains(['\r', '\n']) {
+        return Cow::Borrowed(raw);
+    }
+
+    let source = SourceBuffer::new(raw.to_owned());
+    let mut output = String::with_capacity(raw.len());
+    for (index, line) in source.lines.iter().enumerate() {
+        let body = source.slice(line.text);
+        if index == 0 || body.is_empty() {
+            output.push_str(body);
+        } else if indent_delta > 0 {
+            emit_spaces(&mut output, indent_delta as usize);
+            output.push_str(body);
+        } else {
+            let remove = (-indent_delta) as usize;
+            let leading = body.bytes().take_while(|byte| *byte == b' ').count();
+            if body.trim_ascii().is_empty() && leading < remove {
+                output.push_str(body);
+            } else {
+                output.push_str(
+                    body.strip_prefix(&" ".repeat(remove))
+                        .expect("YAML scalar continuation indentation follows its parent"),
+                );
+            }
+        }
+        output.push_str(line.ending.as_str());
+    }
+    Cow::Owned(output)
 }
 
 fn emit_non_string_plain_scalar_plan_output_into(
@@ -5883,6 +6054,9 @@ fn render_quoted_literal_scalar(
         return None;
     }
     let decoded = decode_quoted_scalar(raw)?;
+    if decoded == "\n" {
+        return None;
+    }
     if decoded
         .split('\n')
         .find(|line| !line.is_empty())
@@ -6099,6 +6273,7 @@ fn render_rewrapped_folded_block_scalar(
     scalar: &YamlScalar<'_>,
     node: &YamlAstNode<'_>,
     options: FormatOptions,
+    body_indent: Option<usize>,
 ) -> Option<String> {
     if scalar.style != YamlScalarStyle::FoldedBlock
         || scalar.nested.is_some()
@@ -6123,7 +6298,7 @@ fn render_rewrapped_folded_block_scalar(
     }
     let newline = line_ending_or_default(source, node.span, options);
     let lines = wrap_yaml_prose(&prose.text, options.prose_width.max(1));
-    let indent = " ".repeat(prose.indent);
+    let indent = " ".repeat(body_indent.unwrap_or(prose.indent));
     let mut out = String::new();
     for (index, line) in lines.iter().enumerate() {
         out.push_str(&indent);
@@ -6375,7 +6550,7 @@ fn reindent_yaml_block_scalar_body(
     let Some(source_body) = scalar.body else {
         return body.to_owned();
     };
-    let strip_indent = explicit_block_scalar_body_indent(source, scalar, node)
+    let strip_indent = explicit_block_scalar_body_indent(scalar)
         .or_else(|| block_scalar_body_indent(source.slice(source_body)))
         .unwrap_or_else(|| {
             let line_index = source.line_at_byte(node.span.start());
@@ -6385,14 +6560,9 @@ fn reindent_yaml_block_scalar_body(
     reindent_block_lines(body, strip_indent, emit_indent)
 }
 
-fn explicit_block_scalar_body_indent(
-    source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
-) -> Option<usize> {
-    let indent = scalar.block_header?.indent? as usize;
-    let line_index = source.line_at_byte(node.span.start());
-    Some(indentation(source.line_text(line_index)) + indent)
+fn explicit_block_scalar_body_indent(scalar: &YamlScalar<'_>) -> Option<usize> {
+    let header = scalar.block_header?;
+    Some(header.base_indent + header.indent? as usize)
 }
 
 fn block_scalar_body_indent(body: &str) -> Option<usize> {
@@ -6406,10 +6576,21 @@ fn reindent_block_lines(body: &str, strip_indent: usize, emit_indent: usize) -> 
     let prefix = " ".repeat(emit_indent);
     let strip = " ".repeat(strip_indent);
     let mut out = String::with_capacity(body.len() + prefix.len());
-    for line in body.split_inclusive('\n') {
-        let (line_body, newline) = strip_newline(line);
-        if line_body.trim_ascii().is_empty() {
-            out.push_str(line_body);
+    let body = SourceBuffer::new(body.to_owned());
+    for line in &body.lines {
+        let line_body = body.slice(line.text);
+        let newline = line.ending.as_str();
+        if line_body.is_empty() {
+            out.push_str(newline);
+            continue;
+        }
+        if line_body.bytes().all(|byte| byte == b' ') {
+            if let Some(content) = line_body.strip_prefix(&strip)
+                && !content.is_empty()
+            {
+                out.push_str(&prefix);
+                out.push_str(content);
+            }
             out.push_str(newline);
             continue;
         }
@@ -6417,15 +6598,6 @@ fn reindent_block_lines(body: &str, strip_indent: usize, emit_indent: usize) -> 
         out.push_str(&prefix);
         out.push_str(content);
         out.push_str(newline);
-    }
-    if !body.is_empty() && !body.ends_with('\n') && !body.ends_with('\r') {
-        let line = body.rsplit(['\n', '\r']).next().unwrap_or(body);
-        if line.len() == body.len() {
-            let content = line.strip_prefix(&strip).unwrap_or(line);
-            out.clear();
-            out.push_str(&prefix);
-            out.push_str(content);
-        }
     }
     out
 }
@@ -8386,7 +8558,7 @@ fn yaml_block_scalar_formatter_input(
     let Some(source_body) = scalar.body else {
         return String::new();
     };
-    let strip_indent = explicit_block_scalar_body_indent(source, scalar, node)
+    let strip_indent = explicit_block_scalar_body_indent(scalar)
         .or_else(|| block_scalar_body_indent(source.slice(source_body)))
         .unwrap_or_else(|| {
             let line_index = source.line_at_byte(node.span.start());
@@ -10461,15 +10633,16 @@ fn block_scalar_at_value(
     line: usize,
     end: usize,
     value_start: usize,
+    base_indent: usize,
 ) -> Option<BlockScalar> {
-    block_scalar_at_impl(source, line, end, Some(value_start))
+    block_scalar_at_impl(source, line, end, Some((value_start, base_indent)))
 }
 
 fn block_scalar_at_impl(
     source: &SourceBuffer,
     line: usize,
     end: usize,
-    value_start: Option<usize>,
+    value_start: Option<(usize, usize)>,
 ) -> Option<BlockScalar> {
     let text = source.line_text(line);
     memchr2(b'|', b'>', text.as_bytes())?;
@@ -10486,16 +10659,18 @@ fn block_scalar_at_impl(
     {
         return None;
     }
-    let header_info = block_scalar_header_info(&trimmed[marker_index + 1..])?;
-    let value_start = match value_start {
-        Some(value_start) if value_start <= marker_index => value_start,
+    let mut header_info = block_scalar_header_info(&trimmed[marker_index + 1..])?;
+    let (value_start, base_indent) = match value_start {
+        Some((value_start, base_indent)) if value_start <= marker_index => {
+            (value_start, base_indent)
+        }
         Some(_) => return None,
         None => block_scalar_value_start(text, marker_index)?,
     };
     if !block_scalar_metadata_prefix(&text[value_start..marker_index]) {
         return None;
     }
-    let base_indent = text.bytes().take_while(|byte| *byte == b' ').count();
+    header_info.base_indent = base_indent;
     let mut i = line + 1;
     while i < end {
         let candidate = source.line_text(i);
@@ -10547,10 +10722,14 @@ fn block_scalar_header_info(indicators: &str) -> Option<YamlBlockScalarHeader> {
             _ => return None,
         }
     }
-    Some(YamlBlockScalarHeader { indent, chomp })
+    Some(YamlBlockScalarHeader {
+        indent,
+        chomp,
+        base_indent: 0,
+    })
 }
 
-fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<usize> {
+fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<(usize, usize)> {
     let indent = indentation(text);
     if let Some(colon) = mapping_colon_at(text, indent)
         && colon < marker_index
@@ -10559,7 +10738,7 @@ fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<usize> {
         while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
             value_start += 1;
         }
-        return Some(value_start);
+        return Some((value_start, indent));
     }
     if let Some(marker) = sequence_line(text, indent)
         && marker < marker_index
@@ -10568,7 +10747,7 @@ fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<usize> {
         while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
             value_start += 1;
         }
-        return Some(value_start);
+        return Some((value_start, indent));
     }
     if let Some(marker) = explicit_key_line(text, indent)
         && marker < marker_index
@@ -10577,9 +10756,9 @@ fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<usize> {
         while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
             value_start += 1;
         }
-        return Some(value_start);
+        return Some((value_start, indent));
     }
-    None
+    Some((indent, indent))
 }
 
 fn block_scalar_metadata_prefix(prefix: &str) -> bool {

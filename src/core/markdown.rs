@@ -225,6 +225,24 @@ fn parse_markdown_with_mode<'src>(
             continue;
         }
 
+        if markdown_indented_code_at(text) {
+            let start = i;
+            i = raw_sensitive_end(source, i, end_line);
+            let state = engine.state_for_node(&mut doc, true);
+            let span = Span::new(
+                source.lines[start].full.start(),
+                source.lines[i - 1].full.end(),
+            );
+            validate_markdown_format_target(source, &doc, state, span, false)?;
+            doc.push_node(Node {
+                kind: NodeKind::Markdown(MarkdownNodeKind::Raw),
+                span,
+                state,
+                emit: EmitPlan::Copy,
+            });
+            continue;
+        }
+
         if let Some(marker_len) = quarto_div_opening(text) {
             let start = i;
             let Some(closing) = find_quarto_div_closing(source, i + 1, end_line, marker_len) else {
@@ -332,7 +350,7 @@ fn parse_markdown_with_mode<'src>(
 
         if definition_list_at(source, i, end_line) {
             let start = i;
-            i = raw_sensitive_end(source, i, end_line);
+            i = definition_list_end(source, i, end_line);
             let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
@@ -1106,6 +1124,9 @@ fn markdown_block_format_supported(
     kind: MarkdownBlockFormatKind,
 ) -> bool {
     let input = source.slice(span);
+    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
+        return false;
+    }
     if contains_markdown_template_span(input, &state.template_delimiters)
         && !matches!(
             kind,
@@ -1176,7 +1197,7 @@ pub(crate) fn render_markdown_heading(
     content: Span,
     options: FormatOptions,
 ) -> String {
-    let mut text = source.slice(content).trim().to_owned();
+    let mut text = source.slice(content).trim_ascii().to_owned();
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
@@ -1200,7 +1221,7 @@ pub(crate) fn render_markdown_setext_heading(
     depth: usize,
     options: FormatOptions,
 ) -> String {
-    let mut text = source.slice(content).trim().to_owned();
+    let mut text = source.slice(content).trim_ascii().to_owned();
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
@@ -1234,6 +1255,9 @@ pub(crate) fn render_markdown_format(
     kind: MarkdownBlockFormatKind,
 ) -> String {
     let input = source.slice(span);
+    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
+        return input.to_owned();
+    }
     match kind {
         MarkdownBlockFormatKind::Paragraph => {
             crate::core::wrap::format_markdown_paragraph(input, options)
@@ -2237,7 +2261,7 @@ fn trim_optional_pipe_edges(mut text: &str) -> &str {
 }
 
 fn list_item_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_start_matches(' ');
     let indent = text.len() - trimmed.len();
     if indent > 3 {
         return false;
@@ -2442,7 +2466,7 @@ fn task_list_checkbox(body: &str) -> Option<&str> {
 }
 
 fn blockquote_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_start_matches(' ');
     text.len() - trimmed.len() <= 3 && trimmed.starts_with('>')
 }
 
@@ -2456,13 +2480,24 @@ fn blockquote_block_supported(source: &SourceBuffer, start: usize, end: usize) -
 }
 
 fn blockquote_plain_body(text: &str) -> Option<&str> {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     if text.len() - trimmed.len() > 3 {
         return None;
     }
-    let mut body = trimmed.strip_prefix('>')?.trim_start();
-    while let Some(rest) = body.strip_prefix('>') {
-        body = rest.trim_start();
+    let mut body = trimmed.strip_prefix('>')?;
+    loop {
+        let leading_len = body
+            .bytes()
+            .take_while(|byte| matches!(byte, b' ' | b'\t'))
+            .count();
+        if leading_len >= 5 || body[..leading_len].contains('\t') {
+            return None;
+        }
+        body = body.trim_ascii_start();
+        let Some(rest) = body.strip_prefix('>') else {
+            break;
+        };
+        body = rest;
     }
     Some(body)
 }
@@ -2510,10 +2545,9 @@ fn html_comment_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
 }
 
 fn raw_sensitive_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    let indent = text.len() - trimmed.len();
-    indent >= 4
-        || trimmed.starts_with('\t')
+    let indent = text.bytes().take_while(|byte| *byte == b' ').count();
+    let trimmed = &text[indent..];
+    markdown_indented_code_at(text)
         || display_math_delimiter(trimmed)
         || trimmed.starts_with("\\[")
         || trimmed.starts_with("\\begin{")
@@ -2532,6 +2566,21 @@ fn raw_sensitive_at(text: &str) -> bool {
         || trimmed.starts_with("#.")
         || trimmed.starts_with('+')
         || grid_table_separator(trimmed)
+}
+
+fn markdown_indented_code_at(text: &str) -> bool {
+    let mut column = 0usize;
+    for byte in text.bytes() {
+        match byte {
+            b' ' => column += 1,
+            b'\t' => column += 4 - column % 4,
+            _ => return false,
+        }
+        if column >= 4 {
+            return true;
+        }
+    }
+    false
 }
 
 fn shortcode_block_at(text: &str) -> bool {
@@ -2613,7 +2662,7 @@ fn pandoc_attribute_token(token: &str) -> bool {
 
 fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     let trimmed = source.line_text(line).trim_start();
-    if pandoc_table_at(source, line, end) || definition_list_at(source, line, end) {
+    if pandoc_table_at(source, line, end) {
         let mut i = line + 1;
         while i < end && !source.line_text(i).trim().is_empty() {
             i += 1;
@@ -2817,6 +2866,42 @@ fn definition_list_at(source: &SourceBuffer, line: usize, end: usize) -> bool {
             .is_some_and(u8::is_ascii_whitespace)
 }
 
+fn definition_list_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
+    let mut content_indent = definition_marker_content_indent(source.line_text(start + 1))
+        .expect("definition_list_at validated the definition marker");
+    let mut line = start + 2;
+    while line < end {
+        if !source.line_text(line).trim().is_empty() {
+            line += 1;
+            continue;
+        }
+
+        let blank_start = line;
+        let Some(next) = next_nonblank_line(source, line + 1, end) else {
+            return blank_start;
+        };
+        let next_text = source.line_text(next);
+        let next_indent = next_text.len() - next_text.trim_start().len();
+        if next_indent >= content_indent {
+            line = next + 1;
+            continue;
+        }
+        if let Some(next_content_indent) = definition_marker_content_indent(next_text) {
+            content_indent = next_content_indent;
+            line = next + 1;
+            continue;
+        }
+        if definition_list_at(source, next, end) {
+            content_indent = definition_marker_content_indent(source.line_text(next + 1))
+                .expect("definition_list_at validated the definition marker");
+            line = next + 2;
+            continue;
+        }
+        return blank_start;
+    }
+    end
+}
+
 fn definition_list_supported(source: &SourceBuffer, start: usize, end: usize) -> bool {
     for line in start..end {
         let text = source.line_text(line);
@@ -2858,6 +2943,23 @@ fn definition_marker_content(text: &str) -> Option<&str> {
         return None;
     }
     Some(trimmed[1..].trim_start())
+}
+
+fn definition_marker_content_indent(text: &str) -> Option<usize> {
+    let trimmed = text.trim_start();
+    let indent = text.len() - trimmed.len();
+    if indent > 3 || !matches!(trimmed.as_bytes().first(), Some(b':' | b'~')) {
+        return None;
+    }
+    let mut content_indent = indent + 1;
+    while text
+        .as_bytes()
+        .get(content_indent)
+        .is_some_and(u8::is_ascii_whitespace)
+    {
+        content_indent += 1;
+    }
+    (content_indent > indent + 1).then_some(content_indent)
 }
 
 fn pandoc_table_separator(text: &str) -> bool {

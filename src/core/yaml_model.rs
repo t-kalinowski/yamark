@@ -300,6 +300,7 @@ pub enum YamlScalarStyle {
 pub struct YamlBlockScalarHeader {
     pub indent: Option<u8>,
     pub chomp: YamlBlockChomp,
+    pub base_indent: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -372,12 +372,11 @@ This is **strong** and *emphasis* before the directive.
 }
 
 #[test]
-fn markdown_paragraphs_that_normalize_to_block_starts_are_escaped() {
+fn markdown_preserves_non_ascii_whitespace_before_block_markers() {
     let input = "\u{00a0}# heading\n";
-    let expected = "\\# heading\n";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, expected);
+    assert_eq!(stdout, input);
     assert_eq!(stderr, "");
 }
 
@@ -1269,6 +1268,127 @@ fn markdown_heading_attributes_normalize_without_preceding_space() {
 }
 
 #[test]
+fn markdown_preserves_quarto_inline_attribute_at_heading_end() {
+    let input = concat!(
+        "# [text]{.class}\n",
+        "# `code`{.class}\n",
+        "# [link](dest){.class}\n",
+        "# ![alt](img){.class}\n",
+        "# [@cite]{.class}\n",
+    );
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn markdown_preserves_quarto_inline_html_at_paragraph_start() {
+    let input = "<span>raw</span> text\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn markdown_preserves_quarto_unicode_whitespace() {
+    for input in [
+        "alpha\u{a0}beta\n",
+        "# alpha\u{a0}\n",
+        "- \u{a0}alpha beta\n",
+        "> \u{a0}alpha beta\n",
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn markdown_preserves_quarto_tab_indented_code() {
+    for input in [
+        "\tcode\n",
+        "\tTitle\n\t====\n",
+        "\t---\n",
+        "\t***\n",
+        "\t___\n",
+        "\t> code\n",
+        " \t> code\n",
+        "  \t> code\n",
+        "\t- item\n",
+        " \t- item\n",
+        "  \t- item\n",
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn markdown_preserves_quarto_blockquoted_indented_code() {
+    for input in [
+        ">     code\n",
+        "> >     code\n",
+        ">>     code\n",
+        ">   \tcode\n",
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn markdown_preserves_quarto_raw_tex_separator() {
+    for input in [
+        "before \\LaTeX\nafter\n",
+        "before words \\LaTeX after words\n",
+        "- before \\LaTeX\n  after\n",
+        "> before \\LaTeX\n> after\n",
+        "Text.[^x]\n\n[^x]: before \\LaTeX\n  after\n",
+    ] {
+        let (status, stdout, stderr) = run_stdin(
+            &["format", "--stdin-file-path", "input.qmd", "--wrap", "20"],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn markdown_wraps_raw_looking_text_inside_protected_inline_spans() {
+    let input = "This paragraph includes `C:\\Users\u{a0}name`, [link \\alpha](dest), $\\beta + x$, and <span>HTML\u{a0}text</span> while enough words remain to wrap safely.\n";
+    let expected = concat!(
+        "This paragraph\n",
+        "includes\n",
+        "`C:\\Users\u{a0}name`,\n",
+        "[link \\alpha](dest),\n",
+        "$\\beta + x$, and\n",
+        "<span>HTML\u{a0}text</span>\n",
+        "while enough words\n",
+        "remain to wrap\n",
+        "safely.\n",
+    );
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", "input.qmd", "--wrap", "20"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_heading_closing_hashes_are_removed_before_attributes() {
     let input = "# Title ### {#id}\n";
     let expected = "# Title {#id}\n";
@@ -1492,10 +1612,9 @@ fn markdown_generated_split_links_keep_surrounding_paragraph_text() {
 See [the documentation](https://example.com/really/really/really/really/long/path \"A helpful title\") for details.
 ";
     let expected = "\
-See [the documentation](
-  https://example.com/really/really/really/really/long/path
-  \"A helpful title\"
-) for details.
+See
+[the documentation](https://example.com/really/really/really/really/long/path \"A helpful title\")
+for details.
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "40"],
@@ -1512,10 +1631,9 @@ fn markdown_generated_split_links_split_title_from_destination_when_needed() {
 See [docs](https://e.co/path \"short title\") after.
 ";
     let expected = "\
-See [docs](
-  https://e.co/path
-  \"short title\"
-) after.
+See
+[docs](https://e.co/path \"short title\")
+after.
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "32"],
@@ -2381,6 +2499,15 @@ long name | two
 }
 
 #[test]
+fn markdown_preserves_inconsistent_pipe_tables() {
+    let input = "| A |\n| --- |\n| x | y |\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_single_line_raw_tex_preserves_only_that_line() {
     let input = "\
 \\begin{note} keep    raw \\end{note}
@@ -2602,6 +2729,20 @@ Term
 }
 
 #[test]
+fn markdown_definition_list_keeps_indented_paragraph_after_blank() {
+    let input = "\
+Term
+: definition one
+
+  second paragraph
+";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.qmd"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_hugo_shortcode_blocks_are_preserved_as_raw_blocks() {
     let input = "\
 {{< notice >}}
@@ -2776,19 +2917,27 @@ Second    row      5.0      Another row.
 }
 
 #[test]
-fn markdown_link_definitions_and_inline_html_are_preserved() {
+fn markdown_link_definitions_are_preserved_and_inline_html_wraps() {
     let input = "\
 [ref]: https://example.com
   \"title   spacing\"
 
 Use <span>keep    spacing</span> here.
 ";
+    let expected = "\
+[ref]: https://example.com
+  \"title   spacing\"
+
+Use
+<span>keep    spacing</span>
+here.
+";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "20"],
         input,
     );
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, input);
+    assert_eq!(stdout, expected);
     assert_eq!(stderr, "");
 }
 
@@ -3144,6 +3293,10 @@ keep    raw
 <!-- fmt: wrap=20 scope=next -->
 Term
 : This ~~struck text keeps    spacing.
+",
+        "\
+<!-- fmt: wrap=20 scope=next -->
+before \\LaTeX after
 ",
     ];
 
@@ -3718,10 +3871,9 @@ value: '[" keep   this "]'
 #[test]
 fn yaml_utf8_bom_is_preserved() {
     let input = "\u{feff}name:    value\n";
-    let expected = "\u{feff}name: value\n";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, expected);
+    assert_eq!(stdout, input);
     assert_eq!(stderr, "");
 
     let input = "\u{feff}value\n";
@@ -4313,6 +4465,466 @@ text: |
 }
 
 #[test]
+fn yaml_newline_only_quoted_scalar_remains_quoted() {
+    let input = "value: \"\\n\"\nafter: after\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_root_block_scalars_preserve_exact_content() {
+    for input in [
+        "|-\n  #\n  value\n",
+        "|-\n  value \n",
+        "!generated |-\n  value\t\n",
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_nondefault_indent_reindents_nested_block_scalar_body() {
+    let input = "\
+outer:
+  value: |-
+    line
+";
+    let expected = "\
+outer:
+    value: |-
+        line
+";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--indent-width",
+            "4",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nondefault_indent_reindents_multiline_plain_scalar() {
+    let input_lf = "\
+outer:
+  value: first line
+    second line
+    third line
+  after: x
+";
+    let expected_lf = "\
+outer:
+    value: first line
+      second line
+      third line
+    after: x
+";
+    for newline in ["\n", "\r\n", "\r"] {
+        let input = input_lf.replace('\n', newline);
+        let expected = expected_lf.replace('\n', newline);
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.yaml",
+                "--indent-width",
+                "4",
+            ],
+            &input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, expected);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_nondefault_indent_reindents_multiline_quoted_sequence_mapping_scalar() {
+    let single_quoted_input = "\
+outer:
+  - value: 'first
+      second
+      third'
+    after: x
+";
+    let single_quoted_expected = "\
+outer:
+    - value: 'first
+        second
+        third'
+      after: x
+";
+    let double_quoted_input = single_quoted_input.replace('\'', "\"");
+    let double_quoted_expected = single_quoted_expected.replace('\'', "\"");
+    for (input_lf, expected_lf) in [
+        (
+            single_quoted_input.to_owned(),
+            single_quoted_expected.to_owned(),
+        ),
+        (double_quoted_input, double_quoted_expected),
+    ] {
+        for newline in ["\n", "\r\n", "\r"] {
+            let input = input_lf.replace('\n', newline);
+            let expected = expected_lf.replace('\n', newline);
+            let (status, stdout, stderr) = run_stdin(
+                &[
+                    "format",
+                    "--stdin-file-path",
+                    "input.yaml",
+                    "--indent-width",
+                    "4",
+                ],
+                &input,
+            );
+            assert_eq!(status, 0, "{stderr}");
+            assert_eq!(stdout, expected);
+            assert_eq!(stderr, "");
+        }
+    }
+}
+
+#[test]
+fn yaml_nondefault_indent_reindents_multiline_scalar_variants() {
+    let cases = [
+        (
+            "outer:\n  tagged: !tag first line\n    second line\n  anchored: &value first line\n    second line\n  after: x\n",
+            "outer:\n    tagged: !tag first line\n      second line\n    anchored: &value first line\n      second line\n    after: x\n",
+        ),
+        (
+            "outer:\n  value: first line\n    \n    third line\n  after: x\n",
+            "outer:\n    value: first line\n      \n      third line\n    after: x\n",
+        ),
+        (
+            "outer:\n  ? key\n  : first line\n    second line\n  after: x\n",
+            "outer:\n    ? key\n    : first line\n      second line\n    after: x\n",
+        ),
+        (
+            "outer:\n  - value: first line\n      second line\n      third line\n    after: x\n",
+            "outer:\n    - value: first line\n        second line\n        third line\n      after: x\n",
+        ),
+    ];
+    for (input, expected) in cases {
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.yaml",
+                "--indent-width",
+                "4",
+            ],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, expected);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_block_plain_scalar_moved_inline_preserves_continuation_indent() {
+    for (input, expected) in [
+        (
+            "Warning:\n  This is an error message\n  for the log file\n",
+            "Warning: This is an error message\n  for the log file\n",
+        ),
+        (
+            "comments:\n    Late afternoon is best.\n    Backup contact is Nancy\n    Billsmer @ 338-4338.\n",
+            "comments: Late afternoon is best.\n  Backup contact is Nancy\n  Billsmer @ 338-4338.\n",
+        ),
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, expected);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_sequence_mapping_block_scalar_stops_before_sibling_pair() {
+    let input = "\
+- value: |-
+    first
+    second
+  empty: ~
+";
+    let expected = "\
+- value: |-
+    first
+    second
+  empty: null
+";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nested_sequence_folded_scalar_uses_child_indent() {
+    let input = "\
+- - This is a long prose scalar with enough words to fold into a block scalar safely
+";
+    let expected = "\
+-
+  - >-
+    This is a long prose scalar
+    with enough words to fold into
+    a block scalar safely
+";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--prose-width",
+            "30",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nondefault_indent_keeps_sequence_mapping_keys_aligned() {
+    let input = "\
+- first: ~
+  second: []
+";
+    let expected = "\
+- first: null
+  second: []
+";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--indent-width",
+            "4",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nondefault_indent_reindents_nested_sequence_block_scalar() {
+    let input = "\
+- - |-
+    first
+    second
+";
+    let expected = "\
+-
+    - |-
+        first
+        second
+";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--indent-width",
+            "4",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nondefault_indent_preserves_space_only_block_scalar_content() {
+    let input = concat!("- |-\n", "  first\n", "   \n", "  last\n", "- after\n");
+    let expected = concat!(
+        "- |-\n",
+        "    first\n",
+        "     \n",
+        "    last\n",
+        "- after\n",
+    );
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--indent-width",
+            "4",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_bom_prefixed_root_mapping_preserves_block_scalar_body() {
+    let input = "\u{feff}value: |-\n  first\n  second\nafter: y\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_bom_prefixed_root_block_scalars_and_sequences_are_preserved() {
+    for input in [
+        "\u{feff}|-\n  first\n  second\n",
+        "\u{feff}- |-\n  first\n- after\n",
+        "\u{feff}- - |-\n    first\n  - after\n",
+    ] {
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.yaml",
+                "--indent-width",
+                "4",
+            ],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_bom_prefixed_flow_and_mapping_roots_are_preserved() {
+    let configurations: &[&[&str]] = &[
+        &[],
+        &["--indent-width", "4"],
+        &["--compact"],
+        &["--canonical"],
+        &["--indent-width", "4", "--compact", "--canonical"],
+    ];
+    for input in ["\u{feff}[a,b,{x: y}]\n", "\u{feff}a: 1\nb: [2,3]\n"] {
+        for configuration in configurations {
+            let mut args = vec!["format", "--stdin-file-path", "input.yaml"];
+            args.extend_from_slice(configuration);
+            let (status, stdout, stderr) = run_stdin(&args, input);
+            assert_eq!(status, 0, "{stderr}");
+            assert_eq!(stdout, input);
+            assert_eq!(stderr, "");
+        }
+    }
+}
+
+#[test]
+fn yaml_bom_prefixed_opaque_root_stops_at_next_document() {
+    for (input, expected) in [
+        (
+            "\u{feff}- one\n---\nname:    value\n",
+            "\u{feff}- one\n---\nname: value\n",
+        ),
+        (
+            "\u{feff}|-\n  first\n---\nname:    value\n",
+            "\u{feff}|-\n  first\n---\nname: value\n",
+        ),
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, expected);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_bom_prefixed_opaque_root_rejects_same_line_directives() {
+    let input = "\u{feff}- value # fmt: skip\n- next\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 1);
+    assert_eq!(stdout, "");
+    assert!(
+        stderr.contains("formatting this BOM-prefixed YAML root is unsupported"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn yaml_later_document_line_leading_fe_ff_is_preserved() {
+    let input = "first:    one\n---\n\u{feff}second:    two\nafter: y\n";
+    let expected = "first: one\n---\n\u{feff}second:    two\nafter: y\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nondefault_indent_reindents_cr_only_block_scalar_body() {
+    let input = "outer:\r  value: |-\r    first\r    second\r  after: x\r";
+    let expected = "outer:\r    value: |-\r        first\r        second\r    after: x\r";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--indent-width",
+            "4",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nondefault_indent_preserves_explicit_block_indent_and_space_content() {
+    let input = concat!(
+        "outer:\n",
+        "  - value: |2-\n",
+        "      first\n",
+        "       \n",
+        "      last\n",
+        "    after: x\n",
+    );
+    let expected = concat!(
+        "outer:\n",
+        "    - value: |2-\n",
+        "        first\n",
+        "         \n",
+        "        last\n",
+        "      after: x\n",
+    );
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--indent-width",
+            "4",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_existing_folded_prose_scalars_are_rewrapped() {
     let input = "\
 description: >-
@@ -4694,6 +5306,23 @@ items:
 - name: preserve
   type: block
 after: done
+";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_nested_compact_sequence_mapping_preserves_structure() {
+    let input = "\
+- - key: \"value\"
+    empty: ~
+";
+    let expected = "\
+-
+  - key: value
+    empty: null
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
     assert_eq!(status, 0, "{stderr}");

@@ -96,15 +96,18 @@ pub(crate) fn markdown_multiline_link_destination_spans(
 }
 
 pub fn normalize_heading_content(source: &str) -> String {
-    let text = source.trim();
+    let text = source.trim_ascii();
     let Some((body, attr)) = split_trailing_attribute(text) else {
         return normalize_spaces_preserving_protected_spans(text).into_owned();
     };
+    if trailing_attribute_belongs_to_inline(body) {
+        return normalize_spaces_preserving_protected_spans(text).into_owned();
+    }
     let Some(attr) = normalize_heading_attribute_block(attr) else {
         return normalize_spaces_preserving_protected_spans(text).into_owned();
     };
     let body = trim_heading_closing_hashes(body);
-    let body = normalize_spaces_preserving_protected_spans(body.trim());
+    let body = normalize_spaces_preserving_protected_spans(body.trim_ascii());
     if body.is_empty() {
         attr
     } else {
@@ -112,8 +115,18 @@ pub fn normalize_heading_content(source: &str) -> String {
     }
 }
 
+fn trailing_attribute_belongs_to_inline(body: &str) -> bool {
+    if body.ends_with(char::is_whitespace) {
+        return false;
+    }
+    body.char_indices().any(|(start, _)| {
+        link_or_bracket_token_end(body, start) == Some(body.len())
+            || !escaped_at(body, start) && inline_code_span_end(body, start) == Some(body.len())
+    })
+}
+
 fn trim_heading_closing_hashes(source: &str) -> &str {
-    let text = source.trim_end();
+    let text = source.trim_ascii_end();
     let bytes = text.as_bytes();
     let mut hash_start = bytes.len();
     while hash_start > 0 && bytes[hash_start - 1] == b'#' {
@@ -147,6 +160,9 @@ pub fn format_markdown_table(source: &str, options: FormatOptions) -> String {
         .iter()
         .map(|cell| table_alignment(cell))
         .collect::<Vec<_>>();
+    if rows.iter().any(|row| row.len() != alignments.len()) {
+        return source.to_owned();
+    }
     let columns = rows
         .iter()
         .map(Vec::len)
@@ -1259,7 +1275,7 @@ fn escape_first_markdown_block_start(source: &mut String) {
 }
 
 fn markdown_block_start_line(line: &str) -> bool {
-    let trimmed = line.trim_start();
+    let trimmed = line.trim_start_matches([' ', '\t']);
     let indent = line.len() - trimmed.len();
     indent <= 3
         && (atx_heading_start(trimmed)
@@ -1280,7 +1296,105 @@ fn markdown_block_start_line(line: &str) -> bool {
 }
 
 fn markdown_html_block_start_line(trimmed: &str) -> bool {
-    trimmed.starts_with("<!") || trimmed.starts_with("<?") || inline_html_tag_at(trimmed, 0)
+    if trimmed.starts_with("<!") || trimmed.starts_with("<?") {
+        return true;
+    }
+    let Some((name, tag_end)) = markdown_html_tag_name(trimmed) else {
+        return false;
+    };
+    commonmark_block_html_tag(name) || trimmed[tag_end..].trim_ascii().is_empty()
+}
+
+fn markdown_html_tag_name(source: &str) -> Option<(&str, usize)> {
+    if !inline_html_tag_at(source, 0) {
+        return None;
+    }
+    let mut name_start = 1;
+    if source.as_bytes().get(name_start) == Some(&b'/') {
+        name_start += 1;
+    }
+    let mut name_end = name_start;
+    while source
+        .as_bytes()
+        .get(name_end)
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+    {
+        name_end += 1;
+    }
+    let tag_end = source.find('>')? + 1;
+    Some((&source[name_start..name_end], tag_end))
+}
+
+fn commonmark_block_html_tag(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "address"
+            | "article"
+            | "aside"
+            | "base"
+            | "basefont"
+            | "blockquote"
+            | "body"
+            | "caption"
+            | "center"
+            | "col"
+            | "colgroup"
+            | "dd"
+            | "details"
+            | "dialog"
+            | "dir"
+            | "div"
+            | "dl"
+            | "dt"
+            | "fieldset"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "frame"
+            | "frameset"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "head"
+            | "header"
+            | "hr"
+            | "html"
+            | "iframe"
+            | "legend"
+            | "li"
+            | "link"
+            | "main"
+            | "menu"
+            | "menuitem"
+            | "nav"
+            | "noframes"
+            | "ol"
+            | "optgroup"
+            | "option"
+            | "p"
+            | "param"
+            | "pre"
+            | "script"
+            | "search"
+            | "section"
+            | "style"
+            | "summary"
+            | "table"
+            | "tbody"
+            | "td"
+            | "textarea"
+            | "tfoot"
+            | "th"
+            | "thead"
+            | "title"
+            | "tr"
+            | "track"
+            | "ul"
+    )
 }
 
 fn atx_heading_start(trimmed: &str) -> bool {
@@ -2228,7 +2342,7 @@ fn normalize_spaces(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let mut pending_space = false;
     for ch in source.chars() {
-        if ch.is_whitespace() {
+        if ch.is_ascii_whitespace() {
             pending_space = true;
         } else {
             if pending_space && !out.is_empty() {
@@ -2262,7 +2376,7 @@ fn normalize_spaces_preserving_protected_spans(source: &str) -> Cow<'_, str> {
             .chars()
             .next()
             .expect("index is on a char boundary");
-        if ch.is_whitespace() {
+        if ch.is_ascii_whitespace() {
             pending_space = true;
         } else {
             if pending_space && !out.is_empty() {
@@ -2277,8 +2391,8 @@ fn normalize_spaces_preserving_protected_spans(source: &str) -> Cow<'_, str> {
 }
 
 fn inline_spacing_is_already_normalized(source: &str) -> bool {
-    if source.is_empty() || !source.is_ascii() {
-        return source.is_empty();
+    if source.is_empty() {
+        return true;
     }
     let bytes = source.as_bytes();
     if matches!(bytes.first(), Some(b' ' | b'\t' | b'\r' | b'\n'))
@@ -2693,6 +2807,9 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
         target,
         suffix,
     } = link;
+    if target.title.is_some() {
+        return None;
+    }
 
     if !image {
         let label = &link[label_start..label_close];
@@ -3008,7 +3125,7 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
     while index < text.len() {
         while index < text.len() {
             let ch = text[index..].chars().next()?;
-            if !ch.is_whitespace() {
+            if !ch.is_ascii_whitespace() {
                 break;
             }
             index += ch.len_utf8();
@@ -3048,7 +3165,7 @@ fn simple_inline_tokens_supported(text: &str) -> bool {
 fn simple_inline_tokens(text: &str) -> Vec<InlineToken<'_>> {
     let mut tokens = Vec::new();
     let mut pending_prefix = String::new();
-    for token in text.split_whitespace() {
+    for token in text.split_ascii_whitespace() {
         attach_inline_token(&mut tokens, &mut pending_prefix, token);
     }
     if !pending_prefix.is_empty() {
@@ -3481,7 +3598,12 @@ fn inline_token_end(text: &str, start: usize) -> Option<usize> {
     let mut end = start;
     loop {
         end = inline_token_fragment_end(text, end)?;
-        if end == text.len() || text[end..].chars().next().is_some_and(char::is_whitespace) {
+        if end == text.len()
+            || text[end..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_whitespace())
+        {
             return Some(end);
         }
     }
@@ -3533,7 +3655,7 @@ fn inline_token_fragment_end(text: &str, start: usize) -> Option<usize> {
     while end < text.len() {
         let slice = &text[end..];
         let ch = slice.chars().next()?;
-        if ch.is_whitespace() {
+        if ch.is_ascii_whitespace() {
             break;
         }
         if end != start
@@ -3706,6 +3828,31 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
         end += brace_end;
     }
     Some(end)
+}
+
+pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
+    let mut index = 0usize;
+    while index < source.len() {
+        if !escaped_at(source, index)
+            && let Some(end) = latex_command_token_end(source, index)
+            && !source[index..end].contains('{')
+        {
+            return true;
+        }
+        if let Some(end) = unsupported_scan_protected_token_end(source, index) {
+            index = end;
+            continue;
+        }
+        let ch = source[index..]
+            .chars()
+            .next()
+            .expect("index is on a char boundary");
+        if ch.is_whitespace() && !ch.is_ascii_whitespace() {
+            return true;
+        }
+        index += ch.len_utf8();
+    }
+    false
 }
 
 fn link_or_bracket_token_end(text: &str, start: usize) -> Option<usize> {
