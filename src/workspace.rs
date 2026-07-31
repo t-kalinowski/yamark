@@ -8,7 +8,7 @@ use ignore::WalkBuilder;
 
 use crate::config::{Config, discover_config_path};
 use crate::core::document::{FileKind, FormatOptions, MarkdownWrap};
-use crate::core::parser::{format_source_report, format_source_report_with_trace};
+use crate::core::parser::format_source_report_with_policy;
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
 use crate::plugins::PluginRegistry;
 
@@ -24,6 +24,13 @@ pub enum FormatMode {
     Write,
     Check,
     Diff,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct FormatExecutionOptions {
+    pub(crate) collect_trace: bool,
+    pub(crate) verify_output: bool,
+    pub(crate) markdown_wrap_override: Option<MarkdownWrap>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -91,7 +98,13 @@ pub fn format_source_for_path(
     options: FormatOptions,
     config_path: Option<&Path>,
 ) -> Result<FormattedSource> {
-    format_source_for_path_with_overrides(path, input, options, config_path, false, None)
+    format_source_for_path_with_overrides(
+        path,
+        input,
+        options,
+        config_path,
+        FormatExecutionOptions::default(),
+    )
 }
 
 pub fn format_source_for_path_with_trace(
@@ -100,7 +113,16 @@ pub fn format_source_for_path_with_trace(
     options: FormatOptions,
     config_path: Option<&Path>,
 ) -> Result<FormattedSource> {
-    format_source_for_path_with_overrides(path, input, options, config_path, true, None)
+    format_source_for_path_with_overrides(
+        path,
+        input,
+        options,
+        config_path,
+        FormatExecutionOptions {
+            collect_trace: true,
+            ..FormatExecutionOptions::default()
+        },
+    )
 }
 
 pub(crate) fn format_source_for_path_with_overrides(
@@ -108,18 +130,10 @@ pub(crate) fn format_source_for_path_with_overrides(
     input: String,
     options: FormatOptions,
     config_path: Option<&Path>,
-    collect_trace: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> Result<FormattedSource> {
     let config = load_config_for_formatted_path(path, config_path)?;
-    format_source_with_config(
-        path,
-        input,
-        options,
-        &config,
-        collect_trace,
-        markdown_wrap_override,
-    )
+    format_source_with_config(path, input, options, &config, execution)
 }
 
 fn format_source_with_config(
@@ -127,8 +141,7 @@ fn format_source_with_config(
     input: String,
     options: FormatOptions,
     config: &Config,
-    collect_trace: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> Result<FormattedSource> {
     if input.as_bytes().starts_with(&[0xff, 0xfe]) || input.as_bytes().starts_with(&[0xfe, 0xff]) {
         return Err(YamarkError::new("unsupported encoding: UTF-16 BOM").with_path(path));
@@ -137,13 +150,17 @@ fn format_source_with_config(
     if !kind.is_supported() {
         return Err(YamarkError::new("unsupported file type").with_path(path));
     }
-    let options = apply_config_options(options, config, markdown_wrap_override);
+    let options = apply_config_options(options, config, execution.markdown_wrap_override);
     let plugins = PluginRegistry::from_config(config).with_source_path(path);
-    let formatted = if collect_trace {
-        format_source_report_with_trace(kind, input, options, config, &plugins)
-    } else {
-        format_source_report(kind, input, options, config, &plugins)
-    }
+    let formatted = format_source_report_with_policy(
+        kind,
+        input,
+        options,
+        config,
+        &plugins,
+        execution.collect_trace,
+        execution.verify_output,
+    )
     .map_err(|err| err.with_path(path))?;
     #[cfg(feature = "format-trace")]
     let trace_diagnostics = formatted.diagnostics;
@@ -197,7 +214,16 @@ pub fn format_paths_with_trace(
     config_path: Option<PathBuf>,
     collect_trace: bool,
 ) -> Result<FormatRun> {
-    format_paths_with_trace_and_overrides(paths, options, mode, config_path, collect_trace, None)
+    format_paths_with_trace_and_overrides(
+        paths,
+        options,
+        mode,
+        config_path,
+        FormatExecutionOptions {
+            collect_trace,
+            ..FormatExecutionOptions::default()
+        },
+    )
 }
 
 pub(crate) fn format_paths_with_trace_and_overrides(
@@ -205,17 +231,11 @@ pub(crate) fn format_paths_with_trace_and_overrides(
     options: FormatOptions,
     mode: FormatMode,
     config_path: Option<PathBuf>,
-    collect_trace: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> Result<FormatRun> {
-    if let Some(result) = format_single_explicit_file(
-        &paths,
-        options,
-        mode,
-        config_path.as_deref(),
-        collect_trace,
-        markdown_wrap_override,
-    ) {
+    if let Some(result) =
+        format_single_explicit_file(&paths, options, mode, config_path.as_deref(), execution)
+    {
         let outcome = result?;
         let mut run = FormatRun::default();
         run.summary.scanned = 1;
@@ -224,14 +244,8 @@ pub(crate) fn format_paths_with_trace_and_overrides(
         return Ok(run);
     }
 
-    let (mut outcomes, scanned) = format_streaming_candidates(
-        paths,
-        options,
-        mode,
-        config_path.as_deref(),
-        collect_trace,
-        markdown_wrap_override,
-    )?;
+    let (mut outcomes, scanned) =
+        format_streaming_candidates(paths, options, mode, config_path.as_deref(), execution)?;
     outcomes.sort_by_key(|outcome| outcome.index);
 
     let mut run = FormatRun::default();
@@ -336,8 +350,7 @@ fn format_single_explicit_file(
     options: FormatOptions,
     mode: FormatMode,
     config_path: Option<&Path>,
-    collect_trace: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> Option<Result<IndexedOutcome>> {
     let [path] = paths else {
         return None;
@@ -387,14 +400,7 @@ fn format_single_explicit_file(
             kind,
             config,
         };
-        Ok(format_candidate(
-            0,
-            &candidate,
-            options,
-            mode,
-            collect_trace,
-            markdown_wrap_override,
-        ))
+        Ok(format_candidate(0, &candidate, options, mode, execution))
     })();
     Some(result)
 }
@@ -404,8 +410,7 @@ fn format_streaming_candidates(
     options: FormatOptions,
     mode: FormatMode,
     config_path: Option<&Path>,
-    collect_trace: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> Result<(Vec<IndexedOutcome>, usize)> {
     let worker_count = format_worker_count_for_roots(&paths);
     let queue_capacity = worker_count.saturating_mul(2).max(1);
@@ -429,14 +434,8 @@ fn format_streaming_candidates(
                     let Ok(job) = job else {
                         break;
                     };
-                    let outcome = format_candidate(
-                        job.index,
-                        &job.candidate,
-                        options,
-                        mode,
-                        collect_trace,
-                        markdown_wrap_override,
-                    );
+                    let outcome =
+                        format_candidate(job.index, &job.candidate, options, mode, execution);
                     if outcome_sender.send(outcome).is_err() {
                         break;
                     }
@@ -579,8 +578,7 @@ fn format_candidate(
     candidate: &FormatCandidate,
     options: FormatOptions,
     mode: FormatMode,
-    collect_trace: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> IndexedOutcome {
     let path = candidate.path.clone();
     let result = if !candidate.kind.is_supported() {
@@ -593,14 +591,8 @@ fn format_candidate(
                     .config
                     .as_ref()
                     .expect("supported candidates have a resolved config");
-                match format_source_with_config(
-                    &candidate.path,
-                    input,
-                    options,
-                    config,
-                    collect_trace,
-                    markdown_wrap_override,
-                ) {
+                match format_source_with_config(&candidate.path, input, options, config, execution)
+                {
                     Ok(formatted) if formatted.changed => FileFormatResult::Changed {
                         diagnostics: formatted.diagnostics,
                         output: formatted.output,

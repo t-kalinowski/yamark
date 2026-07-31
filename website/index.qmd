@@ -15,8 +15,8 @@ Yamark formats every layer of a Markdown file in one pass: prose rewraps, YAML
 frontmatter tidies, and fenced code goes to its language's formatter -
 recursively, all the way down. It formats Markdown wherever it lives: `.md` and
 `.qmd` files, YAML scalars, and marked strings or comments in Python and R
-source. When Yamark cannot prove a rewrite is safe, it leaves the file
-unchanged.
+source. Pass `--verify` to reparse changed YAML and reject invalid or
+value-changing output.
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}
@@ -191,10 +191,10 @@ hand-maintaining line breaks.
 :::
 
 ::: {.feature}
-### Conservative writes
+### Optional verification
 
-Reparse changed YAML regions, check targeted Markdown replacements, and avoid
-rewriting unchanged files.
+Use `--verify` to reparse changed YAML regions and reject invalid or
+value-changing output before writing.
 :::
 :::
 

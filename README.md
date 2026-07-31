@@ -1,8 +1,9 @@
 # Yamark
 
 Yamark formats YAML, Markdown, Markdown files with YAML front matter, and
-explicit embedded Markdown targets in Python and R source files. It rewrites the
-regions it can format safely and preserves unsupported or risky input.
+explicit embedded Markdown targets in Python and R source files. It rewrites
+supported regions and preserves unsupported input. Pass `--verify` to reparse
+changed YAML and reject invalid or value-changing output.
 
 ## Install
 

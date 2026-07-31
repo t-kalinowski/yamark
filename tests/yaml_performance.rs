@@ -17,13 +17,10 @@ struct CountingAllocator;
 
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
 static ALLOCATED_BYTES: AtomicUsize = AtomicUsize::new(0);
-static LIVE_ALLOCATED_BYTES: AtomicUsize = AtomicUsize::new(0);
-static PEAK_LIVE_ALLOCATED_BYTES: AtomicUsize = AtomicUsize::new(0);
 static ALLOCATION_LOCK: Mutex<()> = Mutex::new(());
 
 thread_local! {
     static COUNT_THREAD_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
-    static TRACK_THREAD_LIVE_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
 }
 
 #[global_allocator]
@@ -35,16 +32,10 @@ unsafe impl GlobalAlloc for CountingAllocator {
             ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
             ALLOCATED_BYTES.fetch_add(layout.size(), Ordering::Relaxed);
         }
-        if track_thread_live_allocations() {
-            record_live_allocation(layout.size());
-        }
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if track_thread_live_allocations() {
-            LIVE_ALLOCATED_BYTES.fetch_sub(layout.size(), Ordering::Relaxed);
-        }
         unsafe { System.dealloc(ptr, layout) }
     }
 
@@ -52,13 +43,6 @@ unsafe impl GlobalAlloc for CountingAllocator {
         if count_thread_allocations() {
             ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
             ALLOCATED_BYTES.fetch_add(new_size.saturating_sub(layout.size()), Ordering::Relaxed);
-        }
-        if track_thread_live_allocations() {
-            if new_size >= layout.size() {
-                record_live_allocation(new_size - layout.size());
-            } else {
-                LIVE_ALLOCATED_BYTES.fetch_sub(layout.size() - new_size, Ordering::Relaxed);
-            }
         }
         unsafe { System.realloc(ptr, layout, new_size) }
     }
@@ -70,19 +54,6 @@ fn set_count_thread_allocations(enabled: bool) {
 
 fn count_thread_allocations() -> bool {
     COUNT_THREAD_ALLOCATIONS.with(Cell::get)
-}
-
-fn set_track_thread_live_allocations(enabled: bool) {
-    TRACK_THREAD_LIVE_ALLOCATIONS.with(|track| track.set(enabled));
-}
-
-fn track_thread_live_allocations() -> bool {
-    TRACK_THREAD_LIVE_ALLOCATIONS.with(Cell::get)
-}
-
-fn record_live_allocation(bytes: usize) {
-    let live = LIVE_ALLOCATED_BYTES.fetch_add(bytes, Ordering::Relaxed) + bytes;
-    PEAK_LIVE_ALLOCATED_BYTES.fetch_max(live, Ordering::Relaxed);
 }
 
 #[test]
@@ -511,9 +482,9 @@ fn yaml_showcase_like_formatting_keeps_allocated_bytes_bounded() {
     let formatted = formatted.unwrap();
     assert!(formatted.changed);
     assert!(formatted.output.contains("benchmark comment 001000.01"));
-    // Changed YAML is reparsed once before it can be returned.
+    // Default formatting does not allocate a second parsed document.
     assert!(
-        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 16_000_000,
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 10_000_000,
         "showcase-like YAML formatting allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
@@ -540,39 +511,11 @@ fn yaml_many_line_formatting_keeps_allocated_bytes_bounded() {
     let formatted = formatted.unwrap();
     assert!(formatted.changed);
     assert!(formatted.output.contains("item_49999"));
-    // Changed YAML is reparsed once before it can be returned.
+    // Default formatting does not allocate a second parsed document.
     assert!(
-        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 205_000_000,
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 120_000_000,
         "many-line YAML formatting allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
-    );
-}
-
-#[test]
-fn yaml_many_line_validation_keeps_peak_live_bytes_bounded() {
-    let _lock = ALLOCATION_LOCK.lock().unwrap();
-    set_track_thread_live_allocations(false);
-    LIVE_ALLOCATED_BYTES.store(0, Ordering::Relaxed);
-    PEAK_LIVE_ALLOCATED_BYTES.store(0, Ordering::Relaxed);
-
-    set_track_thread_live_allocations(true);
-    {
-        let input = many_line_yaml_input(50_000);
-        let config = Config::default();
-        let plugins = PluginRegistry::default();
-        let options = FormatOptions::default();
-        let formatted =
-            format_source_report(FileKind::Yaml, input, options, &config, &plugins).unwrap();
-        assert!(formatted.changed);
-        assert!(formatted.output.contains("item_49999"));
-    }
-    set_track_thread_live_allocations(false);
-
-    assert_eq!(LIVE_ALLOCATED_BYTES.load(Ordering::Relaxed), 0);
-    assert!(
-        PEAK_LIVE_ALLOCATED_BYTES.load(Ordering::Relaxed) <= 150_000_000,
-        "many-line YAML formatting kept {} live allocated bytes at peak",
-        PEAK_LIVE_ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
 }
 

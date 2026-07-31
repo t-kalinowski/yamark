@@ -157,7 +157,7 @@ pub fn format_source_report(
     config: &Config,
     plugins: &PluginRegistry,
 ) -> Result<FormattedDocument> {
-    format_source_report_impl(path_kind, input, options, config, plugins, false)
+    format_source_report_with_policy(path_kind, input, options, config, plugins, false, false)
 }
 
 pub fn format_source_report_with_trace(
@@ -167,16 +167,17 @@ pub fn format_source_report_with_trace(
     config: &Config,
     plugins: &PluginRegistry,
 ) -> Result<FormattedDocument> {
-    format_source_report_impl(path_kind, input, options, config, plugins, true)
+    format_source_report_with_policy(path_kind, input, options, config, plugins, true, false)
 }
 
-fn format_source_report_impl(
+pub(crate) fn format_source_report_with_policy(
     path_kind: FileKind,
     input: String,
     options: FormatOptions,
     config: &Config,
     plugins: &PluginRegistry,
     collect_trace: bool,
+    verify_output: bool,
 ) -> Result<FormattedDocument> {
     let Some(kind) = DocumentKind::from_file_kind(path_kind) else {
         return Err(YamarkError::new("unsupported file type"));
@@ -223,7 +224,7 @@ fn format_source_report_impl(
     };
     let changed = output != source.as_str();
     let mut output_parse_passes = 0;
-    if changed && output_requires_yaml_validation(kind, &document, &output) {
+    if verify_output && changed && output_requires_yaml_validation(kind, &document, &output) {
         let document = document.retag_source_lifetime();
         let before = crate::core::yaml_equivalence::capture_yaml_validation_snapshot(
             source.into_string(),

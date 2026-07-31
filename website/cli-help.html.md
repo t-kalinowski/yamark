@@ -42,6 +42,7 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
       <span style='font-weight: bold;'>--check</span>
       <span style='font-weight: bold;'>--diff</span>
       <span style='font-weight: bold;'>--diagnostics</span>
+      <span style='font-weight: bold;'>--verify</span>                       Reparse changed YAML and reject invalid or value-changing output
       <span style='font-weight: bold;'>--stdin-file-path</span> &lt;PATH&gt;
       <span style='font-weight: bold;'>--config</span> &lt;PATH&gt;
       <span style='font-weight: bold;'>--wrap</span> &lt;WRAP&gt;                  [default: 72]

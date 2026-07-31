@@ -138,6 +138,17 @@ fn format_help_shows_default_wrap() {
 }
 
 #[test]
+fn format_help_shows_verify() {
+    let (status, stdout, stderr) = run_stdin(&["format", "--help"], "");
+    assert_eq!(status, 0, "{stderr}");
+    assert!(
+        stdout.lines().any(|line| line.contains("--verify")),
+        "{stdout}"
+    );
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn markdown_directives_and_blocks() {
     let input = "\
 <!-- fmt: canonical=true scope=file -->
@@ -4597,11 +4608,30 @@ fn yaml_diagnostics_report_fast_path_trace_counters() {
 }
 
 #[test]
-fn yaml_diagnostics_report_output_reparse() {
+fn yaml_diagnostics_skip_output_reparse_by_default() {
     let input = "name:   yamark\n";
     let expected = "name: yamark\n";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--diagnostics", "--stdin-file-path", "input.yaml"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert!(stderr.contains("source_scans=1 parse_passes=1"), "{stderr}");
+}
+
+#[test]
+fn yaml_diagnostics_report_verified_output_reparse() {
+    let input = "name:   yamark\n";
+    let expected = "name: yamark\n";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--verify",
+            "--diagnostics",
+            "--stdin-file-path",
+            "input.yaml",
+        ],
         input,
     );
     assert_eq!(status, 0, "{stderr}");
@@ -4822,7 +4852,10 @@ tags: [
     let expected = "\
 tags: [llm, authoring, formats]
 ";
-    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.yaml"],
+        input,
+    );
     assert_eq!(status, 0, "{stderr}");
     assert_eq!(stdout, expected);
     assert_eq!(stderr, "");
@@ -6241,6 +6274,33 @@ fn embedded_python_comment_markdown_target() {
             "sentence",
             "--canonical",
         ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn verify_reparses_nested_yaml_in_python_markdown() {
+    let input = "\
+# fmt: markdown
+DOC = \"\"\"
+```yaml
+name:   yamark
+```
+\"\"\"
+";
+    let expected = "\
+# fmt: markdown
+DOC = \"\"\"
+```yaml
+name: yamark
+```
+\"\"\"
+";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.py"],
         input,
     );
     assert_eq!(status, 0, "{stderr}");
@@ -7686,7 +7746,7 @@ formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], pa
 }
 
 #[test]
-fn yaml_markdown_scalar_formats_nested_yaml_with_directive() {
+fn yaml_verify_formats_markdown_scalar_with_nested_yaml_directive() {
     let input = "\
 # fmt: markdown
 body: |
@@ -7705,14 +7765,17 @@ body: |
   key: value
   ```
 ";
-    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.yaml"],
+        input,
+    );
     assert_eq!(status, 0, "{stderr}");
     assert_eq!(stdout, expected);
     assert_eq!(stderr, "");
 }
 
 #[test]
-fn yaml_output_reparse_rejects_invalid_embedded_formatter_output() {
+fn yaml_verify_rejects_invalid_embedded_formatter_output() {
     let dir = tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
     fs::write(
@@ -7728,6 +7791,7 @@ formatter = { command = ["/bin/sh", "-c", "printf '\\001'", "{path}"], path_suff
     let (status, stdout, stderr) = run_stdin(
         &[
             "format",
+            "--verify",
             "--stdin-file-path",
             "input.yaml",
             "--config",
@@ -7747,6 +7811,7 @@ formatter = { command = ["/bin/sh", "-c", "printf '\\001'", "{path}"], path_suff
     let output = yamark()
         .args([
             "format",
+            "--verify",
             "--config",
             config.to_str().unwrap(),
             path.to_str().unwrap(),
@@ -7758,7 +7823,7 @@ formatter = { command = ["/bin/sh", "-c", "printf '\\001'", "{path}"], path_suff
 }
 
 #[test]
-fn yaml_output_reparse_rejects_non_printable_unicode() {
+fn yaml_verify_rejects_non_printable_unicode() {
     for octal in [r"\\357\\273\\277", r"\\357\\277\\276", r"\\357\\277\\277"] {
         let dir = tempdir().unwrap();
         let config = dir.path().join("yamark.toml");
@@ -7777,6 +7842,7 @@ formatter = {{ command = ["/bin/sh", "-c", "printf '{octal}'", "{{path}}"], path
         let (status, stdout, stderr) = run_stdin(
             &[
                 "format",
+                "--verify",
                 "--stdin-file-path",
                 "input.yaml",
                 "--config",
@@ -7794,7 +7860,7 @@ formatter = {{ command = ["/bin/sh", "-c", "printf '{octal}'", "{{path}}"], path
 }
 
 #[test]
-fn yaml_output_reparse_rejects_over_indented_leading_blank_line() {
+fn yaml_verify_rejects_over_indented_leading_blank_line() {
     let dir = tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
     fs::write(
@@ -7810,6 +7876,7 @@ formatter = { command = ["/bin/sh", "-c", "printf '   \na\n'", "{path}"], path_s
     let (status, stdout, stderr) = run_stdin(
         &[
             "format",
+            "--verify",
             "--stdin-file-path",
             "input.yaml",
             "--config",
@@ -7829,6 +7896,7 @@ formatter = { command = ["/bin/sh", "-c", "printf '   \na\n'", "{path}"], path_s
     let output = yamark()
         .args([
             "format",
+            "--verify",
             "--config",
             config.to_str().unwrap(),
             path.to_str().unwrap(),
@@ -7840,9 +7908,18 @@ formatter = { command = ["/bin/sh", "-c", "printf '   \na\n'", "{path}"], path_s
 }
 
 #[test]
-fn output_reparse_rejects_new_yaml_front_matter() {
+fn verify_is_opt_in_for_new_yaml_front_matter() {
     let input = "***\nkey: value\n\n---\nbody\n";
+    let expected = "---\nkey: value\n\n---\nbody\n";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.md"],
+        input,
+    );
     assert_eq!(status, 1);
     assert_eq!(stdout, "");
     assert!(

@@ -11,7 +11,8 @@ use clap::{
 
 use crate::core::document::{FormatOptions, MarkdownWrap};
 use crate::workspace::{
-    FormatMode, format_paths_with_trace_and_overrides, format_source_for_path_with_overrides,
+    FormatExecutionOptions, FormatMode, format_paths_with_trace_and_overrides,
+    format_source_for_path_with_overrides,
 };
 
 #[derive(Debug, Parser)]
@@ -34,6 +35,11 @@ enum Command {
         diff: bool,
         #[arg(long)]
         diagnostics: bool,
+        #[arg(
+            long,
+            help = "Reparse changed YAML and reject invalid or value-changing output"
+        )]
+        verify: bool,
         #[arg(long, value_name = "PATH")]
         stdin_file_path: Option<PathBuf>,
         #[arg(long, value_name = "PATH")]
@@ -212,6 +218,7 @@ where
             false,
             false,
             false,
+            false,
             None,
             None,
             MarkdownWrap::Column(72),
@@ -284,6 +291,7 @@ where
             check,
             diff,
             diagnostics,
+            verify,
             stdin_file_path,
             config,
             wrap,
@@ -299,6 +307,7 @@ where
             check,
             diff,
             diagnostics,
+            verify,
             stdin_file_path,
             config,
             wrap,
@@ -400,6 +409,7 @@ fn run_format(
     check: bool,
     diff: bool,
     diagnostics: bool,
+    verify: bool,
     stdin_file_path: Option<PathBuf>,
     config: Option<PathBuf>,
     wrap: MarkdownWrap,
@@ -435,9 +445,14 @@ fn run_format(
         ..FormatOptions::default()
     };
     let markdown_wrap_override = wrap_from_cli.then_some(wrap);
+    let execution = FormatExecutionOptions {
+        collect_trace: diagnostics,
+        verify_output: verify,
+        markdown_wrap_override,
+    };
 
     if let Some(path) = stdin_file_path {
-        return run_stdin(path, config, options, diagnostics, markdown_wrap_override);
+        return run_stdin(path, config, options, execution);
     }
 
     let mode = if diff {
@@ -447,14 +462,7 @@ fn run_format(
     } else {
         FormatMode::Write
     };
-    match format_paths_with_trace_and_overrides(
-        paths,
-        options,
-        mode,
-        config,
-        diagnostics,
-        markdown_wrap_override,
-    ) {
+    match format_paths_with_trace_and_overrides(paths, options, mode, config, execution) {
         Ok(run) => {
             if mode == FormatMode::Diff {
                 for diff in &run.diffs {
@@ -491,8 +499,7 @@ fn run_stdin(
     path: PathBuf,
     config: Option<PathBuf>,
     options: FormatOptions,
-    diagnostics: bool,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> ExitCode {
     let input = match read_stdin_utf8() {
         Ok(input) => input,
@@ -501,17 +508,11 @@ fn run_stdin(
             return ExitCode::from(1);
         }
     };
-    let formatted = format_source_for_path_with_overrides(
-        &path,
-        input,
-        options,
-        config.as_deref(),
-        diagnostics,
-        markdown_wrap_override,
-    );
+    let formatted =
+        format_source_for_path_with_overrides(&path, input, options, config.as_deref(), execution);
     match formatted {
         Ok(formatted) => {
-            if diagnostics {
+            if execution.collect_trace {
                 for diagnostic in &formatted.diagnostics {
                     eprintln!("{}", diagnostic.render());
                 }
@@ -545,7 +546,15 @@ fn run_git_filter(path: PathBuf, wrap: MarkdownWrap) -> ExitCode {
         respect_frontmatter_markdown_options: false,
         ..FormatOptions::default()
     };
-    run_stdin(path, None, options, false, Some(wrap))
+    run_stdin(
+        path,
+        None,
+        options,
+        FormatExecutionOptions {
+            markdown_wrap_override: Some(wrap),
+            ..FormatExecutionOptions::default()
+        },
+    )
 }
 
 fn run_git_filter_adopt(
@@ -969,9 +978,18 @@ fn format_git_filter_text(path: &str, input: String, wrap: MarkdownWrap) -> Resu
         respect_frontmatter_markdown_options: false,
         ..FormatOptions::default()
     };
-    format_source_for_path_with_overrides(Path::new(path), input, options, None, false, Some(wrap))
-        .map(|formatted| formatted.output)
-        .map_err(|err| err.diagnostic.render())
+    format_source_for_path_with_overrides(
+        Path::new(path),
+        input,
+        options,
+        None,
+        FormatExecutionOptions {
+            markdown_wrap_override: Some(wrap),
+            ..FormatExecutionOptions::default()
+        },
+    )
+    .map(|formatted| formatted.output)
+    .map_err(|err| err.diagnostic.render())
 }
 
 fn run_git_with_paths(repo_root: &Path, prefix: &[&str], paths: &[String]) -> Result<(), String> {
