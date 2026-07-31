@@ -73,6 +73,41 @@ flow: {text: "{\"python\":\"print('hello')\",\"wait_ms\":0}"}
 """,
     ),
     (
+        "literal-block-leading-spaces",
+        r"""mixed: "\u0020\u0020first\nsecond"
+both: "\u0020\u0020first\n\u0020\u0020second"
+escape_heavy: "\u0020\u0020{\"python\":\"print(\u0027hello\u0027)\"}"
+""",
+    ),
+    (
+        "root-document-marker-strings",
+        """"---"
+---
+"--- x"
+---
+"..."
+---
+"... x"
+""",
+    ),
+    (
+        "trailing-colon-strings",
+        """sequence:
+  - "foo:"
+mapping: "foo:"
+flow_sequence: ["foo:"]
+flow_mapping: {value: "foo:"}
+flow_boundary_whitespace: [" foo", "foo "]
+""",
+    ),
+    (
+        "non-ascii-whitespace",
+        """trailing: foo 
+leading:  foo
+core_like:  null 
+""",
+    ),
+    (
         "core-tags",
         """string: !!str hello world
 string_bool: !!str true

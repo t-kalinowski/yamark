@@ -223,7 +223,7 @@ fn emit_document_inner(
                 {
                     nested_output.push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_str(&nested_output);
+                out.push_verbatim_lines(&nested_output);
                 emit_front_matter_marker(&mut out, source, *closing, false);
             }
             EmitPlan::MarkdownCodeFence {
@@ -465,6 +465,15 @@ impl EmitOutput {
             return;
         }
         self.push_markdown_normalized_str(text);
+    }
+
+    fn push_verbatim_lines(&mut self, text: &str) {
+        assert!(
+            text.is_empty() || text.ends_with('\n') || text.ends_with('\r'),
+            "verbatim line block must end at a line boundary"
+        );
+        self.text.push_str(text);
+        self.line_trim_end = self.text.len();
     }
 
     fn finish(mut self) -> String {

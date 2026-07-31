@@ -482,8 +482,9 @@ fn yaml_showcase_like_formatting_keeps_allocated_bytes_bounded() {
     let formatted = formatted.unwrap();
     assert!(formatted.changed);
     assert!(formatted.output.contains("benchmark comment 001000.01"));
+    // Changed YAML is reparsed once before it can be returned.
     assert!(
-        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 10_100_000,
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 17_500_000,
         "showcase-like YAML formatting allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
@@ -510,8 +511,9 @@ fn yaml_many_line_formatting_keeps_allocated_bytes_bounded() {
     let formatted = formatted.unwrap();
     assert!(formatted.changed);
     assert!(formatted.output.contains("item_49999"));
+    // Changed YAML is reparsed once before it can be returned.
     assert!(
-        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 197_000_000,
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 225_000_000,
         "many-line YAML formatting allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
     );

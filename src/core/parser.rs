@@ -155,7 +155,7 @@ fn format_source_report_impl(
     } else {
         Vec::new()
     };
-    let (output, yaml_emitted_nodes) = if kind == DocumentKind::Yaml {
+    let (mut output, yaml_emitted_nodes) = if kind == DocumentKind::Yaml {
         if document.skip_file {
             (source.slice(document.range).to_owned(), 0)
         } else {
@@ -182,9 +182,33 @@ fn format_source_report_impl(
     } else {
         (emit_document(&source, &document, options, plugins)?, 0)
     };
+    let changed = output != source.as_str();
+    let mut output_parse_passes = 0;
+    if changed && output_requires_yaml_validation(kind, &document, &output) {
+        let output_source = SourceBuffer::new(output);
+        {
+            let output_range = Span::new(0, output_source.as_str().len());
+            let output_document = parse_source_for_formatting(
+                &output_source,
+                output_range,
+                kind,
+                options,
+                config,
+                false,
+            )?;
+            crate::core::yaml_equivalence::validate_yaml_documents_equivalent(
+                &source,
+                &document,
+                &output_source,
+                &output_document,
+            )?;
+            output_parse_passes = output_document.trace.parse_passes;
+        }
+        output = output_source.into_string();
+    }
     let trace = (kind == DocumentKind::Yaml && collect_trace).then_some(FormatTrace {
         source_scans: document.trace.source_scans,
-        parse_passes: document.trace.parse_passes,
+        parse_passes: document.trace.parse_passes + output_parse_passes,
         source_lines: source.lines.len(),
         yaml_scanned_lines: document.trace.yaml_scanned_lines,
         yaml_semantic_nodes: document.trace.yaml_semantic_nodes,
@@ -196,7 +220,6 @@ fn format_source_report_impl(
         emitted_bytes: output.len(),
         emitted_nodes: yaml_emitted_nodes,
     });
-    let changed = output != source.as_str();
     Ok(FormattedDocument {
         output,
         changed,
@@ -204,4 +227,23 @@ fn format_source_report_impl(
         #[cfg(feature = "format-trace")]
         diagnostics,
     })
+}
+
+fn document_contains_yaml(document: &Document<'_>) -> bool {
+    document.kind == DocumentKind::Yaml || document.nested.iter().any(document_contains_yaml)
+}
+
+fn output_requires_yaml_validation(
+    kind: DocumentKind,
+    input_document: &Document<'_>,
+    output: &str,
+) -> bool {
+    document_contains_yaml(input_document)
+        || kind == DocumentKind::Markdown && output_starts_with_front_matter(output)
+}
+
+fn output_starts_with_front_matter(output: &str) -> bool {
+    let output = output.strip_prefix('\u{feff}').unwrap_or(output);
+    let line_end = output.find(['\r', '\n']).unwrap_or(output.len());
+    output[..line_end].trim_end_matches([' ', '\t']) == "---"
 }

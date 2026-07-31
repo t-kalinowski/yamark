@@ -4269,6 +4269,26 @@ text: |-
 }
 
 #[test]
+fn yaml_literal_block_conversion_preserves_leading_spaces() {
+    let input = r#"mixed: "\u0020\u0020first\nsecond"
+both: "\u0020\u0020first\n\u0020\u0020second"
+escape_heavy: "\u0020\u0020{\"python\":\"print(\u0027hello\u0027)\"}"
+nested:
+  - value: "\u0020\u0020first\nsecond"
+"#;
+    let expected = r#"mixed: "  first\nsecond"
+both: "  first\n  second"
+escape_heavy: '  {"python":"print(''hello'')"}'
+nested:
+  - value: "  first\nsecond"
+"#;
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_escaped_final_newline_quoted_scalars_emit_clipped_literal_blocks() {
     let input = "text: \"line\\n\"\n";
     let expected = "\
@@ -4433,6 +4453,115 @@ fn yaml_unsafe_plain_strings_are_quoted_in_block_context() {
 }
 
 #[test]
+fn yaml_root_document_marker_strings_remain_quoted() {
+    for input in ["\"---\"\n", "\"--- x\"\n", "\"...\"\n", "\"... x\"\n"] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+
+    let input = "--- \"---\"\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, "--- ---\n");
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn markdown_front_matter_uses_yaml_scalar_safety() {
+    let cases = [
+        (
+            "---\n\"---\"\n---\n\nBody.\n",
+            "---\n\"---\"\n---\n\nBody.\n",
+        ),
+        (
+            "---\nmixed: \"\\u0020\\u0020first\\nsecond\"\ncolon: \"foo:\"\n---\n\nBody.\n",
+            "---\nmixed: \"  first\\nsecond\"\ncolon: \"foo:\"\n---\n\nBody.\n",
+        ),
+    ];
+    for (input, expected) in cases {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.md"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, expected);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn markdown_front_matter_preserves_block_scalar_trailing_spaces() {
+    let input = concat!(
+        "---\n",
+        "value: |\n",
+        "  first \n",
+        "   second \n",
+        "  third\n",
+        "---\n",
+        "\n",
+        "Body.\n",
+    );
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_strings_ending_in_colon_remain_quoted() {
+    for input in [
+        "- \"foo:\"\n",
+        "value: \"foo:\"\n",
+        "items: [\"foo:\"]\n",
+        "metadata: {value: \"foo:\"}\n",
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_flow_strings_preserve_boundary_whitespace() {
+    let input = "items: [\" foo\", \"foo \"]\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_non_ascii_whitespace_is_scalar_content() {
+    let nbsp = '\u{00a0}';
+    let input = format!("trailing: foo{nbsp}\nleading: {nbsp}foo\ncore_like: {nbsp}null{nbsp}\n");
+    let expected =
+        format!("trailing: 'foo{nbsp}'\nleading: '{nbsp}foo'\ncore_like: '{nbsp}null{nbsp}'\n");
+    let (status, stdout, stderr) =
+        run_stdin(&["format", "--stdin-file-path", "input.yaml"], &input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_escaped_non_printable_strings_remain_quoted() {
+    for input in [
+        "value: \"\\uFEFF\"\n",
+        "value: \"\\uFFFE\"\n",
+        "value: \"\\uFFFF\"\n",
+    ] {
+        let (status, stdout, stderr) =
+            run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
 fn yaml_document_markers_with_inline_content_parse_the_inline_root() {
     let input = "\
 --- !!map
@@ -4465,6 +4594,19 @@ fn yaml_diagnostics_report_fast_path_trace_counters() {
         ),
         "{stderr}"
     );
+}
+
+#[test]
+fn yaml_diagnostics_report_output_reparse() {
+    let input = "name:   yamark\n";
+    let expected = "name: yamark\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--diagnostics", "--stdin-file-path", "input.yaml"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert!(stderr.contains("source_scans=1 parse_passes=2"), "{stderr}");
 }
 
 #[test]
@@ -7541,6 +7683,146 @@ formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], pa
     assert_eq!(status, 0, "{stderr}");
     assert_eq!(stdout, expected);
     assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_output_reparse_rejects_invalid_embedded_formatter_output() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("yamark.toml");
+    fs::write(
+        &config,
+        r#"
+[embedded.invalid]
+formatter = { command = ["/bin/sh", "-c", "printf '\\001'", "{path}"], path_suffix = ".txt" }
+"#,
+    )
+    .unwrap();
+
+    let input = "# fmt: invalid\nbody: |\n  valid\n";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--config",
+            config.to_str().unwrap(),
+        ],
+        input,
+    );
+    assert_eq!(status, 1);
+    assert_eq!(stdout, "");
+    assert!(
+        stderr.contains("formatter produced invalid YAML"),
+        "{stderr}"
+    );
+
+    let path = dir.path().join("input.yaml");
+    fs::write(&path, input).unwrap();
+    let output = yamark()
+        .args([
+            "format",
+            "--config",
+            config.to_str().unwrap(),
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(fs::read_to_string(path).unwrap(), input);
+}
+
+#[test]
+fn yaml_output_reparse_rejects_non_printable_unicode() {
+    for octal in [r"\\357\\273\\277", r"\\357\\277\\276", r"\\357\\277\\277"] {
+        let dir = tempdir().unwrap();
+        let config = dir.path().join("yamark.toml");
+        fs::write(
+            &config,
+            format!(
+                r#"
+[embedded.invalid]
+formatter = {{ command = ["/bin/sh", "-c", "printf '{octal}'", "{{path}}"], path_suffix = ".txt" }}
+"#
+            ),
+        )
+        .unwrap();
+
+        let input = "# fmt: invalid\nbody: |\n  valid\n";
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.yaml",
+                "--config",
+                config.to_str().unwrap(),
+            ],
+            input,
+        );
+        assert_eq!(status, 1);
+        assert_eq!(stdout, "");
+        assert!(
+            stderr.contains("formatter produced invalid YAML"),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn yaml_output_reparse_rejects_over_indented_leading_blank_line() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("yamark.toml");
+    fs::write(
+        &config,
+        r#"
+[embedded.invalid]
+formatter = { command = ["/bin/sh", "-c", "printf '   \na\n'", "{path}"], path_suffix = ".txt" }
+"#,
+    )
+    .unwrap();
+
+    let input = "# fmt: invalid\nbody: |\n  valid\n";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--config",
+            config.to_str().unwrap(),
+        ],
+        input,
+    );
+    assert_eq!(status, 1);
+    assert_eq!(stdout, "");
+    assert!(
+        stderr.contains("formatter produced invalid YAML"),
+        "{stderr}"
+    );
+
+    let path = dir.path().join("input.yaml");
+    fs::write(&path, input).unwrap();
+    let output = yamark()
+        .args([
+            "format",
+            "--config",
+            config.to_str().unwrap(),
+            path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(fs::read_to_string(path).unwrap(), input);
+}
+
+#[test]
+fn output_reparse_rejects_new_yaml_front_matter() {
+    let input = "***\nkey: value\n\n---\nbody\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
+    assert_eq!(status, 1);
+    assert_eq!(stdout, "");
+    assert!(
+        stderr.contains("formatter changed the YAML value"),
+        "{stderr}"
+    );
 }
 
 #[test]

@@ -238,7 +238,10 @@ fn yaml_scan_has_unsupported_preserve_syntax(source: &SourceBuffer, scan: &YamlL
 fn unsupported_yaml_line_syntax(source: &SourceBuffer, line: usize, end: usize) -> bool {
     let text = source.line_text(line);
     let (body, _) = strip_newline(text);
-    let trimmed = body.strip_prefix('\u{feff}').unwrap_or(body).trim_start();
+    let trimmed = body
+        .strip_prefix('\u{feff}')
+        .unwrap_or(body)
+        .trim_ascii_start();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return false;
     }
@@ -342,7 +345,9 @@ fn document_marker_inline_content_requires_preservation(
     let Some(content_start) = marker.inline_content_start else {
         return false;
     };
-    text[content_start..].trim_start().starts_with(['|', '>'])
+    text[content_start..]
+        .trim_ascii_start()
+        .starts_with(['|', '>'])
 }
 
 fn explicit_key_has_unsupported_multiline_key(
@@ -354,7 +359,7 @@ fn explicit_key_has_unsupported_multiline_key(
     let mut next = line + 1;
     while next < end {
         let next_text = source.line_text(next);
-        let next_trimmed = next_text.trim_start();
+        let next_trimmed = next_text.trim_ascii_start();
         if next_trimmed.is_empty() || next_trimmed.starts_with('#') {
             next += 1;
             continue;
@@ -408,7 +413,7 @@ fn unsupported_sequence_entry_line(text: &str, indent: usize) -> bool {
         return false;
     }
     if let Some(rest) = value.strip_prefix('?') {
-        let rest = rest.trim_start();
+        let rest = rest.trim_ascii_start();
         return !rest.starts_with(['[', '{']);
     }
     if value.starts_with(['&', '!']) && value.contains(" : ") {
@@ -495,7 +500,7 @@ fn compact_nested_document_index(index: usize) -> u32 {
 
 fn yaml_line_is_block_scalar_body(text: &str, indent: usize, block_scalar_indent: usize) -> bool {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    text.trim().is_empty() || text.starts_with('\t') || indent > block_scalar_indent
+    text.trim_ascii().is_empty() || text.starts_with('\t') || indent > block_scalar_indent
 }
 
 fn yaml_line_has_fmt_directive_comment(text: &str) -> bool {
@@ -506,7 +511,7 @@ fn yaml_line_has_fmt_directive_comment(text: &str) -> bool {
     };
     text[comment_start..]
         .strip_prefix('#')
-        .is_some_and(|rest| rest.trim_start().starts_with("fmt:"))
+        .is_some_and(|rest| rest.trim_ascii_start().starts_with("fmt:"))
 }
 
 struct YamlParser<'src, 'cfg> {
@@ -1013,7 +1018,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             YamlAstKind::FlowSequence(_) | YamlAstKind::FlowMapping(_) => {
                 let rendered_width =
                     planned_yaml_inline_width_or_source(self.source, &self.doc, &self.ast, value);
-                let key = self.source.slice(key).trim();
+                let key = self.source.slice(key).trim_ascii();
                 let inline_width = mapping_indent + key.chars().count() + 2 + rendered_width;
                 if yaml_flow_collection_should_expand(
                     self.source,
@@ -1049,7 +1054,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             YamlAstKind::Mapping(_) | YamlAstKind::Sequence(_) => {
                 if yaml_block_collection_has_flow_collapse_hint(value_node) {
                     let available_width = options.line_width.saturating_sub(
-                        mapping_indent + self.source.slice(key).trim().chars().count() + 2,
+                        mapping_indent + self.source.slice(key).trim_ascii().chars().count() + 2,
                     );
                     return Some((
                         value,
@@ -1069,7 +1074,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     )
                 {
                     let available_width = options.line_width.saturating_sub(
-                        mapping_indent + self.source.slice(key).trim().chars().count() + 2,
+                        mapping_indent + self.source.slice(key).trim_ascii().chars().count() + 2,
                     );
                     if compact_yaml_node_width(self.source, &self.doc, &self.ast, value)
                         .is_some_and(|width| width <= available_width)
@@ -1797,7 +1802,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 self.parse_flow_collapse_hint_collection(indent, Vec::new(), hint, false)?;
             end = self.ast.node(value).span.end();
             Some(value)
-        } else if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
+        } else if let Some(block) =
+            block_scalar_at_value(self.source, self.line, self.end, value_start)
+        {
             let value = self.parse_block_scalar(block)?;
             end = self.ast.node(value).span.end();
             Some(value)
@@ -1810,10 +1817,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             Some(value)
         } else {
             let metadata = scalar_metadata(self.source, line_value.value);
-            let value_is_empty = self.source.slice(line_value.value).trim().is_empty();
+            let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
             let property_only_value = !value_is_empty
                 && (metadata.tag.is_some() || metadata.anchor.is_some())
-                && self.source.slice(metadata.content).trim().is_empty();
+                && self.source.slice(metadata.content).trim_ascii().is_empty();
             self.line += 1;
             if value_is_empty || property_only_value {
                 pair_trailing_comment = line_value.trailing_comment;
@@ -2004,8 +2011,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let text = self.source.line_text(self.line);
         let colon = mapping_colon_from(text, key_start_column).expect("mapping pair exists");
         let key_start = line.text.start() + key_start_column;
-        let key_end =
-            line.text.start() + key_start_column + text[key_start_column..colon].trim_end().len();
+        let key_end = line.text.start()
+            + key_start_column
+            + text[key_start_column..colon].trim_ascii_end().len();
         let key = Span::new(key_start, key_end);
         let key_node = self.push_mapping_key_node(key);
         let colon_span = Span::new(line.text.start() + colon, line.text.start() + colon + 1);
@@ -2053,16 +2061,18 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             )?;
             end = self.ast.node(value).span.end();
             Some(value)
-        } else if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
+        } else if let Some(block) =
+            block_scalar_at_value(self.source, self.line, self.end, value_start)
+        {
             let value = self.parse_block_scalar(block)?;
             end = self.ast.node(value).span.end();
             Some(value)
         } else {
             let metadata = scalar_metadata(self.source, line_value.value);
-            let value_is_empty = self.source.slice(line_value.value).trim().is_empty();
+            let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
             let property_only_value = !value_is_empty
                 && (metadata.tag.is_some() || metadata.anchor.is_some())
-                && self.source.slice(metadata.content).trim().is_empty();
+                && self.source.slice(metadata.content).trim_ascii().is_empty();
             self.line += 1;
             if value_is_empty || property_only_value {
                 pair_trailing_comment = line_value.trailing_comment;
@@ -2227,7 +2237,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return Some(id);
         }
 
-        let source = self.source.slice(metadata.content).trim();
+        let source = self.source.slice(metadata.content).trim_ascii();
         if alias_scalar(source) {
             return Some(self.ast.push_node(YamlAstNode::semantic(
                 YamlAstKind::Alias(YamlAlias {
@@ -2363,10 +2373,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 Some(value)
             } else {
                 let metadata = scalar_metadata(self.source, line_value.value);
-                let value_is_empty = self.source.slice(line_value.value).trim().is_empty();
+                let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
                 let property_only_value = !value_is_empty
                     && (metadata.tag.is_some() || metadata.anchor.is_some())
-                    && self.source.slice(metadata.content).trim().is_empty();
+                    && self.source.slice(metadata.content).trim_ascii().is_empty();
                 self.line += 1;
                 if value_is_empty || property_only_value {
                     item_trailing_comment = line_value.trailing_comment;
@@ -2589,10 +2599,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 Some(value)
             } else {
                 let metadata = scalar_metadata(self.source, line_value.value);
-                let value_is_empty = self.source.slice(line_value.value).trim().is_empty();
+                let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
                 let property_only_value = !value_is_empty
                     && (metadata.tag.is_some() || metadata.anchor.is_some())
-                    && self.source.slice(metadata.content).trim().is_empty();
+                    && self.source.slice(metadata.content).trim_ascii().is_empty();
                 self.line += 1;
                 if value_is_empty || property_only_value {
                     item_trailing_comment = line_value.trailing_comment;
@@ -2995,7 +3005,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             .state_for_yaml_node(&mut self.doc, DirectiveTargetKind::YamlScalar);
         self.validate_inline_scalar_directive_target(state, block.value)?;
         let metadata = scalar_metadata(self.source, block.value);
-        let source = self.source.slice(metadata.content).trim();
+        let source = self.source.slice(metadata.content).trim_ascii();
         self.line = self.source.line_at_byte(block.full.end().saturating_sub(1)) + 1;
         Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
             YamlAstKind::Scalar(YamlScalar {
@@ -3141,7 +3151,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         continuation: PlainScalarContinuation,
     ) -> Result<YamlNodeId> {
         let mut metadata = scalar_metadata(self.source, value);
-        if !self.source.slice(metadata.content).trim().is_empty() {
+        if !self.source.slice(metadata.content).trim_ascii().is_empty() {
             self.reject_same_line_yaml_directive(trailing_comment)?;
         }
         let target = if let Some(target) =
@@ -3173,7 +3183,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         if metadata.content.is_empty() && (metadata.tag.is_some() || metadata.anchor.is_some()) {
             value = metadata.content;
         }
-        let source = self.source.slice(metadata.content).trim();
+        let source = self.source.slice(metadata.content).trim_ascii();
         if alias_scalar(source) {
             self.validate_non_scalar_value_directive_target(state, metadata.content)?;
             return Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
@@ -3195,7 +3205,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             value.end = extension.value_end;
             metadata.content.end = extension.value_end;
         }
-        let source = self.source.slice(metadata.content).trim();
+        let source = self.source.slice(metadata.content).trim_ascii();
         Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
             YamlAstKind::Scalar(YamlScalar {
                 style: scalar_style(source),
@@ -3235,7 +3245,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         while scan < self.end {
             let line = self.source.lines[scan];
             let text = self.source.line_text(scan);
-            if text.trim().is_empty() {
+            if text.trim_ascii().is_empty() {
                 scan += 1;
                 continue;
             }
@@ -3331,7 +3341,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             if tab_in_indentation(text).is_some() {
                 break;
             }
-            let kind = if text.trim().is_empty() {
+            let kind = if text.trim_ascii().is_empty() {
                 Some(YamlTriviaKind::Blank)
             } else if let Some(marker) = document_marker_line_info(text) {
                 if let Some(content_start) = marker.inline_content_start {
@@ -3365,7 +3375,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     line.text.start() + text.find('#').unwrap_or(0),
                 )?;
                 Some(YamlTriviaKind::Directive)
-            } else if text.trim_start().starts_with('#') {
+            } else if text.trim_ascii_start().starts_with('#') {
                 Some(YamlTriviaKind::Comment)
             } else {
                 None
@@ -3420,15 +3430,17 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return false;
         };
         let text = self.source.line_text(next);
-        !(text.trim().is_empty()
-            || text.trim_start().starts_with('#')
+        !(text.trim_ascii().is_empty()
+            || text.trim_ascii_start().starts_with('#')
             || document_marker(text)
             || standard_yaml_directive(text))
     }
 
     fn yaml_directive_is_isolated(&self, line: usize) -> bool {
-        let before_blank = line == self.start || self.source.line_text(line - 1).trim().is_empty();
-        let after_blank = line + 1 >= self.end || self.source.line_text(line + 1).trim().is_empty();
+        let before_blank =
+            line == self.start || self.source.line_text(line - 1).trim_ascii().is_empty();
+        let after_blank =
+            line + 1 >= self.end || self.source.line_text(line + 1).trim_ascii().is_empty();
         before_blank && after_blank
     }
 
@@ -3453,7 +3465,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn reject_populated_same_line_yaml_directive(&self, line_value: LineValue) -> Result<()> {
         let metadata = scalar_metadata(self.source, line_value.value);
-        if !self.source.slice(metadata.content).trim().is_empty() {
+        if !self.source.slice(metadata.content).trim_ascii().is_empty() {
             self.reject_same_line_yaml_directive(line_value.trailing_comment)?;
         }
         Ok(())
@@ -4384,7 +4396,7 @@ impl<'src, 'ast, 'cfg> FlowParser<'src, 'ast, 'cfg> {
                         self.pos + 1
                     };
                     let line_start = self.line_start_before(newline_start);
-                    if self.text[line_start..newline_start].trim().is_empty() {
+                    if self.text[line_start..newline_start].trim_ascii().is_empty() {
                         self.inner_trivia.push(YamlTrivia {
                             kind: YamlTriviaKind::Blank,
                             span: SourceSpan::new(Span::new(
@@ -4590,7 +4602,19 @@ fn emit_yaml_node(
     ) = &node.emit
         && let YamlAstKind::Scalar(scalar) = &node.kind
     {
-        emit_yaml_rendered_scalar_plan(out, source, scalar, node, state, options, None);
+        let root_line_start = yaml_node_is_root(ast, id) && yaml_output_is_at_line_start(out);
+        emit_yaml_rendered_scalar_plan(
+            out,
+            source,
+            scalar,
+            node,
+            state,
+            options,
+            YamlScalarEmitPosition {
+                body_indent: None,
+                root_line_start,
+            },
+        );
         return Ok(());
     }
     if matches!(
@@ -4830,7 +4854,10 @@ fn emit_yaml_node(
                                 value_node,
                                 value_state,
                                 options,
-                                None,
+                                YamlScalarEmitPosition {
+                                    body_indent: None,
+                                    root_line_start: false,
+                                },
                             );
                         } else {
                             emit_inline_comment(out, source, item.trailing_comment);
@@ -5069,7 +5096,7 @@ fn emit_yaml_mapping_pair(
             }
             ExternalBlockScalarAction::Formatted(formatted) => {
                 emit_yaml_line_prefix(out, prefix);
-                let key = source.slice(pair.key).trim();
+                let key = source.slice(pair.key).trim_ascii();
                 out.push_str(key);
                 out.push(':');
                 out.push(' ');
@@ -5091,7 +5118,7 @@ fn emit_yaml_mapping_pair(
             out.push_str(source.slice(value_node.span));
         } else {
             emit_yaml_line_prefix(out, prefix);
-            out.push_str(source.slice(pair.key).trim());
+            out.push_str(source.slice(pair.key).trim_ascii());
             out.push(':');
             emit_yaml_node_properties(out, source, value_node);
             emit_inline_comment(out, source, pair.trailing_comment);
@@ -5108,7 +5135,7 @@ fn emit_yaml_mapping_pair(
     }
 
     emit_yaml_line_prefix(out, prefix);
-    let key = source.slice(pair.key).trim();
+    let key = source.slice(pair.key).trim_ascii();
     out.push_str(key);
     out.push(':');
     emit_yaml_mapping_value_after_colon(
@@ -5201,7 +5228,7 @@ fn emit_yaml_explicit_mapping_pair(
     let (key_body, key_newline) = strip_newline(source.slice(key_line));
     let key_body = explicit_mapping_key_body(source, pair, key_line_index).unwrap_or(key_body);
     emit_yaml_line_prefix(out, key_prefix);
-    out.push_str(key_body.trim_end());
+    out.push_str(key_body.trim_ascii_end());
     if key_newline.is_empty() {
         out.push_str(line_ending_or_default(source, pair.line, options));
     } else {
@@ -5350,7 +5377,10 @@ fn emit_yaml_mapping_value_after_colon(
                     value_node,
                     value_state,
                     options,
-                    None,
+                    YamlScalarEmitPosition {
+                        body_indent: None,
+                        root_line_start: false,
+                    },
                 );
             } else {
                 emit_inline_comment(out, source, pair.trailing_comment);
@@ -5397,7 +5427,18 @@ fn emit_yaml_scalar(
         }
         YamlEmitPlan::Rendered(_) => {
             let state = document.state(node.state);
-            emit_yaml_rendered_scalar_plan(out, source, scalar, node, state, options, None);
+            emit_yaml_rendered_scalar_plan(
+                out,
+                source,
+                scalar,
+                node,
+                state,
+                options,
+                YamlScalarEmitPosition {
+                    body_indent: None,
+                    root_line_start: false,
+                },
+            );
             Ok(())
         }
         YamlEmitPlan::NestedMarkdownBlockScalar { nested } => {
@@ -5433,6 +5474,12 @@ fn emit_yaml_scalar(
     }
 }
 
+#[derive(Clone, Copy)]
+struct YamlScalarEmitPosition {
+    body_indent: Option<usize>,
+    root_line_start: bool,
+}
+
 fn emit_yaml_rendered_scalar_plan(
     out: &mut String,
     source: &SourceBuffer,
@@ -5440,7 +5487,7 @@ fn emit_yaml_rendered_scalar_plan(
     node: &YamlAstNode<'_>,
     state: &crate::core::directives::DirectiveState,
     options: FormatOptions,
-    body_indent: Option<usize>,
+    position: YamlScalarEmitPosition,
 ) {
     match &node.emit {
         YamlEmitPlan::Rendered(YamlRenderedKind::EmptyMarkdownScalar) => {
@@ -5452,14 +5499,27 @@ fn emit_yaml_rendered_scalar_plan(
             ));
         }
         YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar) => {
-            if let Some(output) =
-                render_inline_markdown_scalar(source, scalar, node, state, options, body_indent)
-            {
+            if let Some(output) = render_inline_markdown_scalar(
+                source,
+                scalar,
+                node,
+                state,
+                options,
+                position.body_indent,
+            ) {
                 out.push_str(&output);
             }
         }
         YamlEmitPlan::Rendered(YamlRenderedKind::Scalar) => {
-            emit_yaml_scalar_plan_output_into(out, source, scalar, node, options, body_indent);
+            emit_yaml_scalar_plan_output_into(
+                out,
+                source,
+                scalar,
+                node,
+                options,
+                position.body_indent,
+                position.root_line_start,
+            );
         }
         _ => unreachable!("non-scalar YAML render plan used for scalar output"),
     }
@@ -5472,6 +5532,7 @@ fn emit_yaml_scalar_plan_output_into(
     node: &YamlAstNode<'_>,
     options: FormatOptions,
     body_indent: Option<usize>,
+    root_line_start: bool,
 ) {
     if let Some(body) = scalar.body {
         output.push_str(&render_yaml_block_scalar_value_header(source, scalar));
@@ -5485,7 +5546,7 @@ fn emit_yaml_scalar_plan_output_into(
     }
     if scalar.value.is_empty() && scalar_has_properties(scalar) {
         let (body, newline) = strip_newline(source.slice(node.span));
-        output.push_str(body.trim_end());
+        output.push_str(body.trim_ascii_end());
         output.push_str(newline);
         return;
     }
@@ -5512,7 +5573,10 @@ fn emit_yaml_scalar_plan_output_into(
         output.push_str(line_ending_for_span(source, node.span));
         return;
     }
-    if let Some(normalized) = normalize_quoted_string_scalar(source, scalar, false) {
+    if let Some(mut normalized) = normalize_quoted_string_scalar(source, scalar, false) {
+        if root_line_start && document_marker(&normalized) {
+            normalized = quote_yaml_string(&normalized, scalar.style);
+        }
         output.push_str(&normalized);
         emit_inline_comment(output, source, scalar.trailing_comment);
         output.push_str(line_ending_for_span(source, node.span));
@@ -5522,7 +5586,7 @@ fn emit_yaml_scalar_plan_output_into(
         output.push_str(&rendered);
         return;
     }
-    output.push_str(source.slice(scalar.value).trim());
+    output.push_str(source.slice(scalar.value).trim_ascii());
     emit_inline_comment(output, source, scalar.trailing_comment);
     output.push_str(line_ending_for_span(source, node.span));
 }
@@ -5541,7 +5605,7 @@ fn emit_plain_scalar_plan_output_into(
     {
         return None;
     }
-    let raw = source.slice(scalar.value).trim();
+    let raw = source.slice(scalar.value).trim_ascii();
     match scalar.semantic {
         YamlScalarSemantic::Boolean => {
             let normalized = match raw {
@@ -5580,7 +5644,7 @@ fn emit_non_string_plain_scalar_plan_output_into(
     {
         return None;
     }
-    let raw = source.slice(scalar.value).trim();
+    let raw = source.slice(scalar.value).trim_ascii();
     match scalar.semantic {
         YamlScalarSemantic::Boolean => match raw {
             "true" | "True" | "TRUE" => output.push_str("true"),
@@ -5612,7 +5676,7 @@ fn render_unsafe_plain_string_scalar(
         return None;
     }
     let metadata = scalar_metadata(source, scalar.value);
-    let content = source.slice(metadata.content).trim();
+    let content = source.slice(metadata.content).trim_ascii();
     if content.contains(['\n', '\r']) || block_plain_string_safe(content) {
         return None;
     }
@@ -5639,7 +5703,7 @@ fn normalize_quoted_string_scalar(
     {
         return None;
     }
-    let raw = source.slice(scalar.value).trim();
+    let raw = source.slice(scalar.value).trim_ascii();
     if raw.contains(['\n', '\r']) {
         return None;
     }
@@ -5673,11 +5737,18 @@ fn render_quoted_literal_scalar(
         return None;
     }
     let metadata = scalar_metadata(source, scalar.value);
-    let raw = source.slice(metadata.content).trim();
+    let raw = source.slice(metadata.content).trim_ascii();
     if raw.contains(['\n', '\r']) {
         return None;
     }
     let decoded = decode_quoted_scalar(raw)?;
+    if decoded
+        .split('\n')
+        .find(|line| !line.is_empty())
+        .is_some_and(|line| line.starts_with(' '))
+    {
+        return None;
+    }
     if !decoded.contains('\n')
         && (plain_string_safe(&decoded, false)
             || !decoded.contains('\'')
@@ -5828,7 +5899,7 @@ fn render_folded_prose_scalar(
         return None;
     }
     let metadata = scalar_metadata(source, scalar.value);
-    let raw = source.slice(metadata.content).trim();
+    let raw = source.slice(metadata.content).trim_ascii();
     let prose: Cow<'_, str> = match scalar.style {
         YamlScalarStyle::Plain => {
             if scalar.semantic != YamlScalarSemantic::String {
@@ -5952,7 +6023,7 @@ fn folded_block_body_prose(body: &str) -> Option<FoldedBlockProse> {
     for line in body.split_inclusive('\n') {
         let (line_body, newline) = strip_newline(line);
         final_newline = !newline.is_empty();
-        if line_body.trim().is_empty() {
+        if line_body.trim_ascii().is_empty() {
             if parts.is_empty() {
                 return None;
             }
@@ -5968,7 +6039,7 @@ fn folded_block_body_prose(body: &str) -> Option<FoldedBlockProse> {
             return None;
         }
         let content = &line_body[indent..];
-        if content != content.trim() {
+        if content != content.trim_ascii() {
             return None;
         }
         parts.push(content);
@@ -5985,7 +6056,7 @@ fn folded_block_body_prose(body: &str) -> Option<FoldedBlockProse> {
 
 fn foldable_yaml_prose(source: &str) -> bool {
     !source.is_empty()
-        && source == source.trim()
+        && source == source.trim_ascii()
         && !source.contains(['\n', '\r', '\t'])
         && !source.chars().any(char::is_control)
 }
@@ -6079,7 +6150,7 @@ fn render_inline_markdown_scalar(
     let content = inline_markdown_scalar_content(source, scalar, metadata.content)?;
     let prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
-        .trim();
+        .trim_ascii();
     let newline = line_ending_or_default(source, node.span, options);
 
     let mut out = String::new();
@@ -6125,7 +6196,7 @@ fn inline_markdown_scalar_content<'a>(
     scalar: &YamlScalar<'_>,
     content: Span,
 ) -> Option<Cow<'a, str>> {
-    let raw = source.slice(content).trim();
+    let raw = source.slice(content).trim_ascii();
     match scalar.style {
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
             if let Some(inner) = simple_quoted_scalar_inner(raw) {
@@ -6185,7 +6256,7 @@ fn explicit_block_scalar_body_indent(
 
 fn block_scalar_body_indent(body: &str) -> Option<usize> {
     body.lines()
-        .filter(|line| !line.trim().is_empty())
+        .filter(|line| !line.trim_ascii().is_empty())
         .map(|line| line.bytes().take_while(|byte| *byte == b' ').count())
         .min()
 }
@@ -6196,7 +6267,7 @@ fn reindent_block_lines(body: &str, strip_indent: usize, emit_indent: usize) -> 
     let mut out = String::with_capacity(body.len() + prefix.len());
     for line in body.split_inclusive('\n') {
         let (line_body, newline) = strip_newline(line);
-        if line_body.trim().is_empty() {
+        if line_body.trim_ascii().is_empty() {
             out.push_str(line_body);
             out.push_str(newline);
             continue;
@@ -6224,7 +6295,7 @@ fn emit_yaml_alias(
     alias: &YamlAlias,
     node: &YamlAstNode<'_>,
 ) {
-    out.push_str(source.slice(alias.value).trim());
+    out.push_str(source.slice(alias.value).trim_ascii());
     emit_inline_comment(out, source, alias.trailing_comment);
     out.push_str(line_ending_for_span(source, node.span));
 }
@@ -6262,12 +6333,12 @@ fn emit_yaml_flow_collection(
         }
         _ => match &node.kind {
             YamlAstKind::FlowSequence(sequence) => {
-                out.push_str(source.slice(sequence.value).trim());
+                out.push_str(source.slice(sequence.value).trim_ascii());
             }
             YamlAstKind::FlowMapping(mapping) => {
-                out.push_str(source.slice(mapping.value).trim());
+                out.push_str(source.slice(mapping.value).trim_ascii());
             }
-            _ => out.push_str(source.slice(node.span).trim()),
+            _ => out.push_str(source.slice(node.span).trim_ascii()),
         },
     }
     emit_inline_comment(out, source, flow_trailing_comment(&node.kind));
@@ -6289,9 +6360,13 @@ fn planned_yaml_inline_width_or_source(
         return width;
     }
     match &node.kind {
-        YamlAstKind::FlowSequence(sequence) => source.slice(sequence.value).trim().chars().count(),
-        YamlAstKind::FlowMapping(mapping) => source.slice(mapping.value).trim().chars().count(),
-        _ => source.slice(node.span).trim().chars().count(),
+        YamlAstKind::FlowSequence(sequence) => {
+            source.slice(sequence.value).trim_ascii().chars().count()
+        }
+        YamlAstKind::FlowMapping(mapping) => {
+            source.slice(mapping.value).trim_ascii().chars().count()
+        }
+        _ => source.slice(node.span).trim_ascii().chars().count(),
     }
 }
 
@@ -6349,13 +6424,15 @@ fn emit_yaml_inline_node_into_inner(
     }
     if yaml_node_should_preserve(source, document, node) {
         match &node.kind {
-            YamlAstKind::Scalar(scalar) => out.push_str(source.slice(scalar.value).trim()),
-            YamlAstKind::Alias(alias) => out.push_str(source.slice(alias.value).trim()),
+            YamlAstKind::Scalar(scalar) => out.push_str(source.slice(scalar.value).trim_ascii()),
+            YamlAstKind::Alias(alias) => out.push_str(source.slice(alias.value).trim_ascii()),
             YamlAstKind::FlowSequence(sequence) => {
-                out.push_str(source.slice(sequence.value).trim());
+                out.push_str(source.slice(sequence.value).trim_ascii());
             }
-            YamlAstKind::FlowMapping(mapping) => out.push_str(source.slice(mapping.value).trim()),
-            _ => out.push_str(source.slice(node.span).trim()),
+            YamlAstKind::FlowMapping(mapping) => {
+                out.push_str(source.slice(mapping.value).trim_ascii())
+            }
+            _ => out.push_str(source.slice(node.span).trim_ascii()),
         }
         return Some(());
     }
@@ -6380,7 +6457,7 @@ fn emit_yaml_inline_node_into_inner(
             if alias.trailing_comment.is_some() {
                 return None;
             }
-            out.push_str(source.slice(alias.value).trim());
+            out.push_str(source.slice(alias.value).trim_ascii());
         }
         YamlAstKind::FlowSequence(sequence) => {
             if sequence.has_inner_trivia {
@@ -6407,7 +6484,7 @@ fn emit_yaml_inline_node_into_inner(
         }
         YamlAstKind::FlowMapping(mapping) => {
             if !mapping.braced {
-                out.push_str(source.slice(mapping.value).trim());
+                out.push_str(source.slice(mapping.value).trim_ascii());
                 return Some(());
             }
             if mapping.pairs.iter().any(|pair| pair.explicit) {
@@ -6510,13 +6587,15 @@ fn render_yaml_inline_node_width_with_context_uncached(
     }
     if yaml_node_should_preserve(source, document, node) {
         return Some(match &node.kind {
-            YamlAstKind::Scalar(scalar) => source.slice(scalar.value).trim().chars().count(),
-            YamlAstKind::Alias(alias) => source.slice(alias.value).trim().chars().count(),
+            YamlAstKind::Scalar(scalar) => source.slice(scalar.value).trim_ascii().chars().count(),
+            YamlAstKind::Alias(alias) => source.slice(alias.value).trim_ascii().chars().count(),
             YamlAstKind::FlowSequence(sequence) => {
-                source.slice(sequence.value).trim().chars().count()
+                source.slice(sequence.value).trim_ascii().chars().count()
             }
-            YamlAstKind::FlowMapping(mapping) => source.slice(mapping.value).trim().chars().count(),
-            _ => source.slice(node.span).trim().chars().count(),
+            YamlAstKind::FlowMapping(mapping) => {
+                source.slice(mapping.value).trim_ascii().chars().count()
+            }
+            _ => source.slice(node.span).trim_ascii().chars().count(),
         });
     }
 
@@ -6540,7 +6619,7 @@ fn render_yaml_inline_node_width_with_context_uncached(
             if alias.trailing_comment.is_some() {
                 return None;
             }
-            Some(source.slice(alias.value).trim().chars().count())
+            Some(source.slice(alias.value).trim_ascii().chars().count())
         }
         YamlAstKind::FlowSequence(sequence) => {
             if sequence.has_inner_trivia {
@@ -6566,7 +6645,7 @@ fn render_yaml_inline_node_width_with_context_uncached(
         }
         YamlAstKind::FlowMapping(mapping) => {
             if !mapping.braced {
-                return Some(source.slice(mapping.value).trim().chars().count());
+                return Some(source.slice(mapping.value).trim_ascii().chars().count());
             }
             if mapping.pairs.iter().any(|pair| pair.explicit) {
                 return None;
@@ -6916,7 +6995,7 @@ fn emit_yaml_scalar_inline_into(
     scalar: &YamlScalar<'_>,
     flow_context: bool,
 ) -> Option<()> {
-    let raw = source.slice(scalar.value).trim();
+    let raw = source.slice(scalar.value).trim_ascii();
     if emit_plain_scalar_inline_into(out, raw, scalar, flow_context).is_some() {
         return Some(());
     }
@@ -7013,7 +7092,7 @@ fn render_yaml_scalar_inline_width(
     scalar: &YamlScalar<'_>,
     flow_context: bool,
 ) -> Option<usize> {
-    let raw = source.slice(scalar.value).trim();
+    let raw = source.slice(scalar.value).trim_ascii();
     if let Some(width) = normalize_core_scalar_width(source, scalar, flow_context) {
         return Some(width);
     }
@@ -7048,7 +7127,7 @@ fn normalize_core_scalar(
         return None;
     }
     let metadata = scalar_metadata(source, scalar.value);
-    let content = source.slice(metadata.content).trim();
+    let content = source.slice(metadata.content).trim_ascii();
     let tag = scalar.tag.map(|tag| source.slice(tag));
     let decoded = scalar_value_for_core_tag(content)?;
     match tag {
@@ -7099,7 +7178,7 @@ fn normalize_core_scalar_width(
         return None;
     }
     let metadata = scalar_metadata(source, scalar.value);
-    let content = source.slice(metadata.content).trim();
+    let content = source.slice(metadata.content).trim_ascii();
     let tag = scalar.tag.map(|tag| source.slice(tag));
     if scalar.style != YamlScalarStyle::Plain {
         if let Some(decoded) = simple_quoted_scalar_inner(content) {
@@ -7280,7 +7359,7 @@ fn scalar_property_prefix_width(
 ) -> usize {
     let inline_prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
-        .trim();
+        .trim_ascii();
     if !inline_prefix.is_empty() {
         return inline_prefix.chars().count();
     }
@@ -7313,7 +7392,7 @@ fn normalize_quoted_string_scalar_width(
     {
         return None;
     }
-    let raw = source.slice(scalar.value).trim();
+    let raw = source.slice(scalar.value).trim_ascii();
     if raw.contains(['\n', '\r']) {
         return None;
     }
@@ -7339,7 +7418,7 @@ fn scalar_property_prefix(
 ) -> String {
     let inline_prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
-        .trim();
+        .trim_ascii();
     if !inline_prefix.is_empty() {
         return inline_prefix.to_owned();
     }
@@ -7371,16 +7450,18 @@ fn block_plain_string_safe(value: &str) -> bool {
     }
     let mut chars = value.chars();
     let mut previous = chars.next().expect("non-empty strings have a first char");
-    if previous.is_whitespace() || previous.is_control() {
+    if previous.is_whitespace() || yaml_scalar_character_requires_escape(previous) {
         return false;
     }
     for ch in chars {
-        if ch.is_control() || matches!((previous, ch), (':', ' ') | (' ', '#')) {
+        if yaml_scalar_character_requires_escape(ch)
+            || matches!((previous, ch), (':', ' ') | (' ', '#'))
+        {
             return false;
         }
         previous = ch;
     }
-    !previous.is_whitespace()
+    !previous.is_whitespace() && previous != ':'
 }
 
 fn flow_plain_scalar_safe(value: &str) -> bool {
@@ -7389,7 +7470,8 @@ fn flow_plain_scalar_safe(value: &str) -> bool {
     }
     let mut previous = None;
     for ch in value.chars() {
-        if ch.is_control()
+        if previous.is_none() && ch.is_whitespace()
+            || yaml_scalar_character_requires_escape(ch)
             || matches!(ch, ',' | '[' | ']' | '{' | '}')
             || matches!((previous, ch), (Some(':'), ' ') | (Some(' '), '#'))
         {
@@ -7397,7 +7479,7 @@ fn flow_plain_scalar_safe(value: &str) -> bool {
         }
         previous = Some(ch);
     }
-    true
+    previous.is_some_and(|ch| !ch.is_whitespace() && ch != ':')
 }
 
 fn decoded_quoted_explicit_string_width(raw: &str, flow_context: bool) -> Option<usize> {
@@ -7634,7 +7716,7 @@ struct DecodedStringWidthState {
     core_len: usize,
     core_valid: bool,
     single_quote_count: usize,
-    has_control: bool,
+    requires_double_quote_escape: bool,
     double_bytes: usize,
     double_chars: usize,
 }
@@ -7655,7 +7737,7 @@ impl DecodedStringWidthState {
             core_len: 0,
             core_valid: true,
             single_quote_count: 0,
-            has_control: false,
+            requires_double_quote_escape: false,
             double_bytes: 2,
             double_chars: 2,
         }
@@ -7689,15 +7771,14 @@ impl DecodedStringWidthState {
         if ch == '\'' {
             self.single_quote_count += 1;
         }
-        if ch.is_control()
-            || matches!(ch, '\n' | '\r' | '\t')
+        if yaml_scalar_character_requires_escape(ch)
             || self.flow_context && matches!(ch, ',' | '[' | ']' | '{' | '}')
             || matches!((self.previous, ch), (Some(':'), ' ') | (Some(' '), '#'))
         {
             self.plain_unsafe = true;
         }
-        if ch.is_control() {
-            self.has_control = true;
+        if yaml_scalar_character_requires_escape(ch) {
+            self.requires_double_quote_escape = true;
         }
         let (double_bytes, double_chars) = double_quote_char_metrics(ch);
         self.double_bytes += double_bytes;
@@ -7714,6 +7795,7 @@ impl DecodedStringWidthState {
             && (self.has_space || self.has_string_semantic_marker)
             && !self.first?.is_whitespace()
             && !self.last?.is_whitespace()
+            && self.last != Some(':')
         {
             Some(self.width)
         } else {
@@ -7740,6 +7822,7 @@ impl DecodedStringWidthState {
             || self.plain_unsafe
             || matches!(self.first, Some(ch) if ch.is_whitespace())
             || matches!(self.last, Some(ch) if ch.is_whitespace())
+            || self.last == Some(':')
             || self.non_string_core_semantic().is_some()
     }
 
@@ -7752,7 +7835,7 @@ impl DecodedStringWidthState {
     }
 
     fn quoted_width(&self, preferred_style: YamlScalarStyle) -> usize {
-        if self.has_control {
+        if self.requires_double_quote_escape {
             return self.double_chars;
         }
         let single_bytes = self.bytes + 2 + self.single_quote_count;
@@ -7813,6 +7896,10 @@ fn plain_scalar_unsafe_start_value(value: &str) -> bool {
 
 fn plain_scalar_unsafe_first_char(ch: char) -> bool {
     ch.is_ascii() && plain_scalar_unsafe_start_byte(ch as u8)
+}
+
+fn yaml_scalar_character_requires_escape(ch: char) -> bool {
+    ch.is_control() || matches!(ch, '\u{feff}' | '\u{fffe}' | '\u{ffff}')
 }
 
 fn plain_scalar_unsafe_start_byte(byte: u8) -> bool {
@@ -7894,6 +7981,7 @@ fn double_quote_char_metrics(ch: char) -> (usize, usize) {
     match ch {
         '\0' | '\u{0007}' | '\u{0008}' | '\t' | '\n' | '\u{000b}' | '\u{000c}' | '\r'
         | '\u{001b}' | '"' | '\\' => (2, 2),
+        '\u{feff}' | '\u{fffe}' | '\u{ffff}' => (6, 6),
         ch if ch.is_control() => {
             let bytes = if ch as u32 <= 0xff {
                 4
@@ -7924,7 +8012,7 @@ fn quote_yaml_single_for_flow_width(value: &str) -> usize {
 }
 
 fn quote_yaml_string(value: &str, preferred_style: YamlScalarStyle) -> String {
-    if value.chars().any(char::is_control) {
+    if value.chars().any(yaml_scalar_character_requires_escape) {
         return quote_yaml_double_for_flow(value);
     }
     let single = format!("'{}'", value.replace('\'', "''"));
@@ -7941,7 +8029,7 @@ fn quote_yaml_string(value: &str, preferred_style: YamlScalarStyle) -> String {
 fn quote_yaml_string_width(value: &str, preferred_style: YamlScalarStyle) -> usize {
     let single_bytes = value.len() + 2 + value.matches('\'').count();
     let single_chars = value.chars().count() + 2 + value.matches('\'').count();
-    if value.chars().any(char::is_control) {
+    if value.chars().any(yaml_scalar_character_requires_escape) {
         let (_, double_chars) = quote_yaml_double_for_flow_metrics(value);
         return double_chars;
     }
@@ -7971,6 +8059,9 @@ fn quote_yaml_double_for_flow(value: &str) -> String {
             '\u{001b}' => out.push_str("\\e"),
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
+            '\u{feff}' | '\u{fffe}' | '\u{ffff}' => {
+                out.push_str(&format!("\\u{:04X}", ch as u32));
+            }
             ch if ch.is_control() => out.push_str(&format!("\\x{:02X}", ch as u32)),
             ch => out.push(ch),
         }
@@ -7988,6 +8079,10 @@ fn quote_yaml_double_for_flow_metrics(value: &str) -> (usize, usize) {
             | '\u{001b}' | '"' | '\\' => {
                 bytes += 2;
                 chars += 2;
+            }
+            '\u{feff}' | '\u{fffe}' | '\u{ffff}' => {
+                bytes += 6;
+                chars += 6;
             }
             ch if ch.is_control() => {
                 let escaped = format!("\\x{:02X}", ch as u32);
@@ -8028,7 +8123,18 @@ fn emit_yaml_scalar_after_prefix(
     match &node.emit {
         YamlEmitPlan::Rendered(_) => {
             let state = document.state(node.state);
-            emit_yaml_rendered_scalar_plan(out, source, scalar, node, state, options, body_indent);
+            emit_yaml_rendered_scalar_plan(
+                out,
+                source,
+                scalar,
+                node,
+                state,
+                options,
+                YamlScalarEmitPosition {
+                    body_indent,
+                    root_line_start: false,
+                },
+            );
             Ok(())
         }
         _ => emit_yaml_scalar(out, source, document, scalar, node, options, plugins),
@@ -8040,7 +8146,7 @@ fn render_yaml_block_scalar_value_header(source: &SourceBuffer, scalar: &YamlSca
     let mut output = if scalar.nested.is_some() && scalar.style == YamlScalarStyle::FoldedBlock {
         format_markdown_yaml_block_value(source.slice(scalar.value))
     } else {
-        source.slice(scalar.value).trim().to_owned()
+        source.slice(scalar.value).trim_ascii().to_owned()
     };
     emit_inline_comment(&mut output, source, scalar.trailing_comment);
     output.push_str(line_ending_for_span(source, header));
@@ -8519,12 +8625,16 @@ fn emit_yaml_node_properties(out: &mut String, source: &SourceBuffer, node: &Yam
 fn emit_inline_comment(out: &mut String, source: &SourceBuffer, comment: impl IntoOptionalSpan) {
     if let Some(comment) = comment.into_optional_span() {
         out.push(' ');
-        out.push_str(source.slice(comment).trim_end());
+        out.push_str(source.slice(comment).trim_ascii_end());
     }
 }
 
 fn yaml_node_is_root(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
     ast.roots.iter().any(|root| root.node == Some(id))
+}
+
+fn yaml_output_is_at_line_start(output: &str) -> bool {
+    output.is_empty() || output.ends_with(['\n', '\r'])
 }
 
 fn compact_root_collection_allowed(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
@@ -9024,7 +9134,7 @@ fn emit_mapping_key_for_flow_parts(
     if let Some(key) = key_node {
         return emit_yaml_inline_node_into_for_flow(out, source, document, ast, key);
     }
-    let key = source.slice(key).trim();
+    let key = source.slice(key).trim_ascii();
     if flow_plain_scalar_safe(key) {
         out.push_str(key);
     } else {
@@ -9043,7 +9153,7 @@ fn mapping_key_width_for_flow(
     if let Some(key) = key_node {
         return render_yaml_inline_node_width_for_flow(source, document, ast, key);
     }
-    let key = source.slice(key).trim();
+    let key = source.slice(key).trim_ascii();
     if flow_plain_scalar_safe(key) {
         Some(key.chars().count())
     } else {
@@ -9129,7 +9239,7 @@ fn emit_flow_table_rows(
         if let Some(comment) = row.trailing_comment {
             let column = comment_column.unwrap_or(body_width);
             out.push_str(&" ".repeat(column.saturating_sub(body_width) + 1));
-            out.push_str(source.slice(comment).trim_end());
+            out.push_str(source.slice(comment).trim_ascii_end());
         }
         out.push_str(line_ending_for_span(source, row.line));
     }
@@ -9306,7 +9416,7 @@ fn scalar_content_flow_collection_target(
     source: &SourceBuffer,
     content: Span,
 ) -> Option<DirectiveTargetKind> {
-    match source.slice(content).trim_start().as_bytes().first() {
+    match source.slice(content).trim_ascii_start().as_bytes().first() {
         Some(b'[') => Some(DirectiveTargetKind::YamlFlowSequence),
         Some(b'{') => Some(DirectiveTargetKind::YamlFlowMapping),
         _ => None,
@@ -9335,7 +9445,9 @@ struct PlainScalarExtension {
 }
 
 fn plain_scalar_continuation_line(text: &str, continuation: PlainScalarContinuation) -> bool {
-    if text.trim_start().starts_with('#') || document_marker(text) || standard_yaml_directive(text)
+    if text.trim_ascii_start().starts_with('#')
+        || document_marker(text)
+        || standard_yaml_directive(text)
     {
         return false;
     }
@@ -9568,7 +9680,7 @@ fn tab_indented_block_at(source: &SourceBuffer, line: usize, end: usize) -> Span
     let mut scan = line + 1;
     while scan < end {
         let text = source.line_text(scan);
-        if text.trim().is_empty()
+        if text.trim_ascii().is_empty()
             || tab_in_indentation(text).is_some()
             || indentation(text) > base_indent
         {
@@ -9584,7 +9696,7 @@ fn mapping_colon_at(text: &str, indent: usize) -> Option<usize> {
     if indentation(text) != indent {
         return None;
     }
-    let trimmed = text[indent..].trim_end();
+    let trimmed = text[indent..].trim_ascii_end();
     if trimmed.starts_with('-') {
         return None;
     }
@@ -9668,7 +9780,7 @@ fn scalar_style(value: &str) -> YamlScalarStyle {
 }
 
 fn alias_scalar(value: &str) -> bool {
-    let value = value.trim();
+    let value = value.trim_ascii();
     value
         .strip_prefix('*')
         .is_some_and(|anchor| !anchor.is_empty() && anchor.chars().all(is_anchor_char))
@@ -9738,7 +9850,7 @@ fn scalar_semantic_with_tag_and_style(
     if tag.is_some() {
         scalar_semantic_with_tag(value, tag)
     } else {
-        scalar_semantic_for_style(value.trim(), style)
+        scalar_semantic_for_style(value.trim_ascii(), style)
     }
 }
 
@@ -9751,7 +9863,7 @@ fn empty_scalar_semantic_with_tag(tag: Option<&str>) -> YamlScalarSemantic {
 }
 
 fn scalar_value_for_core_tag(value: &str) -> Option<String> {
-    let trimmed = value.trim();
+    let trimmed = value.trim_ascii();
     match scalar_style(trimmed) {
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
             decode_quoted_scalar(trimmed)
@@ -9762,7 +9874,7 @@ fn scalar_value_for_core_tag(value: &str) -> Option<String> {
 }
 
 fn scalar_semantic(value: &str) -> YamlScalarSemantic {
-    let trimmed = value.trim();
+    let trimmed = value.trim_ascii();
     scalar_semantic_for_style(trimmed, scalar_style(trimmed))
 }
 
@@ -9879,7 +9991,7 @@ fn document_marker_kind(text: &str) -> Option<DocumentMarkerKind> {
 
 fn document_marker_line_info(text: &str) -> Option<DocumentMarkerLine> {
     let (body, _) = strip_newline(text);
-    let marker_start = body.len() - body.trim_start().len();
+    let marker_start = body.len() - body.trim_ascii_start().len();
     let rest = &body[marker_start..];
     let (kind, marker) = if rest.starts_with("---") {
         (DocumentMarkerKind::Start, "---")
@@ -9926,7 +10038,7 @@ fn document_marker_inline_content_start(body: &str, marker_end: usize) -> Option
 
 fn document_marker_property_only(content: &str) -> bool {
     let comment_start = find_trailing_comment(content, 0).unwrap_or(content.len());
-    let content = content[..comment_start].trim();
+    let content = content[..comment_start].trim_ascii();
     !content.is_empty()
         && content
             .split_whitespace()
@@ -9934,7 +10046,7 @@ fn document_marker_property_only(content: &str) -> bool {
 }
 
 fn standard_yaml_directive(text: &str) -> bool {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     trimmed.starts_with("%YAML ") || trimmed.starts_with("%TAG ")
 }
 
@@ -9980,7 +10092,7 @@ pub fn format_simple_yaml_line(line: &str) -> String {
             .take_while(|byte| *byte == b' ')
             .count();
     let indent = &body[..indent_len];
-    let trimmed = body[indent_len..].trim_end();
+    let trimmed = body[indent_len..].trim_ascii_end();
 
     if let Some(rest) = trimmed.strip_prefix("-") {
         if rest.is_empty() {
@@ -9989,14 +10101,14 @@ pub fn format_simple_yaml_line(line: &str) -> String {
         if rest.chars().next().is_some_and(char::is_whitespace) {
             return format!(
                 "{indent}- {}{newline}",
-                normalize_flow_value(rest.trim_start())
+                normalize_flow_value(rest.trim_ascii_start())
             );
         }
     }
 
     if let Some(colon) = simple_mapping_colon(trimmed) {
-        let key = trimmed[..colon].trim_end();
-        let value = normalize_flow_value(trimmed[colon + 1..].trim_start());
+        let key = trimmed[..colon].trim_ascii_end();
+        let value = normalize_flow_value(trimmed[colon + 1..].trim_ascii_start());
         if value.is_empty() {
             format!("{indent}{key}:{newline}")
         } else {
@@ -10013,7 +10125,7 @@ pub fn format_flow_table(source: &str) -> String {
         let (body, newline) = strip_newline(line);
         let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
         let indent = &body[..indent_len];
-        let trimmed = body[indent_len..].trim();
+        let trimmed = body[indent_len..].trim_ascii();
         let Some(fields) = parse_flow_mapping_row(trimmed) else {
             return source.to_owned();
         };
@@ -10200,6 +10312,24 @@ struct BlockScalar {
 }
 
 fn block_scalar_at(source: &SourceBuffer, line: usize, end: usize) -> Option<BlockScalar> {
+    block_scalar_at_impl(source, line, end, None)
+}
+
+fn block_scalar_at_value(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+    value_start: usize,
+) -> Option<BlockScalar> {
+    block_scalar_at_impl(source, line, end, Some(value_start))
+}
+
+fn block_scalar_at_impl(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+    value_start: Option<usize>,
+) -> Option<BlockScalar> {
     let text = source.line_text(line);
     memchr2(b'|', b'>', text.as_bytes())?;
     let trailing_comment = find_trailing_comment(text, 0);
@@ -10216,7 +10346,11 @@ fn block_scalar_at(source: &SourceBuffer, line: usize, end: usize) -> Option<Blo
         return None;
     }
     let header_info = block_scalar_header_info(&trimmed[marker_index + 1..])?;
-    let value_start = block_scalar_value_start(text, marker_index)?;
+    let value_start = match value_start {
+        Some(value_start) if value_start <= marker_index => value_start,
+        Some(_) => return None,
+        None => block_scalar_value_start(text, marker_index)?,
+    };
     if !block_scalar_metadata_prefix(&text[value_start..marker_index]) {
         return None;
     }
@@ -10224,7 +10358,7 @@ fn block_scalar_at(source: &SourceBuffer, line: usize, end: usize) -> Option<Blo
     let mut i = line + 1;
     while i < end {
         let candidate = source.line_text(i);
-        if candidate.trim().is_empty() {
+        if candidate.trim_ascii().is_empty() {
             i += 1;
             continue;
         }
@@ -10263,7 +10397,7 @@ fn block_scalar_at(source: &SourceBuffer, line: usize, end: usize) -> Option<Blo
 fn block_scalar_header_info(indicators: &str) -> Option<YamlBlockScalarHeader> {
     let mut indent = None;
     let mut chomp = YamlBlockChomp::Clip;
-    for ch in indicators.trim().chars() {
+    for ch in indicators.trim_ascii().chars() {
         match ch {
             '+' if chomp == YamlBlockChomp::Clip => chomp = YamlBlockChomp::Keep,
             '-' if chomp == YamlBlockChomp::Clip => chomp = YamlBlockChomp::Strip,
@@ -10308,7 +10442,7 @@ fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<usize> {
 }
 
 fn block_scalar_metadata_prefix(prefix: &str) -> bool {
-    let prefix = prefix.trim();
+    let prefix = prefix.trim_ascii();
     prefix.is_empty()
         || prefix
             .split_whitespace()
@@ -10456,8 +10590,8 @@ fn flow_collapse_hint_next_line_is_block_collection(
         return None;
     }
     let text = source.line_text(line);
-    if text.trim().is_empty()
-        || text.trim_start().starts_with('#')
+    if text.trim_ascii().is_empty()
+        || text.trim_ascii_start().starts_with('#')
         || tab_in_indentation(text).is_some()
     {
         return None;
@@ -10767,8 +10901,8 @@ fn parse_flow_mapping_row(trimmed: &str) -> Option<Vec<(String, String)>> {
     let mut fields = Vec::new();
     for part in inner.split(',') {
         let (key, value) = part.split_once(':')?;
-        let key = key.trim();
-        let value = value.trim();
+        let key = key.trim_ascii();
+        let value = value.trim_ascii();
         if key.is_empty() || value.is_empty() {
             return None;
         }
@@ -10778,7 +10912,7 @@ fn parse_flow_mapping_row(trimmed: &str) -> Option<Vec<(String, String)>> {
 }
 
 fn format_markdown_yaml_block_value(value: &str) -> String {
-    replace_folded_block_marker(value.trim())
+    replace_folded_block_marker(value.trim_ascii())
 }
 
 fn replace_folded_block_marker(source: &str) -> String {
@@ -10796,10 +10930,13 @@ fn replace_folded_block_marker(source: &str) -> String {
 }
 
 fn normalize_flow_value(value: &str) -> String {
-    let trimmed = value.trim();
+    let trimmed = value.trim_ascii();
     if trimmed.starts_with('[') && trimmed.ends_with(']') {
         let inner = &trimmed[1..trimmed.len() - 1];
-        let values = inner.split(',').map(|item| item.trim()).collect::<Vec<_>>();
+        let values = inner
+            .split(',')
+            .map(|item| item.trim_ascii())
+            .collect::<Vec<_>>();
         return format!("[{}]", values.join(", "));
     }
     if trimmed.starts_with('{') && trimmed.ends_with('}') {
@@ -10808,9 +10945,9 @@ fn normalize_flow_value(value: &str) -> String {
             .split(',')
             .map(|item| {
                 if let Some((key, value)) = item.split_once(':') {
-                    format!("{}: {}", key.trim(), value.trim())
+                    format!("{}: {}", key.trim_ascii(), value.trim_ascii())
                 } else {
-                    item.trim().to_owned()
+                    item.trim_ascii().to_owned()
                 }
             })
             .collect::<Vec<_>>();

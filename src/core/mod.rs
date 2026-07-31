@@ -10,6 +10,7 @@ pub mod source;
 pub mod source_lang;
 pub mod wrap;
 pub mod yaml;
+pub(crate) mod yaml_equivalence;
 pub mod yaml_model;
 pub mod yaml_scan;
 

@@ -228,6 +228,10 @@ impl SourceBuffer {
         &self.text
     }
 
+    pub(crate) fn into_string(self) -> String {
+        self.text
+    }
+
     pub fn slice(&self, span: impl Into<Span>) -> &str {
         span.into().slice(&self.text)
     }
