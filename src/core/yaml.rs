@@ -5765,11 +5765,17 @@ fn emit_yaml_scalar_plan_output_into(
             && let Some(source_indent) = explicit_block_scalar_body_indent(scalar)
                 .or_else(|| block_scalar_body_indent(source.slice(body)))
         {
-            output.push_str(&reindent_block_lines(
-                source.slice(body),
-                source_indent,
-                body_indent,
-            ));
+            if source_indent == body_indent {
+                // Indentation-only blank lines are semantically empty, so keep
+                // the source body instead of rebuilding otherwise identical text.
+                output.push_str(source.slice(body));
+            } else {
+                output.push_str(&reindent_block_lines(
+                    source.slice(body),
+                    source_indent,
+                    body_indent,
+                ));
+            }
         } else {
             output.push_str(source.slice(body));
         }
@@ -6566,10 +6572,9 @@ fn explicit_block_scalar_body_indent(scalar: &YamlScalar<'_>) -> Option<usize> {
 }
 
 fn block_scalar_body_indent(body: &str) -> Option<usize> {
-    body.lines()
-        .filter(|line| !line.trim_ascii().is_empty())
+    body.split(['\r', '\n'])
+        .find(|line| !line.trim_ascii().is_empty())
         .map(|line| line.bytes().take_while(|byte| *byte == b' ').count())
-        .min()
 }
 
 fn reindent_block_lines(body: &str, strip_indent: usize, emit_indent: usize) -> String {

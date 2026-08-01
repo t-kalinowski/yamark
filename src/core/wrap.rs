@@ -3831,17 +3831,38 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
 }
 
 pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
+    if memchr::memchr(b'\\', source.as_bytes()).is_none() && source.is_ascii() {
+        return false;
+    }
+
+    let bytes = source.as_bytes();
     let mut index = 0usize;
-    while index < source.len() {
-        if !escaped_at(source, index)
-            && let Some(end) = latex_command_token_end(source, index)
-            && !source[index..end].contains('{')
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii()
+            && !matches!(byte, b'\\' | b'`' | b'$' | b'~' | b'<' | b'[' | b'!' | b'{')
         {
-            return true;
-        }
-        if let Some(end) = unsupported_scan_protected_token_end(source, index) {
-            index = end;
+            index += 1;
             continue;
+        }
+        if byte.is_ascii() {
+            if escaped_at(source, index) {
+                index += 1;
+                continue;
+            }
+            if byte == b'\\'
+                && let Some(end) = latex_command_token_end(source, index)
+            {
+                if !source[index..end].contains('{') {
+                    return true;
+                }
+                index = end;
+                continue;
+            }
+            if let Some(end) = raw_semantics_protected_token_end(source, index) {
+                index = end;
+                continue;
+            }
         }
         let ch = source[index..]
             .chars()
@@ -3853,6 +3874,31 @@ pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
         index += ch.len_utf8();
     }
     false
+}
+
+fn raw_semantics_protected_token_end(text: &str, index: usize) -> Option<usize> {
+    let rest = &text[index..];
+    match rest.as_bytes().first()? {
+        b'`' => {
+            let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
+            let marker = &rest[..tick_count];
+            let close = rest[tick_count..].find(marker)?;
+            Some(index + tick_count + close + tick_count)
+        }
+        b'$' => find_unescaped(rest, 1, '$').map(|close| index + close + 1),
+        b'~' => strikethrough_span_end(text, index),
+        b'<' => commonmark_autolink_span_end(text, index)
+            .or_else(|| paired_inline_html_span_end(text, index))
+            .or_else(|| inline_html_tag_span_end(text, index))
+            .or_else(|| rest.find('>').map(|close| index + close + 1)),
+        b'[' => link_or_bracket_token_end(text, index),
+        b'!' if rest.as_bytes().get(1) == Some(&b'[') => link_or_bracket_token_end(text, index),
+        b'{' if rest.starts_with("{{<") || rest.starts_with("{{%") => {
+            rest.find("}}").map(|close| index + close + 2)
+        }
+        b'{' => balanced_brace_end(rest).map(|close| index + close),
+        _ => None,
+    }
 }
 
 fn link_or_bracket_token_end(text: &str, start: usize) -> Option<usize> {

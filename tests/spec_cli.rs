@@ -4874,8 +4874,8 @@ fn yaml_later_document_line_leading_fe_ff_is_preserved() {
 
 #[test]
 fn yaml_nondefault_indent_reindents_cr_only_block_scalar_body() {
-    let input = "outer:\r  value: |-\r    first\r    second\r  after: x\r";
-    let expected = "outer:\r    value: |-\r        first\r        second\r    after: x\r";
+    let input = "outer:\r  value: |-\r  \r    first\r    second\r  after: x\r";
+    let expected = "outer:\r    value: |-\r\r        first\r        second\r    after: x\r";
     let (status, stdout, stderr) = run_stdin(
         &[
             "format",
