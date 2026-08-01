@@ -46,7 +46,15 @@ jobs:
       - name: Install R packages
         shell: Rscript {0}
         run: |
-          install.packages(c("stringi", "yaml12", "jsonlite", "knitr"))
+          install.packages(c("stringi", "jsonlite", "knitr"))
+          install.packages(
+            "yaml12",
+            repos = c(
+              "https://posit-dev.r-universe.dev",
+              "https://cloud.r-project.org"
+            )
+          )
+          stopifnot(packageVersion("yaml12") >= "0.1.0.9000")
 
       - name: Install Quarto
         uses: quarto-dev/quarto-actions/setup@v2
