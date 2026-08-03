@@ -80,6 +80,24 @@ escape_heavy: "\u0020\u0020{\"python\":\"print(\u0027hello\u0027)\"}"
 """,
     ),
     (
+        "escaped-multiline-quoted-string",
+        r"""result:
+  content:
+    - type: text
+      text: "\n\x20*** caught segfault ***\n\
+        address 0x0, cause 'invalid permissions'\n\n\
+        Traceback:\n\x201: tools::pskill(Sys.getpid(), signal = 11L)\n\n\
+        Possible actions:\n\
+        1: abort (with core dump, if enabled)\n\
+        2: normal R exit\n\
+        3: exit R without saving workspace\n\
+        4: exit R saving workspace\n\
+        Selection: R is aborting now ...\n\
+        worker sideband read failed: worker sideband closed"
+  isError: true
+""",
+    ),
+    (
         "root-document-marker-strings",
         """"---"
 ---

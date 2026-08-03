@@ -823,7 +823,7 @@ fn decode_single_quoted_scalar(raw: &str) -> Option<String> {
 fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
     let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
     let mut out = String::new();
-    let mut chars = inner.chars();
+    let mut chars = inner.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch != '\\' {
             if matches!(ch, '\r' | '\n') {
@@ -848,13 +848,26 @@ fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
             'x' => out.push(decode_hex_escape(&mut chars, 2)?),
             'u' => out.push(decode_hex_escape(&mut chars, 4)?),
             'U' => out.push(decode_hex_escape(&mut chars, 8)?),
+            '\n' => {
+                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+                    chars.next();
+                }
+            }
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+                    chars.next();
+                }
+            }
             _ => return None,
         }
     }
     Some(out)
 }
 
-fn decode_hex_escape(chars: &mut std::str::Chars<'_>, digits: usize) -> Option<char> {
+fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, digits: usize) -> Option<char> {
     let mut value = 0u32;
     for _ in 0..digits {
         value = value.checked_mul(16)?;

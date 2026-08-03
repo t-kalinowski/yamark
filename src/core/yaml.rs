@@ -333,15 +333,25 @@ fn yaml_scan_has_unsupported_preserve_syntax(source: &SourceBuffer, scan: &YamlL
             line = source.line_at_byte(block.full.end.saturating_sub(1)) + 1;
             continue;
         }
-        if unsupported_yaml_line_syntax(source, line, scan.end_line) {
+        let quoted_block = escaped_double_quoted_scalar_block_at(source, line, scan.end_line);
+        if unsupported_yaml_line_syntax(source, line, scan.end_line, quoted_block.is_some()) {
             return true;
+        }
+        if let Some(block) = quoted_block {
+            line = source.line_at_byte(block.full.end.saturating_sub(1)) + 1;
+            continue;
         }
         line += 1;
     }
     false
 }
 
-fn unsupported_yaml_line_syntax(source: &SourceBuffer, line: usize, end: usize) -> bool {
+fn unsupported_yaml_line_syntax(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+    escaped_multiline_quote: bool,
+) -> bool {
     let text = source.line_text(line);
     let (body, _) = strip_newline(text);
     let trimmed = body
@@ -357,7 +367,7 @@ fn unsupported_yaml_line_syntax(source: &SourceBuffer, line: usize, end: usize) 
     if trimmed.starts_with('%') || unsupported_multiline_flow_collection(source, line, end) {
         return true;
     }
-    if line_starts_unclosed_quoted_scalar(text) {
+    if !escaped_multiline_quote && line_starts_unclosed_quoted_scalar(text) {
         return true;
     }
 
@@ -6054,18 +6064,18 @@ fn render_quoted_literal_scalar(
     }
     let metadata = scalar_metadata(source, scalar.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    if raw.contains(['\n', '\r']) {
+    if scalar.style == YamlScalarStyle::SingleQuoted && raw.contains(['\n', '\r']) {
         return None;
     }
     let decoded = decode_quoted_scalar(raw)?;
     if decoded == "\n" {
         return None;
     }
-    if decoded
+    let needs_indent_indicator = decoded
         .split('\n')
         .find(|line| !line.is_empty())
-        .is_some_and(|line| line.starts_with(' '))
-    {
+        .is_some_and(|line| line.starts_with(' '));
+    if needs_indent_indicator && !(1..=9).contains(&options.indent_width) {
         return None;
     }
     if !decoded.contains('\n')
@@ -6100,19 +6110,30 @@ fn render_quoted_literal_scalar(
         .rev()
         .take_while(|byte| **byte == b'\n')
         .count();
-    let marker = match trailing_newlines {
-        0 => "|-",
-        1 => "|",
-        _ => "|+",
+    let chomp = match trailing_newlines {
+        0 => "-",
+        1 => "",
+        _ => "+",
     };
-    out.push_str(&render_explicit_core_scalar(source, scalar, marker));
+    let marker = if needs_indent_indicator {
+        Cow::Owned(format!("|{}{chomp}", options.indent_width))
+    } else {
+        Cow::Borrowed(match trailing_newlines {
+            0 => "|-",
+            1 => "|",
+            _ => "|+",
+        })
+    };
+    out.push_str(&render_explicit_core_scalar(source, scalar, &marker));
     out.push_str(newline);
 
     if trailing_newlines == 0 {
         let lines = decoded.split('\n').collect::<Vec<_>>();
         for (index, line) in lines.iter().enumerate() {
-            out.push_str(&indent);
-            out.push_str(line);
+            if !line.is_empty() {
+                out.push_str(&indent);
+                out.push_str(line);
+            }
             if index + 1 < lines.len() || final_newline {
                 out.push_str(newline);
             }
@@ -6120,8 +6141,10 @@ fn render_quoted_literal_scalar(
     } else {
         let body = &decoded[..decoded.len() - trailing_newlines];
         for line in body.split('\n') {
-            out.push_str(&indent);
-            out.push_str(line);
+            if !line.is_empty() {
+                out.push_str(&indent);
+                out.push_str(line);
+            }
             out.push_str(newline);
         }
         for _ in 1..trailing_newlines {
@@ -6162,7 +6185,7 @@ fn decode_single_quoted_scalar(raw: &str) -> Option<String> {
 fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
     let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
     let mut out = String::new();
-    let mut chars = inner.chars();
+    let mut chars = inner.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch != '\\' {
             if matches!(ch, '\r' | '\n') {
@@ -6188,13 +6211,26 @@ fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
             'x' => out.push(decode_hex_escape(&mut chars, 2)?),
             'u' => out.push(decode_hex_escape(&mut chars, 4)?),
             'U' => out.push(decode_hex_escape(&mut chars, 8)?),
+            '\n' => {
+                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+                    chars.next();
+                }
+            }
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+                    chars.next();
+                }
+            }
             _ => return None,
         }
     }
     Some(out)
 }
 
-fn decode_hex_escape(chars: &mut std::str::Chars<'_>, digits: usize) -> Option<char> {
+fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, digits: usize) -> Option<char> {
     let mut value = 0u32;
     for _ in 0..digits {
         value = value.checked_mul(16)?;
@@ -10596,6 +10632,52 @@ struct QuotedScalarBlock {
     full: Span,
     value: Span,
     trailing_comment: Option<Span>,
+}
+
+fn escaped_double_quoted_scalar_block_at(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+) -> Option<QuotedScalarBlock> {
+    let line_info = source.lines.get(line)?;
+    let text = source.line_text(line);
+    let value_start = yaml_line_value_content_start(text)?;
+    if let Some(block) = escaped_double_quoted_scalar_block_from_value(
+        source,
+        line,
+        end,
+        value_start,
+        line_info.full.start(),
+    ) {
+        return Some(block);
+    }
+
+    let indent = indentation(text);
+    let marker = sequence_line(text, indent)?;
+    let key_start = skip_ascii_whitespace(text, marker + 1);
+    let colon = mapping_colon_from(text, key_start)?;
+    let value_start = skip_ascii_whitespace(text, colon + 1);
+    escaped_double_quoted_scalar_block_from_value(
+        source,
+        line,
+        end,
+        value_start,
+        line_info.full.start(),
+    )
+}
+
+fn escaped_double_quoted_scalar_block_from_value(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+    value_start: usize,
+    span_start: usize,
+) -> Option<QuotedScalarBlock> {
+    let block = quoted_scalar_block_from_value(source, line, end, value_start, span_start)?;
+    let metadata = scalar_metadata(source, block.value);
+    let raw = source.slice(metadata.content).trim_ascii();
+    decode_double_quoted_scalar(raw)?;
+    Some(block)
 }
 
 fn quoted_scalar_block_from_value(

@@ -4432,20 +4432,181 @@ text: |-
 }
 
 #[test]
-fn yaml_literal_block_conversion_preserves_leading_spaces() {
+fn yaml_escaped_newline_quoted_scalar_with_leading_spaces_uses_literal_block() {
+    let input = r#"result:
+  content:
+    - type: text
+      text: "\n\x20*** caught segfault ***\n\
+        address 0x0, cause 'invalid permissions'\n\n\
+        Traceback:\n\x201: tools::pskill(Sys.getpid(), signal = 11L)\n\n\
+        Possible actions:\n\
+        1: abort (with core dump, if enabled)\n\
+        2: normal R exit\n\
+        3: exit R without saving workspace\n\
+        4: exit R saving workspace\n\
+        Selection: R is aborting now ...\n\
+        worker sideband read failed: worker sideband closed"
+  isError: true
+"#;
+    let expected = r#"result:
+  content:
+    - type: text
+      text: |2-
+
+         *** caught segfault ***
+        address 0x0, cause 'invalid permissions'
+
+        Traceback:
+         1: tools::pskill(Sys.getpid(), signal = 11L)
+
+        Possible actions:
+        1: abort (with core dump, if enabled)
+        2: normal R exit
+        3: exit R without saving workspace
+        4: exit R saving workspace
+        Selection: R is aborting now ...
+        worker sideband read failed: worker sideband closed
+  isError: true
+"#;
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.yaml"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_escaped_newline_quoted_inline_sequence_mapping_uses_literal_block() {
+    let input = r#"outer:
+  - text: "\n\x20first\n\
+      Traceback:\n\x201: frame"
+"#;
+    let expected = r#"outer:
+  - text: |2-
+
+       first
+      Traceback:
+       1: frame
+"#;
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.yaml"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_unsupported_sequence_mapping_with_multiline_quote_is_preserved() {
+    let inputs = [
+        r#"outer:
+  - ? key: "\n\x20first\n\
+      Traceback:\n\x201: frame"
+    flow: [a,b]
+"#,
+        r#"outer:
+  - ?key: "\n\x20first\n\
+      Traceback:\n\x201: frame"
+    flow: [a,b]
+"#,
+        r#"outer:
+  - &anchor key : "\n\x20first\n\
+      Traceback:\n\x201: frame"
+    flow: [a,b]
+"#,
+        r#"outer:
+  - !tag key : "\n\x20first\n\
+      Traceback:\n\x201: frame"
+    flow: [a,b]
+"#,
+    ];
+    for input in inputs {
+        let (status, stdout, stderr) = run_stdin(
+            &["format", "--verify", "--stdin-file-path", "input.yaml"],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_unsupported_root_mapping_with_multiline_quote_is_preserved() {
+    let inputs = [
+        r#"&anchor key: "\n\x20first\n\
+  Traceback:\n\x201: frame"
+flow: [a,b]
+"#,
+        r#"!tag key: "\n\x20first\n\
+  Traceback:\n\x201: frame"
+flow: [a,b]
+"#,
+        r#"*alias: "\n\x20first\n\
+  Traceback:\n\x201: frame"
+flow: [a,b]
+"#,
+        r#"? key: "\n\x20first\n\
+  Traceback:\n\x201: frame"
+flow: [a,b]
+"#,
+    ];
+    for input in inputs {
+        let (status, stdout, stderr) = run_stdin(
+            &["format", "--verify", "--stdin-file-path", "input.yaml"],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_literal_block_conversion_uses_indent_indicator_for_leading_spaces() {
     let input = r#"mixed: "\u0020\u0020first\nsecond"
 both: "\u0020\u0020first\n\u0020\u0020second"
 escape_heavy: "\u0020\u0020{\"python\":\"print(\u0027hello\u0027)\"}"
 nested:
   - value: "\u0020\u0020first\nsecond"
 "#;
-    let expected = r#"mixed: "  first\nsecond"
-both: "  first\n  second"
-escape_heavy: '  {"python":"print(''hello'')"}'
+    let expected = r#"mixed: |2-
+    first
+  second
+both: |2-
+    first
+    second
+escape_heavy: |2-
+    {"python":"print('hello')"}
 nested:
-  - value: "  first\nsecond"
+  - value: |2-
+        first
+      second
 "#;
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_literal_block_conversion_uses_configured_indent_indicator() {
+    let input = "outer:\n  text: \"\\x20first\\nsecond\"\n";
+    let expected = "outer:\n    text: |4-\n         first\n        second\n";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--indent-width",
+            "4",
+            "--verify",
+            "--stdin-file-path",
+            "input.yaml",
+        ],
+        input,
+    );
     assert_eq!(status, 0, "{stderr}");
     assert_eq!(stdout, expected);
     assert_eq!(stderr, "");
@@ -5145,7 +5306,7 @@ fn markdown_front_matter_uses_yaml_scalar_safety() {
         ),
         (
             "---\nmixed: \"\\u0020\\u0020first\\nsecond\"\ncolon: \"foo:\"\n---\n\nBody.\n",
-            "---\nmixed: \"  first\\nsecond\"\ncolon: \"foo:\"\n---\n\nBody.\n",
+            "---\nmixed: |2-\n    first\n  second\ncolon: \"foo:\"\n---\n\nBody.\n",
         ),
     ];
     for (input, expected) in cases {
