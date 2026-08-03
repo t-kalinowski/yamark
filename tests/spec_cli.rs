@@ -4489,6 +4489,50 @@ fn yaml_root_block_scalars_preserve_exact_content() {
 }
 
 #[test]
+fn yaml_unsupported_implicit_block_scalar_indent_is_preserved() {
+    let input = concat!(
+        "text: |-\n",
+        "  \n",
+        "   *** caught segfault ***\n",
+        "  address 0x0\n",
+    );
+    let configurations: &[&[&str]] = &[&[], &["--indent-width", "4"]];
+    for configuration in configurations {
+        let mut args = vec![
+            "format",
+            "--skip-embedded-formatters",
+            "--verify",
+            "--stdin-file-path",
+            "input.yaml",
+        ];
+        args.extend_from_slice(configuration);
+        let (status, stdout, stderr) = run_stdin(&args, input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_unsupported_leading_block_scalar_blank_indent_is_preserved() {
+    let input = concat!("text: |-\n", "    \n", "  content\n");
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--indent-width",
+            "4",
+            "--verify",
+            "--stdin-file-path",
+            "input.yaml",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_nondefault_indent_reindents_nested_block_scalar_body() {
     let input = "\
 outer:

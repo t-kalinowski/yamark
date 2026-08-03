@@ -1506,7 +1506,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         _node: &YamlAstNode<'_>,
         state: &crate::core::directives::DirectiveState,
         options: FormatOptions,
-        _body_indent: Option<usize>,
+        body_indent: Option<usize>,
     ) -> YamlEmitPlan {
         let tagged_markdown = scalar
             .tag
@@ -1538,6 +1538,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         if scalar.body.is_some() {
             if let Some(nested) = scalar.nested {
                 return YamlEmitPlan::NestedMarkdownBlockScalar { nested };
+            }
+            if !block_scalar_body_reindent_is_safe(self.source, scalar, body_indent, options) {
+                return YamlEmitPlan::PreserveSource;
             }
             return YamlEmitPlan::rendered_shape(YamlRenderedKind::Scalar);
         }
@@ -5750,13 +5753,8 @@ fn emit_yaml_scalar_plan_output_into(
 ) {
     if let Some(body) = scalar.body {
         output.push_str(&render_yaml_block_scalar_value_header(source, scalar));
-        let body_indent = body_indent.map(|body_indent| {
-            scalar
-                .block_header
-                .and_then(|header| header.indent)
-                .map(|indent| body_indent.saturating_sub(options.indent_width) + indent as usize)
-                .unwrap_or(body_indent)
-        });
+        let body_indent = body_indent
+            .map(|body_indent| block_scalar_output_body_indent(scalar, body_indent, options));
         if let Some(rewrapped) =
             render_rewrapped_folded_block_scalar(source, scalar, node, options, body_indent)
         {
@@ -6569,6 +6567,60 @@ fn reindent_yaml_block_scalar_body(
 fn explicit_block_scalar_body_indent(scalar: &YamlScalar<'_>) -> Option<usize> {
     let header = scalar.block_header?;
     Some(header.base_indent + header.indent? as usize)
+}
+
+fn block_scalar_output_body_indent(
+    scalar: &YamlScalar<'_>,
+    body_indent: usize,
+    options: FormatOptions,
+) -> usize {
+    scalar
+        .block_header
+        .and_then(|header| header.indent)
+        .map(|indent| body_indent.saturating_sub(options.indent_width) + indent as usize)
+        .unwrap_or(body_indent)
+}
+
+fn block_scalar_body_reindent_is_safe(
+    source: &SourceBuffer,
+    scalar: &YamlScalar<'_>,
+    body_indent: Option<usize>,
+    options: FormatOptions,
+) -> bool {
+    let Some(body) = scalar.body else {
+        return true;
+    };
+    let Some(body_indent) = body_indent else {
+        return true;
+    };
+    let body = source.slice(body);
+    let Some(source_indent) =
+        explicit_block_scalar_body_indent(scalar).or_else(|| block_scalar_body_indent(body))
+    else {
+        return true;
+    };
+    if source_indent == block_scalar_output_body_indent(scalar, body_indent, options) {
+        return true;
+    }
+
+    let implicit_indent = scalar
+        .block_header
+        .is_some_and(|header| header.indent.is_none());
+    let mut saw_content = false;
+    for line in body.split(['\r', '\n']) {
+        let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+        if line.trim_ascii().is_empty() {
+            if implicit_indent && !saw_content && indent > source_indent {
+                return false;
+            }
+            continue;
+        }
+        saw_content = true;
+        if indent < source_indent {
+            return false;
+        }
+    }
+    true
 }
 
 fn block_scalar_body_indent(body: &str) -> Option<usize> {
