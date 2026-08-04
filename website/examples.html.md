@@ -58,9 +58,9 @@ suggestions over vague concerns.
 ## Markdown-valued YAML scalars
 
 A `prompts.yaml` or `agents.yaml` where each entry's value is a
-Markdown blob. Tag the value `!markdown` (or add `# fmt: markdown`) and
-Yamark wraps the value as Markdown - picking folded or literal block
-style based on the content.
+Markdown blob. Tag the value `!markdown` or its `!md` alias (or add
+`# fmt: markdown`) and Yamark wraps the value as Markdown - picking
+folded or literal block style based on the content.
 
 :::: {.showcase-before-after}
 **Before**

@@ -26,8 +26,8 @@ Path-aware formatting supports:
   explicit embedded Markdown comment blocks, marked Markdown string literals,
   and marked string literals through embedded formatters. Yamark does not
   format the surrounding source code.
-- YAML scalar values tagged `!markdown` or marked with `# fmt: markdown`:
-  format the scalar value as Markdown.
+- YAML scalar values tagged `!markdown` or `!md`, or marked with
+  `# fmt: markdown`: format the scalar value as Markdown.
 - YAML literal block scalar values marked with `# fmt: <name>` or
   `# fmt: embedded <name>`: format the scalar through a configured or built-in
   embedded formatter.
