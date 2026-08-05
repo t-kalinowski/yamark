@@ -2799,7 +2799,7 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
     let link = normalized_split_link_token(token)?;
     let SplitLinkToken {
         link,
-        trailing_punctuation,
+        trailing_suffix,
         image,
         label_start,
         label_close,
@@ -2827,7 +2827,7 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
                 "{last}]({}){}{}",
                 render_link_target(target),
                 suffix,
-                trailing_punctuation
+                trailing_suffix
             );
             if inline_target_close.chars().count() <= width {
                 lines.push(inline_target_close);
@@ -2835,7 +2835,7 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
             }
             lines.push(format!("{last}]("));
             lines.extend(split_link_target_lines(target, width));
-            lines.push(format!("){suffix}{trailing_punctuation}"));
+            lines.push(format!("){suffix}{trailing_suffix}"));
             return Some(lines);
         }
     }
@@ -2843,13 +2843,13 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
     let mut lines = Vec::new();
     lines.push(link[..destination_open + 1].to_owned());
     lines.extend(split_link_target_lines(target, width));
-    lines.push(format!("){suffix}{trailing_punctuation}"));
+    lines.push(format!("){suffix}{trailing_suffix}"));
     Some(lines)
 }
 
 struct SplitLinkToken<'a> {
     link: &'a str,
-    trailing_punctuation: &'a str,
+    trailing_suffix: &'a str,
     image: bool,
     label_start: usize,
     label_close: usize,
@@ -2889,15 +2889,15 @@ fn normalized_split_link_token(token: &str) -> Option<SplitLinkToken<'_>> {
         end = attribute_end;
     }
 
-    let trailing_punctuation = &token[end..];
-    if !trailing_link_punctuation(trailing_punctuation) {
+    let trailing_suffix = &token[end..];
+    if !trailing_link_suffix(trailing_suffix) {
         return None;
     }
     let link = &token[..end];
     let suffix = &link[destination_close + 1..];
     Some(SplitLinkToken {
         link,
-        trailing_punctuation,
+        trailing_suffix,
         image,
         label_start,
         label_close,
@@ -2914,8 +2914,9 @@ fn link_target_is_normalized(raw: &str, target: LinkTarget<'_>) -> bool {
     }
 }
 
-fn trailing_link_punctuation(value: &str) -> bool {
+fn trailing_link_suffix(value: &str) -> bool {
     value
+        .trim_start_matches([')', ']', '}'])
         .chars()
         .all(|ch| matches!(ch, '.' | ',' | ';' | ':' | '!' | '?'))
 }

@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+The goal of {cuda.ml} is to provide a simple and intuitive R interface
+for [RAPIDS cuML](https://github.com/rapidsai/cuml). RAPIDS cuML is a
+suite of GPU-accelerated machine learning libraries powered by
+[CUDA](https://en.wikipedia.org/wiki/CUDA). {cuda.ml} is under active
+development, and currently implements R interfaces for the algorithms
+listed below (which is a subset of
+[algorithms supported by RAPIDS cuML](https://github.com/rapidsai/cuml#supported-algorithms)).
+-- stdout
+The goal of {cuda.ml} is to provide a simple and intuitive R interface
+for [RAPIDS cuML](https://github.com/rapidsai/cuml). RAPIDS cuML is a
+suite of GPU-accelerated machine learning libraries powered by
+[CUDA](https://en.wikipedia.org/wiki/CUDA). {cuda.ml} is under active
+development, and currently implements R interfaces for the algorithms
+listed below (which is a subset of
+[algorithms supported by RAPIDS cuML](
+  https://github.com/rapidsai/cuml#supported-algorithms
+)).
+-- stderr
+-- status
+0
