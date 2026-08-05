@@ -4869,7 +4869,7 @@ fn yaml_sequence_mapping_block_scalar_stops_before_sibling_pair() {
 - value: |-
     first
     second
-  empty: null
+  empty: ~
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
     assert_eq!(status, 0, "{stderr}");
@@ -4911,7 +4911,7 @@ fn yaml_nondefault_indent_keeps_sequence_mapping_keys_aligned() {
   second: []
 ";
     let expected = "\
-- first: null
+- first: ~
   second: []
 ";
     let (status, stdout, stderr) = run_stdin(
@@ -5192,7 +5192,7 @@ name: !!str \"true\"
 ";
     let expected = "\
 flag: !!bool true
-empty: !!null null
+empty: !!null ~
 count: !!int 42
 ratio: !!float 1.5
 name: !!str 'true'
@@ -5229,7 +5229,7 @@ description: !!str >-
 }
 
 #[test]
-fn yaml_plain_core_booleans_and_nulls_are_normalized() {
+fn yaml_plain_core_booleans_normalize_and_tilde_null_is_preserved() {
     let input = "\
 flag: TRUE
 disabled: False
@@ -5239,7 +5239,7 @@ items: [ TRUE , Null ]
     let expected = "\
 flag: true
 disabled: false
-empty: null
+empty: ~
 items: [true, null]
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
@@ -5259,7 +5259,7 @@ items: [!!bool FALSE, !!null Null, !!str false]
 ";
     let expected = "\
 flag: !!bool true
-empty: !!null null
+empty: !!null ~
 name: !!str 'true'
 tabbed: !!str \"a\\tb\"
 items: [!!bool false, !!null null, !!str 'false']
@@ -5527,7 +5527,7 @@ fn yaml_nested_compact_sequence_mapping_preserves_structure() {
     let expected = "\
 -
   - key: value
-    empty: null
+    empty: ~
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
     assert_eq!(status, 0, "{stderr}");

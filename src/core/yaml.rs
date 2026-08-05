@@ -5870,7 +5870,7 @@ fn emit_plain_scalar_plan_output_into(
             };
             output.push_str(normalized);
         }
-        YamlScalarSemantic::Null => output.push_str("null"),
+        YamlScalarSemantic::Null => output.push_str(normalize_yaml_null(raw)?),
         _ => {
             if let Some(rendered) = render_unsafe_plain_string_scalar(source, scalar, node) {
                 output.push_str(&rendered);
@@ -5977,7 +5977,7 @@ fn emit_non_string_plain_scalar_plan_output_into(
             "false" | "False" | "FALSE" => output.push_str("false"),
             _ => return None,
         },
-        YamlScalarSemantic::Null => output.push_str("null"),
+        YamlScalarSemantic::Null => output.push_str(normalize_yaml_null(raw)?),
         YamlScalarSemantic::Integer | YamlScalarSemantic::Float | YamlScalarSemantic::Unknown => {
             output.push_str(raw);
         }
@@ -7453,7 +7453,7 @@ fn emit_plain_scalar_inline_into(
             Some(())
         }
         YamlScalarSemantic::Null => {
-            out.push_str("null");
+            out.push_str(normalize_yaml_null(raw)?);
             Some(())
         }
         _ if !flow_context || flow_plain_scalar_safe(raw) => {
@@ -7539,9 +7539,8 @@ fn normalize_core_scalar(
     match tag {
         Some("!!bool") => normalize_yaml_bool(&decoded)
             .map(|value| render_explicit_core_scalar(source, scalar, &value)),
-        Some("!!null") if scalar_semantic(&decoded) == YamlScalarSemantic::Null => {
-            Some(render_explicit_core_scalar(source, scalar, "null"))
-        }
+        Some("!!null") => normalize_yaml_null(&decoded)
+            .map(|value| render_explicit_core_scalar(source, scalar, value)),
         Some("!!int") if scalar_semantic(&decoded) == YamlScalarSemantic::Integer => {
             Some(render_explicit_core_scalar(source, scalar, &decoded))
         }
@@ -7622,9 +7621,8 @@ fn normalize_core_scalar_width(
     match tag {
         Some("!!bool") => normalized_yaml_bool_width(content)
             .map(|width| explicit_core_scalar_width(source, scalar, metadata, width)),
-        Some("!!null") if scalar_semantic(content) == YamlScalarSemantic::Null => Some(
-            explicit_core_scalar_width(source, scalar, metadata, "null".len()),
-        ),
+        Some("!!null") => normalize_yaml_null(content)
+            .map(|value| explicit_core_scalar_width(source, scalar, metadata, value.len())),
         Some("!!int") if scalar_semantic(content) == YamlScalarSemantic::Integer => Some(
             explicit_core_scalar_width(source, scalar, metadata, content.chars().count()),
         ),
@@ -7660,7 +7658,7 @@ fn normalize_explicit_core_scalar_width(
 ) -> Option<usize> {
     let value_width = match tag {
         Some("!!bool") => normalized_yaml_bool_width(decoded)?,
-        Some("!!null") if scalar_semantic(decoded) == YamlScalarSemantic::Null => "null".len(),
+        Some("!!null") => normalize_yaml_null(decoded)?.len(),
         Some("!!int") if scalar_semantic(decoded) == YamlScalarSemantic::Integer => {
             decoded.chars().count()
         }
@@ -7697,7 +7695,7 @@ fn normalize_implicit_core_scalar(raw: &str, scalar: &YamlScalar<'_>) -> Option<
             "false" | "False" | "FALSE" => Some("false".to_owned()),
             _ => None,
         },
-        YamlScalarSemantic::Null => Some("null".to_owned()),
+        YamlScalarSemantic::Null => normalize_yaml_null(raw).map(ToOwned::to_owned),
         _ => None,
     }
 }
@@ -7709,7 +7707,7 @@ fn normalize_implicit_core_scalar_width(raw: &str, scalar: &YamlScalar<'_>) -> O
             "false" | "False" | "FALSE" => Some("false".len()),
             _ => None,
         },
-        YamlScalarSemantic::Null => Some("null".len()),
+        YamlScalarSemantic::Null => normalize_yaml_null(raw).map(str::len),
         _ => None,
     }
 }
@@ -7718,6 +7716,14 @@ fn normalize_yaml_bool(value: &str) -> Option<String> {
     match value {
         "true" | "True" | "TRUE" => Some("true".to_owned()),
         "false" | "False" | "FALSE" => Some("false".to_owned()),
+        _ => None,
+    }
+}
+
+fn normalize_yaml_null(value: &str) -> Option<&'static str> {
+    match value {
+        "~" => Some("~"),
+        "" | "null" | "Null" | "NULL" => Some("null"),
         _ => None,
     }
 }
@@ -7963,7 +7969,8 @@ impl DecodedCoreScalarState {
 
     fn normalized_null_width(&self) -> Option<usize> {
         match self.value()? {
-            b"~" | b"null" | b"Null" | b"NULL" => Some("null".len()),
+            b"~" => Some("~".len()),
+            b"null" | b"Null" | b"NULL" => Some("null".len()),
             _ => None,
         }
     }

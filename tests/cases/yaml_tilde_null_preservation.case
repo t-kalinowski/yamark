@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.yaml
+-- stdin
+block: ~
+sequence:
+  - ~
+flow: [~, {value: ~}]
+explicit: !!null ~
+quoted: !!null "~"
+mapping:
+  ~: ~
+canonical: Null
+-- stdout
+block: ~
+sequence:
+  - ~
+flow: [~, {value: ~}]
+explicit: !!null ~
+quoted: !!null ~
+mapping:
+  ~: ~
+canonical: null
+-- stderr
+-- status
+0
