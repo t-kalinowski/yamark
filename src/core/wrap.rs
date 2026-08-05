@@ -1295,7 +1295,7 @@ fn markdown_block_start_line(line: &str) -> bool {
             || markdown_list_marker(trimmed).is_some())
 }
 
-fn markdown_html_block_start_line(trimmed: &str) -> bool {
+pub(crate) fn markdown_html_block_start_line(trimmed: &str) -> bool {
     if trimmed.starts_with("<!") || trimmed.starts_with("<?") {
         return true;
     }

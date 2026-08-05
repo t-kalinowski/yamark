@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+<img src="man/figures/README-umap-example-1.png" alt="A two-dimensional UMAP embedding of MNIST digits colored by digit label." width="100%" />
+-- stdout
+<img src="man/figures/README-umap-example-1.png" alt="A two-dimensional UMAP embedding of MNIST digits colored by digit label." width="100%" />
+-- stderr
+-- status
+0

@@ -2560,6 +2560,7 @@ fn raw_sensitive_at(text: &str) -> bool {
         || trimmed.starts_with("<!--")
         || trimmed.starts_with("<div")
         || trimmed.starts_with("</div")
+        || crate::core::wrap::markdown_html_block_start_line(trimmed)
         || multiline_html_tag_start(text)
         || paired_html_block_start(text).is_some()
         || link_definition_start(trimmed)
