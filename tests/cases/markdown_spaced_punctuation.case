@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap 80
+-- stdin
+The notation \< , \> denotes the dot product.
+
+Deliberate punctuation gaps: ( , ) and [ ; ].
+-- stdout
+The notation \< , \> denotes the dot product.
+
+Deliberate punctuation gaps: ( , ) and [ ; ].
+-- stderr
+-- status
+0

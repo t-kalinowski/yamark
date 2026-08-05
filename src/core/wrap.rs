@@ -1598,11 +1598,6 @@ impl<'a> InlineToken<'a> {
     fn text(&self) -> &str {
         &self.text
     }
-
-    fn push_str(&mut self, suffix: &str) {
-        self.text.to_mut().push_str(suffix);
-        self.width += token_width(suffix);
-    }
 }
 
 fn write_sentence_token_lines(
@@ -3121,7 +3116,6 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
         return None;
     }
     let mut tokens = Vec::new();
-    let mut pending_prefix = String::new();
     let mut index = 0usize;
     while index < text.len() {
         while index < text.len() {
@@ -3136,15 +3130,8 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
         }
 
         let end = inline_token_end(text, index)?;
-        attach_inline_token(&mut tokens, &mut pending_prefix, &text[index..end]);
+        tokens.push(InlineToken::borrowed(&text[index..end]));
         index = end;
-    }
-    if !pending_prefix.is_empty() {
-        if let Some(previous) = tokens.last_mut() {
-            previous.push_str(&pending_prefix);
-        } else {
-            tokens.push(InlineToken::owned(pending_prefix));
-        }
     }
 
     Some(tokens)
@@ -3164,56 +3151,9 @@ fn simple_inline_tokens_supported(text: &str) -> bool {
 }
 
 fn simple_inline_tokens(text: &str) -> Vec<InlineToken<'_>> {
-    let mut tokens = Vec::new();
-    let mut pending_prefix = String::new();
-    for token in text.split_ascii_whitespace() {
-        attach_inline_token(&mut tokens, &mut pending_prefix, token);
-    }
-    if !pending_prefix.is_empty() {
-        if let Some(previous) = tokens.last_mut() {
-            previous.push_str(&pending_prefix);
-        } else {
-            tokens.push(InlineToken::owned(pending_prefix));
-        }
-    }
-    tokens
-}
-
-fn attach_inline_token<'a>(
-    tokens: &mut Vec<InlineToken<'a>>,
-    pending_prefix: &mut String,
-    token: &'a str,
-) {
-    if token.chars().all(opening_punctuation) {
-        pending_prefix.push_str(token);
-        return;
-    }
-    if token.chars().all(closing_punctuation) {
-        if let Some(previous) = tokens.last_mut() {
-            previous.push_str(token);
-        } else {
-            pending_prefix.push_str(token);
-        }
-        return;
-    }
-    if pending_prefix.is_empty() {
-        tokens.push(InlineToken::borrowed(token));
-        return;
-    }
-
-    let mut owned = String::with_capacity(pending_prefix.len() + token.len());
-    owned.push_str(pending_prefix);
-    owned.push_str(token);
-    pending_prefix.clear();
-    tokens.push(InlineToken::owned(owned));
-}
-
-fn opening_punctuation(ch: char) -> bool {
-    matches!(ch, '(' | '[')
-}
-
-fn closing_punctuation(ch: char) -> bool {
-    matches!(ch, ')' | ']' | ',' | '.' | ';' | ':' | '!' | '?')
+    text.split_ascii_whitespace()
+        .map(InlineToken::borrowed)
+        .collect()
 }
 
 fn contains_unsupported_inline_construct(text: &str) -> bool {
