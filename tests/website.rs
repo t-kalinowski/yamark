@@ -1,7 +1,6 @@
 use assert_cmd::Command;
 use std::fs;
 use std::path::Path;
-use tempfile::tempdir;
 
 #[test]
 fn public_materials_do_not_refer_to_legacy_product_names() {
@@ -376,63 +375,60 @@ fn website_homepage_has_visual_landing_sections() {
 
     assert!(index.contains("assets/favicon.svg"));
     assert!(index.contains("hero-shell"));
-    assert!(index.contains("terminal-window"));
+    assert!(index.contains("hero-specimen"));
+    assert!(index.contains("hero-command"));
+    assert!(!index.contains("terminal-window"));
     assert!(index.contains("workflow-strip"));
     assert!(!index.contains("[Beta]{.status-chip}"));
     assert!(!styles.contains(".status-chip"));
     assert!(styles.contains("--yamark-ink"));
     assert!(styles.contains(".hero-shell"));
-    assert!(styles.contains(".terminal-window"));
+    assert!(styles.contains(".hero-specimen"));
+    assert!(styles.contains(".hero-command"));
+    assert!(!styles.contains(".terminal-window"));
     assert!(styles.contains(".workflow-strip"));
+
+    let mobile = styles
+        .split("@media (max-width: 560px)")
+        .nth(1)
+        .expect("website should have narrow-screen styles");
+    assert!(mobile.contains(".hero-command"));
+    assert!(mobile.contains("flex-direction: column"));
 }
 
 #[test]
-fn website_homepage_terminal_uses_real_cli_output() {
+fn website_homepage_specimen_uses_current_yamark() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let index = fs::read_to_string(root.join("index.qmd")).unwrap();
+    let rendered = fs::read_to_string(root.join("index.html.md")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
-    let styles = styles.split_whitespace().collect::<Vec<_>>().join(" ");
-    let dir = tempdir().unwrap();
-    fs::create_dir(dir.path().join("docs")).unwrap();
-    fs::write(dir.path().join("config.yaml"), "items: [one,two]\n").unwrap();
-    fs::write(dir.path().join("docs/index.md"), "#   Index ##\n").unwrap();
-    fs::write(dir.path().join("docs/reference.qmd"), "#   Reference ##\n").unwrap();
-
+    let input = "---\ntags: [docs,agents,yaml]\n---\n\n# Agent guide ##\n";
     let output = Command::cargo_bin("yamark")
         .unwrap()
-        .current_dir(dir.path())
-        .arg("format")
+        .args(["format", "--wrap", "72", "--stdin-file-path", "guide.qmd"])
+        .write_stdin(input)
         .output()
         .unwrap();
     assert!(output.status.success());
     assert_eq!(output.stderr, b"");
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let after = String::from_utf8(output.stdout).unwrap();
 
-    assert!(
-        styles.contains(
-            ".terminal-window pre { padding: 1rem 1.1rem 1.2rem; white-space: pre-wrap; }"
-        )
-    );
-    assert!(styles.contains(
-        ".terminal-window code { color: #f8fafc; font-size: 0.92rem; white-space: inherit; }"
-    ));
-
-    for file in ["index.qmd", "index.html.md"] {
-        let contents = fs::read_to_string(root.join(file)).unwrap();
+    assert!(index.contains("label: hero-example"));
+    assert!(index.contains("emit_hero_specimen(\"hero-example\")"));
+    assert!(!index.contains("tags: [docs, agents, yaml]"));
+    for line in after
+        .lines()
+        .filter(|line| line.starts_with("tags:") || line.starts_with("# "))
+    {
         assert!(
-            contents.contains(&format!("$ uvx yamark format\n{}", stdout.trim_end())),
-            "{file} should show the real Yamark invocation and summary {stdout:?}"
+            rendered.contains(line),
+            "rendered homepage should show Yamark output line {line:?}"
         );
-        for fabricated in [
-            "\nformat config.yaml\n",
-            "\nformat docs/index.md\n",
-            "\nformat docs/reference.qmd\n",
-        ] {
-            assert!(
-                !contents.contains(fabricated),
-                "{file} should not invent per-file progress output"
-            );
-        }
     }
+    assert!(!rendered.contains("files scanned"));
+    assert!(styles.contains(".hero-specimen"));
+    assert!(styles.contains(".hero-diff-line.remove"));
+    assert!(styles.contains(".hero-diff-line.add"));
 }
 
 #[test]
@@ -441,9 +437,7 @@ fn website_code_blocks_reset_quarto_wrapper_margins() {
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
     let styles = styles.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    assert!(styles.contains(
-        ":not(.terminal-window) > .code-copy-outer-scaffold div.sourceCode { border: 0; margin: 0; }"
-    ));
+    assert!(styles.contains(".code-copy-outer-scaffold div.sourceCode { border: 0; margin: 0; }"));
 }
 
 #[test]

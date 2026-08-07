@@ -178,18 +178,42 @@ body.quarto-dark .hero-button.primary {
   color: #061211;
 }
 
-.terminal-window {
-  background: var(--yamark-code);
-  border: 1px solid color-mix(in srgb, var(--yamark-line) 40%, #000000);
+.hero-command {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--yamark-surface) 72%, transparent);
+  border: 1px solid var(--yamark-line);
+  border-radius: 6px;
+  color: var(--yamark-muted);
+  display: inline-flex;
+  font-size: 0.82rem;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+  padding: 0.48rem 0.68rem;
+}
+
+.hero-command p {
+  display: contents;
+}
+
+.hero-command code {
+  background: transparent;
+  color: var(--yamark-ink);
+  font-size: 0.9rem;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.hero-specimen {
+  background: var(--yamark-surface);
+  border: 1px solid var(--yamark-line);
   border-radius: 8px;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
   overflow: hidden;
 }
 
-.terminal-chrome {
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  color: #d1d5db;
+.hero-specimen-header {
+  align-items: baseline;
+  border-bottom: 1px solid var(--yamark-line);
+  color: var(--yamark-muted);
   display: flex;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem;
@@ -197,39 +221,66 @@ body.quarto-dark .hero-button.primary {
   padding: 0.65rem 0.85rem;
 }
 
-.terminal-chrome p {
+.hero-specimen-header p {
+  display: contents;
+}
+
+.hero-specimen-path {
+  color: var(--yamark-ink);
+  font-weight: 700;
+}
+
+.hero-specimen .cell,
+.hero-specimen .cell-output,
+.hero-specimen .cell-output-display {
   margin: 0;
 }
 
-.terminal-window .code-copy-button {
-  display: none;
+.hero-diff-body {
+  padding: 1rem 0 1.1rem;
 }
 
-.terminal-window .code-copy-outer-scaffold,
-.terminal-window div.sourceCode,
-.terminal-window pre {
+.hero-diff-line {
+  display: grid;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  grid-template-columns: 1.4rem minmax(0, 1fr);
+  line-height: 1.55;
+  padding: 0.28rem 1rem 0.28rem 0.7rem;
+}
+
+.hero-diff-line code {
   background: transparent;
-  border: 0;
-  margin: 0;
-}
-
-.terminal-window pre {
-  padding: 1rem 1.1rem 1.2rem;
+  color: var(--yamark-ink);
+  font-size: inherit;
+  overflow-wrap: anywhere;
+  padding: 0;
   white-space: pre-wrap;
 }
 
-.terminal-window code {
-  color: #f8fafc;
-  font-size: 0.92rem;
-  white-space: inherit;
+.hero-diff-line.remove {
+  background: color-mix(in srgb, var(--yamark-red) 8%, transparent);
 }
 
-.terminal-window code span {
-  color: #f8fafc !important;
+.hero-diff-line.add {
+  background: color-mix(in srgb, var(--yamark-teal) 10%, transparent);
 }
 
-.terminal-window .ex {
-  color: var(--yamark-code-muted) !important;
+.hero-diff-line.remove .hero-diff-sign {
+  color: var(--yamark-red);
+}
+
+.hero-diff-line.add .hero-diff-sign {
+  color: var(--yamark-teal-strong);
+}
+
+.hero-diff-sign {
+  font-weight: 800;
+  text-align: center;
+}
+
+.hero-diff-gap {
+  height: 0.65rem;
 }
 
 .workflow-strip {
@@ -318,14 +369,14 @@ h3 {
   margin-bottom: 0;
 }
 
-:not(.terminal-window) > .code-copy-outer-scaffold,
+.code-copy-outer-scaffold,
 div.sourceCode {
   background: var(--yamark-surface);
   border: 1px solid var(--yamark-line);
   border-radius: 8px;
 }
 
-:not(.terminal-window) > .code-copy-outer-scaffold div.sourceCode {
+.code-copy-outer-scaffold div.sourceCode {
   border: 0;
   margin: 0;
 }
@@ -640,6 +691,13 @@ table.perf-table th {
   .hero-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .hero-command {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
   }
 
   .hero-button {

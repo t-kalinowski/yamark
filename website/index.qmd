@@ -4,6 +4,90 @@ description: An extremely fast formatter for YAML and Markdown, written in Rust.
 toc: false
 ---
 
+```{r}
+#| label: setup-homepage-examples
+#| include: false
+source("_yamark-build.R")
+
+get_chunk <- function(label) {
+  paste(knitr::knit_code$get(label), collapse = "\n")
+}
+
+hero_lines <- function(x) {
+  lines <- strsplit(x, "\n", fixed = TRUE)[[1]]
+  lines <- lines[grepl("^tags:|^#[[:space:]]", lines)]
+  stopifnot(length(lines) == 2)
+  lines
+}
+
+hero_diff_line <- function(kind, sign, value) {
+  label <- if (identical(kind, "remove")) "Before" else "After"
+  sprintf(
+    paste0(
+      '<div class="hero-diff-line %s">',
+      '<span class="hero-diff-sign" aria-hidden="true">%s</span>',
+      '<span class="visually-hidden">%s: </span>',
+      '<code>%s</code>',
+      '</div>'
+    ),
+    kind,
+    sign,
+    label,
+    htmltools::htmlEscape(value)
+  )
+}
+
+emit_hero_specimen <- function(label) {
+  before <- get_chunk(label)
+  after <- yamark_format(before, stdin_file_path = "guide.qmd")
+  before_lines <- hero_lines(before)
+  after_lines <- hero_lines(after)
+  stopifnot(!identical(before_lines, after_lines))
+
+  writeLines(c(
+    '<div class="hero-diff-body">',
+    hero_diff_line("remove", "-", before_lines[[1]]),
+    hero_diff_line("add", "+", after_lines[[1]]),
+    '<div class="hero-diff-gap" aria-hidden="true"></div>',
+    hero_diff_line("remove", "-", before_lines[[2]]),
+    hero_diff_line("add", "+", after_lines[[2]]),
+    '</div>'
+  ))
+}
+
+emit_before_after <- function(label, stdin_file_path = "example.md") {
+  before <- get_chunk(label)
+  after <- yamark_format(before, stdin_file_path = stdin_file_path)
+
+  writeLines(c(
+    ":::: {.before-after}",
+    "::: {.before-after-pane #demo-before}",
+    '**Before** <label class="softwrap-toggle"><input type="checkbox" id="demo-softwrap-toggle"> soft wrap</label>',
+    "",
+    markdown_fence(before),
+    "",
+    ":::",
+    "",
+    "::: {.before-after-pane}",
+    "**After**",
+    "",
+    markdown_fence(after),
+    ":::",
+    "::::"
+  ))
+}
+```
+
+```{cat}
+#| label: hero-example
+#| include: false
+---
+tags: [docs,agents,yaml]
+---
+
+# Agent guide ##
+```
+
 ::: {.hero-shell}
 ::: {.hero-copy}
 ::: {.hero-kicker}
@@ -20,16 +104,24 @@ Python&nbsp;and&nbsp;R.
 [See examples](examples.qmd){.hero-button}
 [Benchmarks](benchmarks.qmd){.hero-button}
 :::
+
+::: {.hero-command}
+<span>Run directly from PyPI</span>
+`uvx yamark format`
+:::
 :::
 
-::: {.terminal-window}
-::: {.terminal-chrome}
-<span>Run from PyPI</span>
+::: {.hero-specimen}
+::: {.hero-specimen-header}
+<span class="hero-specimen-path">guide.qmd</span>
+<span class="hero-specimen-kind">YAML + Markdown</span>
 :::
 
-```console
-$ uvx yamark format
-3 files scanned, 3 formatted, 0 unchanged, 0 skipped, 0 failed
+```{r}
+#| label: render-hero-example
+#| echo: false
+#| results: asis
+emit_hero_specimen("hero-example")
 ```
 :::
 :::
@@ -59,38 +151,6 @@ Format marked Markdown in YAML, Python, or R.
 Format nested YAML and Markdown inside fenced blocks.
 :::
 :::
-
-```{r}
-#| label: setup-before-after
-#| include: false
-source("_yamark-build.R")
-
-get_chunk <- function(label) {
-  paste(knitr::knit_code$get(label), collapse = "\n")
-}
-
-emit_before_after <- function(label, stdin_file_path = "example.md") {
-  before <- get_chunk(label)
-  after <- yamark_format(before, stdin_file_path = stdin_file_path)
-
-  writeLines(c(
-    ":::: {.before-after}",
-    "::: {.before-after-pane #demo-before}",
-    '**Before** <label class="softwrap-toggle"><input type="checkbox" id="demo-softwrap-toggle"> soft wrap</label>',
-    "",
-    markdown_fence(before),
-    "",
-    ":::",
-    "",
-    "::: {.before-after-pane}",
-    "**After**",
-    "",
-    markdown_fence(after),
-    ":::",
-    "::::"
-  ))
-}
-```
 
 ## A quick example
 

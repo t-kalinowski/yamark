@@ -4,6 +4,10 @@ description: An extremely fast formatter for YAML and Markdown, written in Rust.
 toc: false
 ---
 
+
+
+
+
 ::: {.hero-shell}
 ::: {.hero-copy}
 ::: {.hero-kicker}
@@ -20,17 +24,26 @@ Python&nbsp;and&nbsp;R.
 [See examples](examples.qmd){.hero-button}
 [Benchmarks](benchmarks.qmd){.hero-button}
 :::
+
+::: {.hero-command}
+<span>Run directly from PyPI</span>
+`uvx yamark format`
+:::
 :::
 
-::: {.terminal-window}
-::: {.terminal-chrome}
-<span>Run from PyPI</span>
+::: {.hero-specimen}
+::: {.hero-specimen-header}
+<span class="hero-specimen-path">guide.qmd</span>
+<span class="hero-specimen-kind">YAML + Markdown</span>
 :::
 
-```console
-$ uvx yamark format
-3 files scanned, 3 formatted, 0 unchanged, 0 skipped, 0 failed
-```
+<div class="hero-diff-body">
+<div class="hero-diff-line remove"><span class="hero-diff-sign" aria-hidden="true">-</span><span class="visually-hidden">Before: </span><code>tags: [docs,agents,yaml]</code></div>
+<div class="hero-diff-line add"><span class="hero-diff-sign" aria-hidden="true">+</span><span class="visually-hidden">After: </span><code>tags: [docs, agents, yaml]</code></div>
+<div class="hero-diff-gap" aria-hidden="true"></div>
+<div class="hero-diff-line remove"><span class="hero-diff-sign" aria-hidden="true">-</span><span class="visually-hidden">Before: </span><code># Agent guide ##</code></div>
+<div class="hero-diff-line add"><span class="hero-diff-sign" aria-hidden="true">+</span><span class="visually-hidden">After: </span><code># Agent guide</code></div>
+</div>
 :::
 :::
 
@@ -59,8 +72,6 @@ Format marked Markdown in YAML, Python, or R.
 Format nested YAML and Markdown inside fenced blocks.
 :::
 :::
-
-
 
 ## A quick example
 
