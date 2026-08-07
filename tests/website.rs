@@ -386,6 +386,17 @@ fn website_homepage_has_visual_landing_sections() {
 }
 
 #[test]
+fn website_code_blocks_reset_quarto_wrapper_margins() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let styles = fs::read_to_string(root.join("styles.css")).unwrap();
+    let styles = styles.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(styles.contains(
+        ":not(.terminal-window) > .code-copy-outer-scaffold div.sourceCode { border: 0; margin: 0; }"
+    ));
+}
+
+#[test]
 fn public_docs_show_pypi_commands() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for file in ["README.md", "website/usage.qmd", "website/usage.html.md"] {

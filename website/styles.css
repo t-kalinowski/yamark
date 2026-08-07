@@ -325,6 +325,7 @@ div.sourceCode {
 
 :not(.terminal-window) > .code-copy-outer-scaffold div.sourceCode {
   border: 0;
+  margin: 0;
 }
 
 pre.sourceCode {
