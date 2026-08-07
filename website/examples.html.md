@@ -1,103 +1,98 @@
 ---
 # fmt: skip file
-title: Showcase
+title: Examples
 description: >-
-  Real before/after examples covering the file types and directives Yamark
-  exists for.
+  Generated before-and-after examples for supported files and directives.
 ---
 
 <!-- fmt: skip file -->
 
 
 
-Yamark formats the files that sit between code and docs: skill files, prompt
-templates, build matrices, configs, and any source file that hosts a prose blob.
-Each section below demonstrates one capability with the smallest before/after
-that shows it off.
+These examples run the public Yamark command during the site build. Each one
+shows a focused input and the output Yamark writes.
 
-## Markdown with YAML frontmatter
+## YAML and Markdown documents
 
-The shape of an agent skill, a prompt template, or a Cursor rule: typed
-frontmatter on top, free-form Markdown body underneath. Yamark formats the
-frontmatter as YAML and the body as Markdown in one pass.
+### Markdown with YAML front matter
+
+A Markdown file can have YAML front matter above its Markdown body. Yamark
+formats both in one pass.
 
 :::: {.showcase-before-after}
 **Before**
 
 ```markdown
 ---
-name: review-pr
-description: Review a pull request and recommend changes inline with the project's style guide, focusing on correctness, readability, and tests.
-tags: [review, pull-request, code]
+title: Contributor guide
+description: How to build, test, and run the project before opening a pull request.
+tags: [docs,development,testing]
 ---
 
-# Review
+#   Contributor guide ##
 
-Read the diff and flag anything that violates the style guide, has obvious correctness issues, or looks untested. Prefer specific suggestions over vague concerns.
+Build the project locally and run its tests before opening a pull request. Include a short description of the change and any user-facing effects.
 ```
 
 **After**
 
 ```markdown
 ---
-name: review-pr
-description: >-
-  Review a pull request and recommend changes inline with the project's
-  style guide, focusing on correctness, readability, and tests.
-tags: [review, pull-request, code]
+title: Contributor guide
+description: How to build, test, and run the project before opening a pull request.
+tags: [docs, development, testing]
 ---
 
-# Review
+# Contributor guide
 
-Read the diff and flag anything that violates the style guide, has
-obvious correctness issues, or looks untested. Prefer specific
-suggestions over vague concerns.
+Build the project locally and run its tests before opening a pull
+request. Include a short description of the change and any user-facing
+effects.
 ```
 ::::
 
-## Markdown-valued YAML scalars
+### Markdown-valued YAML scalars
 
-A `prompts.yaml` or `agents.yaml` where each entry's value is a
-Markdown blob. Tag the value `!markdown` or its `!md` alias (or add
-`# fmt: markdown`) and Yamark wraps the value as Markdown - picking
-folded or literal block style based on the content.
+A YAML file can store Markdown in selected scalar values. Tag a value
+`!markdown` or `!md` (or add `# fmt: markdown`) and Yamark wraps it as
+Markdown, choosing folded or literal block style from the content.
 
 :::: {.showcase-before-after}
 **Before**
 
 ```yaml
-agents:
-  reviewer:
-    instructions: !markdown "Focus on correctness and tests. Flag any change that lacks a regression test. Prefer concrete suggestions: name the function, name the case."
-  summarizer:
-    instructions: !markdown |
-      You write release notes.
+pages:
+  install:
+    body: !markdown "Install the command, run it on a file, and inspect the diff before committing the result."
+  release:
+    body: !markdown |
+      Before publishing:
 
-      - One bullet per user-visible change.
-      - No internal refactors.
+      - Run the test suite.
+      - Review the generated documentation.
 ```
 
 **After**
 
 ```yaml
-agents:
-  reviewer:
-    instructions: !markdown |
-      Focus on correctness and tests. Flag any change that lacks a regression
-      test. Prefer concrete suggestions: name the function, name the case.
-  summarizer:
-    instructions: !markdown |
-      You write release notes.
+pages:
+  install:
+    body: !markdown |
+      Install the command, run it on a file, and inspect the diff before
+      committing the result.
+  release:
+    body: !markdown |
+      Before publishing:
 
-      - One bullet per user-visible change.
-      - No internal refactors.
+      - Run the test suite.
+      - Review the generated documentation.
 ```
 ::::
 
 The prose-only value is rewrapped as Markdown. The list keeps a literal
 block (`|`) because folding would destroy the line breaks Markdown depends on.
 
-## YAML scalar presentation
+### YAML scalar presentation
 
 Yamark changes scalar spelling only when the parsed YAML value and tag
 stay equivalent. It can simplify safe quoted strings, keep strings that
@@ -128,43 +123,25 @@ summary: >-
 ```
 ::::
 
-Yamark doesn't validate duplicate mapping keys. It keeps pairs in source order
-and may still format their values:
+## Markdown in source files
 
-:::: {.showcase-before-after}
-**Before**
+### Embedded Markdown in Python
 
-```yaml
-a: [1,2]
-a: [3,4]
-```
-
-**After**
-
-```yaml
-a: [1, 2]
-a: [3, 4]
-```
-::::
-
-## Embedded Markdown in Python
-
-When the prompt lives next to the code that uses it, Yamark formats
-the prose without touching the surrounding Python. Mark the string with
-`# fmt: markdown`:
+Yamark can format marked Markdown without changing the surrounding Python. Add
+`# fmt: markdown` before the string:
 
 :::: {.showcase-before-after}
 **Before**
 
 ```python
 # fmt: markdown
-REVIEW_PROMPT = """
-# Review
+HELP_TEXT = """
+# Configuration
 
-Read the diff and flag anything that violates the style guide, has obvious correctness issues, or looks untested.
+Set the input directory and choose whether Yamark should check files or write changes.
 
--   Prefer specific suggestions over vague concerns.
--   Name the function and the case.
+-   Use `check = true` in CI.
+-   Leave it false for local formatting.
 """
 ```
 
@@ -172,26 +149,26 @@ Read the diff and flag anything that violates the style guide, has obvious corre
 
 ```python
 # fmt: markdown
-REVIEW_PROMPT = """
-# Review
+HELP_TEXT = """
+# Configuration
 
-Read the diff and flag anything that violates the style guide, has
-obvious correctness issues, or looks untested.
+Set the input directory and choose whether Yamark should check files or
+write changes.
 
-- Prefer specific suggestions over vague concerns.
-- Name the function and the case.
+- Use `check = true` in CI.
+- Leave it false for local formatting.
 """
 ```
 ::::
 
-Python source outside the marked string is left untouched - run `ruff format`
-for that.
+Python source outside the marked string is left untouched. Run `ruff format` for
+that.
 
-## Embedded Markdown in source comments
+### Embedded Markdown in source comments
 
-The same directive can target a contiguous source comment block. This
-is useful for generated help text or prompt snippets where a string
-literal is not the right host.
+The same directive can target a contiguous source comment block. This is useful
+for generated help text or documentation snippets where a string literal is not
+the right host.
 
 :::: {.showcase-before-after}
 **Before**
@@ -217,11 +194,11 @@ literal is not the right host.
 ```
 ::::
 
-## Embedded Markdown in R
+### Embedded Markdown in R
 
-The same pattern works for R raw strings. Useful for package vignettes,
-package-bundled prompts, and Shiny help text that you want to keep next
-to the code that renders it.
+The same pattern works for R raw strings. It can format package vignettes,
+documentation fragments, and Shiny help text kept next to the code that renders
+it.
 
 :::: {.showcase-before-after}
 **Before**
@@ -254,11 +231,12 @@ first match wins, so put the most specific filter first.
 ```
 ::::
 
-## Aligned flow-mapping tables
+## YAML layout
 
-Build matrices, parameter grids, and any sequence of homogeneous flow
-mappings read better as a table. Mark the sequence with `# fmt: table`
-and Yamark aligns columns by key:
+### Aligned flow-mapping tables
+
+A sequence of similar flow mappings can be easier to scan as a table. Mark it
+with `# fmt: table` and Yamark aligns columns by key:
 
 :::: {.showcase-before-after}
 **Before**
@@ -278,7 +256,7 @@ and Yamark aligns columns by key:
 ```
 ::::
 
-## Compact collections
+### Compact collections
 
 Short, simple block collections can read better as a single flow line.
 Enable `compact = true` in `yamark.toml` (or pass `--compact`) and
@@ -290,9 +268,9 @@ structural width:
 
 ```yaml
 tags:
-  - llm
-  - authoring
-  - formats
+  - yaml
+  - markdown
+  - docs
 package:
   name: yamark
   language: rust
@@ -301,7 +279,7 @@ package:
 **After**
 
 ```yaml
-tags: [llm, authoring, formats]
+tags: [yaml, markdown, docs]
 package: {name: yamark, language: rust}
 ```
 ::::
@@ -309,7 +287,7 @@ package: {name: yamark, language: rust}
 Collections with comments, aliases, tags, anchors, multiline scalars, or
 block scalars stay in block style.
 
-## Collapse to flow by typing a bracket
+### Collapse to flow by typing a bracket
 
 Drop an unmatched `[` or `{` where a block sequence or mapping value starts and
 Yamark reads it as a layout hint: collapse this collection onto one line. The
@@ -321,15 +299,15 @@ the opener and emits flow style.
 
 ```yaml
 tags: [
-  - llm
-  - authoring
-  - formats
+  - yaml
+  - markdown
+  - docs
 ```
 
 **After**
 
 ```yaml
-tags: [llm, authoring, formats]
+tags: [yaml, markdown, docs]
 ```
 ::::
 
@@ -342,22 +320,22 @@ header:
 ```yaml
 tags:
 [
-  - llm
-  - authoring
-  - formats
+  - yaml
+  - markdown
+  - docs
 ```
 
 **After**
 
 ```yaml
-tags: [llm, authoring, formats]
+tags: [yaml, markdown, docs]
 ```
 ::::
 
 Adjacent forms such as `tags:[` and `tags:{` are not repaired as layout hints.
 
-The trick also works in the other direction: a newline inside an existing flow
-collection is read as a request to expand it to block style.
+A newline inside an existing flow collection requests the reverse change: expand
+the collection to block style.
 
 :::: {.showcase-before-after}
 **Before**
@@ -378,7 +356,9 @@ collection is read as a request to expand it to block style.
 See [Reference -> Layout repair](reference.qmd#layout-repair) for the
 acceptance rules.
 
-## Recursive Markdown code fences
+## Fenced and nested content
+
+### Recursive Markdown code fences
 
 YAML fences are formatted as YAML. Markdown fences are formatted
 recursively, so nested YAML inside nested Markdown is formatted too.
@@ -421,7 +401,7 @@ items: [a, b]
 `````
 ::::
 
-## Prettier-backed web and data fences
+### Prettier-backed web and data fences
 
 When `prettier` is on `PATH`, JSON, JSONC, JSON5, GraphQL, CSS, SCSS, Less,
 PostCSS, HTML, JavaScript, JSX, TypeScript, and TSX fenced blocks are handed to
@@ -432,7 +412,7 @@ it. Python and R fences go to Ruff and Air the same way:
 
 ````markdown
 ```json
-{"name":"yamark","tags":["llm","authoring","formats"],"engines":{"node":">=18"}}
+{"name":"yamark","tags":["yaml","markdown","formatter"],"engines":{"node":">=18"}}
 ```
 
 ```ts
@@ -446,7 +426,7 @@ function format(input:string):string{return input.trim()}
 ```json
 {
   "name": "yamark",
-  "tags": ["llm", "authoring", "formats"],
+  "tags": ["yaml", "markdown", "formatter"],
   "engines": { "node": ">=18" }
 }
 ```
@@ -463,7 +443,7 @@ A missing `prettier` leaves the fence unchanged. Override or disable a
 language with `[embedded.<language>]` in `yamark.toml`, or skip them all with
 `--skip-embedded-formatters`.
 
-## Embedded source in YAML literal blocks
+### Embedded source in YAML literal blocks
 
 Configure an embedded formatter for a language in `yamark.toml`
 (`[embedded.r]`, `[embedded.python]`, custom), then mark a literal
@@ -489,10 +469,10 @@ preflight: |
 ```
 ::::
 
-Yamark hands the scalar to the configured formatter and only writes if the
-surrounding YAML round-trips cleanly.
+Yamark sends the scalar to the configured formatter and re-indents the result in
+the YAML block. Pass `--verify` to reparse the resulting YAML before writing.
 
-## Markdown links, footnotes, and tables
+### Markdown links, footnotes, and tables
 
 Long inline links are split at Markdown syntax boundaries. Footnote
 definitions wrap under the marker unless the document or CLI asks to

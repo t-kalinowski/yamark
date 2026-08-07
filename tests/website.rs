@@ -76,7 +76,7 @@ fn public_repo_metadata_is_ready() {
     assert!(license.contains("Copyright (c) 2026 Tomasz Kalinowski"));
 
     for field in [
-        r#"description = "Format YAML and Markdown with yamark.""#,
+        r#"description = "A formatter for YAML and Markdown.""#,
         r#"repository = "https://github.com/t-kalinowski/yamark""#,
         r#"homepage = "https://t-kalinowski.github.io/yamark/""#,
         r#"readme = "README.md""#,
@@ -89,7 +89,7 @@ fn public_repo_metadata_is_ready() {
         !pyproject.contains("Add your description here"),
         "pyproject description should not be a template placeholder"
     );
-    assert!(pyproject.contains("description = \"Format YAML and Markdown with yamark.\""));
+    assert!(pyproject.contains("description = \"A formatter for YAML and Markdown.\""));
     assert!(pyproject.contains("[build-system]"));
     assert!(pyproject.contains(r#"build-backend = "maturin""#));
     assert!(pyproject.contains("[tool.maturin]"));
@@ -307,11 +307,11 @@ fn website_includes_benchmarks_page() {
     assert!(benchmarks.contains("--files 500 --items 540"));
     assert!(benchmarks.contains("MacBook Pro"));
 
-    // The page must say, in visible prose, why the lint fixers are not part
-    // of the comparison - not bury them in a comment.
+    // The page must say, in visible prose, why the lint fixers are outside
+    // this comparison instead of burying the scope choice in a comment.
     assert!(benchmarks.contains("pymarkdown"));
     assert!(benchmarks.contains("markdownlint-cli2"));
-    assert!(benchmarks.contains("not formatters"));
+    assert!(benchmarks.contains("formatter-CLI comparison"));
 
     // Cache handling is a disclosed part of the methodology.
     assert!(benchmarks.contains("cache"));
@@ -388,22 +388,22 @@ fn public_docs_show_pypi_commands() {
 }
 
 #[test]
-fn website_includes_imported_homepage_and_showcase_content() {
+fn website_includes_homepage_and_examples_content() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let index = fs::read_to_string(root.join("index.qmd")).unwrap();
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
-    assert!(index.contains("Yamark formats every layer of a Markdown file"));
+    assert!(index.contains("Yamark is a command-line formatter for YAML and Markdown"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));
     assert!(!index.contains("## The pitch"));
 
-    assert!(examples.contains("## Markdown-valued YAML scalars"));
-    assert!(examples.contains("## Collapse to flow by typing a bracket"));
-    assert!(examples.contains("## Recursive Markdown code fences"));
-    assert!(examples.contains("## Markdown links, footnotes, and tables"));
+    assert!(examples.contains("### Markdown-valued YAML scalars"));
+    assert!(examples.contains("### Collapse to flow by typing a bracket"));
+    assert!(examples.contains("### Recursive Markdown code fences"));
+    assert!(examples.contains("### Markdown links, footnotes, and tables"));
 
     assert!(styles.contains(".before-after"));
     assert!(styles.contains(".showcase-before-after"));
@@ -562,7 +562,7 @@ fn website_documents_cli_help_on_dedicated_page() {
 
     for term in [
         "class=\"yamark-cli-help\"",
-        "An ultra-fast YAML and Markdown formatter",
+        "A formatter for YAML and Markdown",
         "Usage:",
         "Commands:",
         "yamark git-filter setup",
@@ -643,8 +643,8 @@ fn website_documents_editor_and_git_filter_integrations() {
         "## Experimental status",
         "The Git filter is experimental",
         "may change or be removed",
-        "normalize Markdown at the Git boundary",
-        "working tree can still be rewritten",
+        "sentence-per-line Markdown in Git",
+        "tools therefore see the column-wrapped form",
         "yamark git-filter clean",
         "yamark git-filter smudge",
         "yamark git-filter adopt",
@@ -674,9 +674,11 @@ fn website_documents_editor_and_git_filter_integrations() {
 
 #[test]
 fn website_showcase_generates_after_examples_with_yamark() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = project_root.join("website");
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let rendered = fs::read_to_string(root.join("examples.html.md")).unwrap();
+    let pages = fs::read_to_string(project_root.join(".github/workflows/pages.yml")).unwrap();
 
     assert!(examples.contains("# fmt: skip file"));
     assert!(examples.contains("<!-- fmt: skip file -->"));
@@ -686,6 +688,16 @@ fn website_showcase_generates_after_examples_with_yamark() {
     assert!(examples.contains("system2("));
     assert!(examples.contains("\"yamark\""));
     assert!(examples.contains("showcase_before_after("));
+
+    for command in [
+        "uv tool install ruff==0.16.1",
+        "npm install --global prettier@3.8.3",
+    ] {
+        assert!(
+            pages.contains(command),
+            "Pages should install the formatter used by generated examples: {command}"
+        );
+    }
 }
 
 #[test]

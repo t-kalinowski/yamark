@@ -6,7 +6,7 @@ project:
 
 website:
   title: Yamark
-  description: An extremely fast formatter for YAML and Markdown, written in Rust.
+  description: A formatter for YAML and Markdown.
   site-url: https://t-kalinowski.github.io/yamark/
   favicon: assets/favicon.svg
   repo-url: https://github.com/t-kalinowski/yamark
@@ -17,15 +17,15 @@ website:
     image: assets/favicon.svg
   twitter-card:
     image: assets/favicon.svg
-    card-style: summary_large_image
+    card-style: summary
   navbar:
     left:
       - text: Home
         href: index.qmd
-      - text: Showcase
-        href: examples.qmd
       - text: Usage
         href: usage.qmd
+      - text: Examples
+        href: examples.qmd
       - text: Reference
         href: reference.qmd
       - text: CLI Help
@@ -33,6 +33,9 @@ website:
       - text: Benchmarks
         href: benchmarks.qmd
     right:
+      - text: PyPI
+        href: https://pypi.org/project/yamark/
+        target: _blank
       - text: Releases
         href: https://github.com/t-kalinowski/yamark/releases
         target: _blank

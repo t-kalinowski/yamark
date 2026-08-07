@@ -17,9 +17,9 @@ use crate::workspace::{
 
 #[derive(Debug, Parser)]
 #[command(name = "yamark")]
-#[command(about = "An ultra-fast YAML and Markdown formatter")]
+#[command(about = "A formatter for YAML and Markdown")]
 #[command(
-    long_about = "An ultra-fast YAML and Markdown formatter.\n\nRun `yamark <COMMAND> --help` for command-level help."
+    long_about = "A formatter for YAML and Markdown.\n\nRun `yamark <COMMAND> --help` for command-level help."
 )]
 struct Args {
     #[command(subcommand)]

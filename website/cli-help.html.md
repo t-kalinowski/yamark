@@ -9,22 +9,26 @@ execute:
 
 
 
+These captures come from the Yamark binary built from this repository. Start
+with [Usage](usage.qmd) for common commands; use [Reference](reference.qmd) for
+configuration, directives, and supported syntax.
+
 ## `yamark`
 
 `````{=html}
-<pre class="yamark-cli-help"><code>An ultra-fast YAML and Markdown formatter.
+<pre class="yamark-cli-help"><code>A formatter for YAML and Markdown.
 
 Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 
-<span style='font-weight: bold; text-decoration: underline;'>Usage:</span> <span style='font-weight: bold;'>yamark</span> &lt;COMMAND&gt;
+Usage: yamark &lt;COMMAND&gt;
 
-<span style='font-weight: bold; text-decoration: underline;'>Commands:</span>
-  <span style='font-weight: bold;'>format</span>
-  <span style='font-weight: bold;'>git-filter</span>  Git clean/smudge filter helpers for Markdown files
-  <span style='font-weight: bold;'>help</span>        Print this message or the help of the given subcommand(s)
+Commands:
+  format
+  git-filter  Git clean/smudge filter helpers for Markdown files
+  help        Print this message or the help of the given subcommand(s)
 
-<span style='font-weight: bold; text-decoration: underline;'>Options:</span>
-  <span style='font-weight: bold;'>-h</span>, <span style='font-weight: bold;'>--help</span>
+Options:
+  -h, --help
           Print help (see a summary with '-h')
 </code></pre>
 
@@ -33,27 +37,27 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 ## `yamark format`
 
 `````{=html}
-<pre class="yamark-cli-help"><code><span style='font-weight: bold; text-decoration: underline;'>Usage:</span> <span style='font-weight: bold;'>yamark format</span> [OPTIONS] [PATHS]...
+<pre class="yamark-cli-help"><code>Usage: yamark format [OPTIONS] [PATHS]...
 
-<span style='font-weight: bold; text-decoration: underline;'>Arguments:</span>
+Arguments:
   [PATHS]...
 
-<span style='font-weight: bold; text-decoration: underline;'>Options:</span>
-      <span style='font-weight: bold;'>--check</span>
-      <span style='font-weight: bold;'>--diff</span>
-      <span style='font-weight: bold;'>--diagnostics</span>
-      <span style='font-weight: bold;'>--verify</span>                       Reparse changed YAML and reject invalid or value-changing output
-      <span style='font-weight: bold;'>--stdin-file-path</span> &lt;PATH&gt;
-      <span style='font-weight: bold;'>--config</span> &lt;PATH&gt;
-      <span style='font-weight: bold;'>--wrap</span> &lt;WRAP&gt;                  [default: 72]
-      <span style='font-weight: bold;'>--canonical</span>
-      <span style='font-weight: bold;'>--preserve-footnotes</span>
-      <span style='font-weight: bold;'>--line-width</span> &lt;LINE_WIDTH&gt;      [default: 80]
-      <span style='font-weight: bold;'>--prose-width</span> &lt;PROSE_WIDTH&gt;    [default: 72]
-      <span style='font-weight: bold;'>--indent-width</span> &lt;INDENT_WIDTH&gt;  [default: 2]
-      <span style='font-weight: bold;'>--compact</span>
-      <span style='font-weight: bold;'>--skip-embedded-formatters</span>
-  <span style='font-weight: bold;'>-h</span>, <span style='font-weight: bold;'>--help</span>                         Print help</code></pre>
+Options:
+      --check
+      --diff
+      --diagnostics
+      --verify                       Reparse changed YAML and reject invalid or value-changing output
+      --stdin-file-path &lt;PATH&gt;
+      --config &lt;PATH&gt;
+      --wrap &lt;WRAP&gt;                  [default: 72]
+      --canonical
+      --preserve-footnotes
+      --line-width &lt;LINE_WIDTH&gt;      [default: 80]
+      --prose-width &lt;PROSE_WIDTH&gt;    [default: 72]
+      --indent-width &lt;INDENT_WIDTH&gt;  [default: 2]
+      --compact
+      --skip-embedded-formatters
+  -h, --help                         Print help</code></pre>
 
 `````
 
@@ -81,20 +85,20 @@ Git only runs the filter for paths matched by attributes. Put these patterns in
   *.Rmd filter=yamark-md
   *.rmd filter=yamark-md
 
-<span style='font-weight: bold; text-decoration: underline;'>Usage:</span> <span style='font-weight: bold;'>yamark git-filter</span> &lt;COMMAND&gt;
+Usage: yamark git-filter &lt;COMMAND&gt;
 
-<span style='font-weight: bold; text-decoration: underline;'>Commands:</span>
-  <span style='font-weight: bold;'>clean</span>
-  <span style='font-weight: bold;'>smudge</span>
-  <span style='font-weight: bold;'>adopt</span>     Adopt the yamark Git filter for a shared repository
-  <span style='font-weight: bold;'>join</span>      Join a repository that has already adopted the yamark Git filter
-  <span style='font-weight: bold;'>check</span>     Check committed yamark Git filter blobs round-trip safely
-  <span style='font-weight: bold;'>setup</span>     Configure the yamark Git filter in a repository
-  <span style='font-weight: bold;'>teardown</span>  Remove the local yamark Git filter setup from a repository
-  <span style='font-weight: bold;'>help</span>      Print this message or the help of the given subcommand(s)
+Commands:
+  clean
+  smudge
+  adopt     Adopt the yamark Git filter for a shared repository
+  join      Join a repository that has already adopted the yamark Git filter
+  check     Check committed yamark Git filter blobs round-trip safely
+  setup     Configure the yamark Git filter in a repository
+  teardown  Remove the local yamark Git filter setup from a repository
+  help      Print this message or the help of the given subcommand(s)
 
-<span style='font-weight: bold; text-decoration: underline;'>Options:</span>
-  <span style='font-weight: bold;'>-h</span>, <span style='font-weight: bold;'>--help</span>
+Options:
+  -h, --help
           Print help (see a summary with '-h')</code></pre>
 
 `````

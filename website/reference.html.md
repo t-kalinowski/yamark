@@ -108,6 +108,9 @@ The default mode writes changes in place:
 yamark format docs/
 ```
 
+Directory traversal skips hidden paths and respects `.gitignore`, `.ignore`, and
+global Git ignore files. Pass a hidden path explicitly to format it.
+
 Use check, diff, or stdin mode when an integration should not mutate files:
 
 ```sh
@@ -455,8 +458,8 @@ Enable compact YAML collection output:
 ```yaml
 # fmt: compact
 tags:
-  - llm
-  - authoring
+  - yaml
+  - docs
 ```
 
 Align a following sequence of flow mappings as a table:
@@ -573,9 +576,9 @@ Before:
 
 ```yaml
 tags: [
-  - llm
-  - authoring
-  - formats
+  - yaml
+  - markdown
+  - docs
 ```
 
 After:
@@ -589,9 +592,9 @@ The opener can also sit on the line after an empty mapping value header:
 ```yaml
 tags:
 [
-  - llm
-  - authoring
-  - formats
+  - yaml
+  - markdown
+  - docs
 ```
 
 The same hint works on mappings:

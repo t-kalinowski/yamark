@@ -1,26 +1,31 @@
 ---
 title: Usage
-description: Install yamark, run the formatter, and choose an integration.
+description: Install Yamark, format files, and choose an integration.
 ---
 
 ## Install
 
-Run Yamark from PyPI without installing it:
+With [uv](https://docs.astral.sh/uv/) installed, run Yamark directly
+from [PyPI](https://pypi.org/project/yamark/) without a separate
+install:
 
 ```sh
 uvx yamark format config.yaml docs/
 ```
 
-Install the command from PyPI:
+This formats the selected files in place. To install a persistent
+`yamark` command:
 
 ```sh
 uv tool install yamark
 ```
 
-Build and install the binary from a checkout:
+The examples below use an installed `yamark` command. To keep running
+from PyPI without installing it, replace `yamark` with `uvx yamark`.
+
+To build from a checkout, install Rust 1.88 or newer and run:
 
 ```sh
-cargo build --bin yamark
 cargo install --path .
 ```
 
@@ -45,8 +50,9 @@ boundaries. Override this behavior with `--wrap`, for example:
 yamark format --wrap sentence:88 docs/
 ```
 
-Directory traversal respects `.gitignore`, `.ignore`, and global Git
-ignore files by default.
+Directory traversal skips hidden paths and respects `.gitignore`,
+`.ignore`, and global Git ignore files by default. Pass a hidden path
+explicitly to format it.
 
 ## CI and stdin
 
@@ -64,6 +70,9 @@ selected file would change.
 Use `--diagnostics` for preservation notes, or
 `--skip-embedded-formatters` when another formatter owns source-code
 chunks in the same save or CI chain.
+
+Pass `--verify` to reparse changed YAML and reject invalid or
+value-changing output before writing.
 
 ## Integrations
 

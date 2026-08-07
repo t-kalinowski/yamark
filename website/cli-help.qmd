@@ -53,6 +53,10 @@ yamark_help <- function(...) {
 }
 ```
 
+These captures come from the Yamark binary built from this repository. Start
+with [Usage](usage.qmd) for common commands; use [Reference](reference.qmd) for
+configuration, directives, and supported syntax.
+
 ## `yamark`
 
 ```{r}

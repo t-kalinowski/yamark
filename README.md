@@ -1,39 +1,34 @@
 # Yamark
 
-Yamark formats YAML, Markdown, Markdown files with YAML front matter,
-and explicit embedded Markdown targets in Python and R source files. It
-rewrites supported regions and preserves unsupported input. Pass
-`--verify` to reparse changed YAML and reject invalid or value-changing
-output.
+Yamark is a command-line formatter for YAML, Markdown, and files that
+combine them. It formats YAML front matter, supported fenced code
+blocks, and explicitly marked Markdown in YAML, Python, and R files.
+
+See the [documentation](https://t-kalinowski.github.io/yamark/) for
+examples, configuration, editor integrations, and the full syntax
+reference.
 
 ## Install
 
-Run Yamark from PyPI without installing it:
+With [uv](https://docs.astral.sh/uv/) installed, run Yamark directly
+from [PyPI](https://pypi.org/project/yamark/) without a separate
+install:
 
 ```sh
 uvx yamark format config.yaml docs/
 ```
 
-Install the command from PyPI:
+This formats the selected files in place. To install a persistent
+`yamark` command:
 
 ```sh
 uv tool install yamark
 ```
 
-Build and install the binary from a checkout:
-
-```sh
-cargo build --bin yamark
-cargo install --path .
-```
-
-Build a Python wheel from a checkout for local testing:
-
-```sh
-uvx maturin build --release
-```
-
 ## Usage
+
+The examples below use an installed `yamark` command. To keep running
+from PyPI without installing it, replace `yamark` with `uvx yamark`.
 
 Format one or more files or directories in place:
 
@@ -59,46 +54,61 @@ Show a unified diff without writing changes:
 yamark format --diff docs/
 ```
 
+Reparse changed YAML before writing and reject invalid or value-changing
+output:
+
+```sh
+yamark format --verify config.yaml
+```
+
 Format stdin for editor and CI integrations:
 
 ```sh
 yamark format --stdin-file-path config.yaml < config.yaml
 ```
 
-Directory traversal respects `.gitignore`, `.ignore`, and global Git
-ignore files by default.
+Directory traversal skips hidden paths and respects `.gitignore`,
+`.ignore`, and global Git ignore files by default. Pass a hidden path
+explicitly to format it.
+
+## Editor integrations
+
+The VS Code and Positron formatter extension lives in `editors/vscode/`.
+See the [editor guide][editor-docs] for installation and configuration.
 
 ## Development
 
-Run the Rust test suite with:
+Build or install the binary from a checkout with Rust 1.88 or newer:
+
+```sh
+cargo build --bin yamark
+cargo install --path .
+```
+
+Build a Python wheel for local testing:
+
+```sh
+uvx maturin build --release
+```
+
+Run the Rust tests, formatting check, and lints:
 
 ```sh
 cargo test
-```
-
-Run formatting and lint checks with:
-
-```sh
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-Run the external CLI test suite with:
+Run the external CLI and VS Code extension tests separately:
 
 ```sh
 uv run external-tests/run.py
-```
-
-Run the VS Code extension tests with:
-
-```sh
 cd editors/vscode
 npm test
 ```
 
-The YAML test-suite roundtrip integration test runs automatically when
-`tests/yaml-test-suite/data` exists. Populate that fixture directory
-with:
+When `tests/yaml-test-suite/data` exists, `cargo test` also runs the
+YAML Test Suite round-trip test. Populate that directory with:
 
 ```sh
 tools/bootstrap-yaml-test-suite-data.py --source ~/github/posit-dev/r-yaml12/tests/testthat/yaml-test-suite
@@ -114,8 +124,8 @@ Update the package versions in `Cargo.toml`, `pyproject.toml`, and
 push a matching `vX.Y.Z` tag:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The release workflow validates the tag, builds binary archives and
@@ -123,8 +133,4 @@ Python distributions, smoke-tests each wheel, creates the GitHub release
 with generated release notes, and publishes the Python distributions to
 PyPI.
 
-## Editor Integrations
-
-The VS Code and Positron formatter extension lives in `editors/vscode/`;
-see `editors/vscode/README.md` for install and local development
-instructions.
+[editor-docs]: https://t-kalinowski.github.io/yamark/editors.html

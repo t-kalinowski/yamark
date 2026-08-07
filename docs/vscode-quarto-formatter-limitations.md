@@ -1,8 +1,10 @@
-# VS Code Quarto Formatter Limitations
+# VS Code and Quarto formatter limitations
 
 This note summarizes what we learned while testing whether the Yamark VS Code extension can invoke or chain the formatter implemented by the Quarto VS Code extension.
 
-## Short Version
+This is a dated design note. The experiments used Quarto extension 1.132.0. Its public command surface was rechecked in 1.135.0, which still exposes `quarto.formatCell` but not `quarto.formatDocument`; the save-time experiments were not rerun.
+
+## Summary
 
 Yamark cannot reliably invoke the Quarto VS Code document formatter while Yamark is the configured default formatter for `.qmd` files.
 
@@ -10,9 +12,7 @@ The Quarto extension does not expose a public `quarto.formatDocument` command or
 
 For users who switch `.qmd` format-on-save from Quarto to Yamark, the main loss is Quarto's cell-aware formatter bridge for executable code cells. They still keep other Quarto extension features such as preview, render, cell execution, syntax highlighting, diagnostics, completions, hover help, visual/source mode, and render-on-save.
 
-## Quarto Formatter Behavior
-
-The installed Quarto extension version inspected was `quarto.quarto-1.132.0`.
+## Quarto formatter behavior
 
 Relevant command surface:
 
@@ -28,9 +28,9 @@ The formatter implementation is active-editor dependent:
 - `quarto.formatCell` formats the current cell and applies edits directly to the editor.
 - Document formatting delegates code-cell formatting to other VS Code formatter providers by creating virtual documents for cell contents and calling `vscode.executeFormatDocumentProvider` on those virtual documents.
 
-That design is valid for Quarto as a first-class VS Code formatter, but it is a poor API for another extension to call as a chain step.
+That design supports Quarto as a first-class VS Code formatter, but it does not provide a stable chain step for another extension.
 
-## What Quarto Formatting Provides
+## What Quarto formatting provides
 
 When Quarto's formatter is selected and usable, it can provide behavior that Yamark does not get by invoking the Quarto CLI:
 
@@ -42,7 +42,7 @@ When Quarto's formatter is selected and usable, it can provide behavior that Yam
 
 In the experiment, Quarto's formatter path formatted a Python executable cell through a virtual `.py` document. Yamark correctly skipped the Quarto `.vdoc.*.py` temp document to avoid recursion.
 
-## What Users Lose If Yamark Replaces Quarto Format-On-Save
+## What users lose if Yamark replaces Quarto format-on-save
 
 If users set `.qmd` format-on-save to Yamark instead of Quarto, they lose Quarto's formatter bridge for `.qmd` files:
 
@@ -80,7 +80,7 @@ The test document was `actual-quarto.qmd`. It included:
 - Python and R executable cells.
 - Fenced markdown, JSON, JSONC, JSON5, GraphQL, CSS, SCSS, LESS, PostCSS, HTML, JS, JSX, TS, and TSX blocks.
 
-### Save With Yamark As Default Formatter
+### Save with Yamark as default formatter
 
 Configuration:
 
@@ -120,7 +120,7 @@ Interpretation:
 
 VS Code did not fall through from the configured default formatter, `yamark.yamark`, to `quarto.quarto` after Yamark temporarily unregistered itself. This makes the nested-provider approach invalid for normal save-time chaining.
 
-### Save With Quarto As Default Formatter
+### Save with Quarto as default formatter
 
 Configuration was changed so `[quarto].editor.defaultFormatter` was `quarto.quarto`.
 
@@ -133,7 +133,7 @@ Observed result:
 
 This confirmed the basic VS Code constraint: one formatter is selected for format-on-save. Setting Quarto as default does not provide a way to run Yamark afterward.
 
-### Direct Provider Invocation
+### Direct provider invocation
 
 A separate runner extension called:
 
@@ -170,7 +170,7 @@ skipped: Quarto vdoc temp file
 
 The direct-provider result proved that Quarto's formatter can be reached in a controlled command context, but it did not prove a shippable save-time chain. The save-time case is governed by default formatter selection and did not work with Yamark as the default formatter.
 
-### Format Cell Command
+### Format Cell command
 
 The runner also called:
 
@@ -186,16 +186,16 @@ Observed result:
 
 This command is useful for interactive Quarto editing, but it is not a suitable document-formatting chain API.
 
-## Shipping Implications
+## Shipping implications
 
-The current Quarto extension API does not provide a clean way for Yamark to invoke Quarto's document formatter as a chain step.
+The Quarto extension versions inspected here do not provide a public way for Yamark to invoke Quarto's document formatter as a chain step.
 
-The following approaches are not good extension-store behavior:
+The Yamark extension should not:
 
-- Temporarily changing the user's `editor.defaultFormatter`.
-- Driving `quarto.formatCell` cell-by-cell by moving editor selections.
-- Depending on active editor state from inside a document formatter.
-- Relying on provider registration timing to force VS Code to select a different formatter.
+- Temporarily change the user's `editor.defaultFormatter`.
+- Drive `quarto.formatCell` cell-by-cell by moving editor selections.
+- Depend on active editor state from inside a document formatter.
+- Rely on provider registration timing to force VS Code to select a different formatter.
 
 Reasonable paths are:
 

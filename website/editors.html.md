@@ -3,10 +3,23 @@ title: Editors
 description: Use Yamark from VS Code, Positron, and compatible forks.
 ---
 
-The repository ships a Yamark VS Code extension under `editors/vscode`. It runs
-`yamark format --stdin-file-path <file>` through the public VS Code formatter
-API, so the same extension works in Positron and compatible forks such as
-Codium and Cursor.
+The repository includes a Yamark extension for VS Code, Positron, and compatible
+forks. It runs `yamark format --stdin-file-path <file>` through the public VS
+Code formatter API.
+
+## Install
+
+The extension is not yet published to an extension marketplace. Install the
+Yamark command from PyPI, then build and install the extension from a checkout:
+
+```sh
+uv tool install yamark
+cd editors/vscode
+YAMARK_BUNDLE=0 npm run install:local
+```
+
+For Positron, use `YAMARK_BUNDLE=0 npm run install:positron`. Reload the editor
+after installation.
 
 ## Commands
 
@@ -25,24 +38,17 @@ broader source file.
 
 ## Git filter diffs
 
-VS Code's built-in unstaged preview reads the clean index blob and the smudged
-working-tree file as separate documents. For a path managed by
-`filter=yamark-md`, this can show wrapping changes that are not part of the Git
-diff.
+For a path managed by `filter=yamark-md`, VS Code's built-in unstaged preview
+can show wrapping changes that are not part of the Git diff. Right-click the
+file under **Changes** and run `Yamark: Open Filtered Working Tree Diff`.
 
-Right-click a modified tracked file under **Changes** and run
-`Yamark: Open Filtered Working Tree Diff`. The command reads the index through
-Git's checkout filters and compares that smudged baseline with the working-tree
-file. Use VS Code's normal diff for files under **Staged Changes**; both sides
-of that comparison are clean Git blobs.
-
-The Yamark command does not replace VS Code's default row click or gutter
-markers. VS Code does not expose those parts of its Git integration to another
-extension.
+See [Git Filter: VS Code diff preview](git-filter.qmd#vs-code-diff-preview) for
+the clean/smudge details and the limits of this command.
 
 ## Executable
 
-Install `yamark` on `PATH`, or set an explicit executable:
+The extension runs `yamark` from `PATH` by default. To use another binary, set
+an explicit executable:
 
 ```json
 {
