@@ -1,8 +1,12 @@
 # Yamark
 
-Yamark is a command-line formatter for YAML, Markdown, and files that
-combine them. It formats YAML front matter, supported fenced code
-blocks, and explicitly marked Markdown in YAML, Python, and R files.
+Yamark is an extremely fast formatter for YAML and Markdown, written in
+Rust. It follows both languages through mixed documents: YAML front
+matter, supported fenced code blocks, Markdown-valued YAML scalars, and
+explicitly marked strings or comments in Python and R. Embedded Python,
+R, JSON, and web code in fenced blocks, YAML scalars, or marked source
+strings can be sent to Ruff, Air, Prettier, or another configured
+formatter.
 
 See the [documentation](https://t-kalinowski.github.io/yamark/) for
 examples, configuration, editor integrations, and the full syntax
@@ -52,13 +56,6 @@ Show a unified diff without writing changes:
 
 ```sh
 yamark format --diff docs/
-```
-
-Reparse changed YAML before writing and reject invalid or value-changing
-output:
-
-```sh
-yamark format --verify config.yaml
 ```
 
 Format stdin for editor and CI integrations:

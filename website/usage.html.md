@@ -71,9 +71,6 @@ Use `--diagnostics` for preservation notes, or
 `--skip-embedded-formatters` when another formatter owns source-code
 chunks in the same save or CI chain.
 
-Pass `--verify` to reparse changed YAML and reject invalid or
-value-changing output before writing.
-
 ## Integrations
 
 - [Editors](editors.qmd): VS Code, Positron, and compatible forks -

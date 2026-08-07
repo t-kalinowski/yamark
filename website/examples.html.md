@@ -16,76 +16,78 @@ shows a focused input and the output Yamark writes.
 
 ### Markdown with YAML front matter
 
-A Markdown file can have YAML front matter above its Markdown body. Yamark
-formats both in one pass.
+Agent skills and prompt files can put structured metadata above free-form
+Markdown. Yamark formats both in one pass.
 
 :::: {.showcase-before-after}
 **Before**
 
 ```markdown
 ---
-title: Contributor guide
-description: How to build, test, and run the project before opening a pull request.
-tags: [docs,development,testing]
+name: review-pr
+description: Review a pull request and recommend changes inline with the project's style guide, focusing on correctness, readability, and tests.
+tags: [review,pull-request,code]
 ---
 
-#   Contributor guide ##
+#   Review ##
 
-Build the project locally and run its tests before opening a pull request. Include a short description of the change and any user-facing effects.
+Read the diff and flag anything that violates the style guide, has obvious correctness issues, or looks untested. Prefer specific suggestions over vague concerns.
 ```
 
 **After**
 
 ```markdown
 ---
-title: Contributor guide
-description: How to build, test, and run the project before opening a pull request.
-tags: [docs, development, testing]
+name: review-pr
+description: >-
+  Review a pull request and recommend changes inline with the project's
+  style guide, focusing on correctness, readability, and tests.
+tags: [review, pull-request, code]
 ---
 
-# Contributor guide
+# Review
 
-Build the project locally and run its tests before opening a pull
-request. Include a short description of the change and any user-facing
-effects.
+Read the diff and flag anything that violates the style guide, has
+obvious correctness issues, or looks untested. Prefer specific
+suggestions over vague concerns.
 ```
 ::::
 
 ### Markdown-valued YAML scalars
 
-A YAML file can store Markdown in selected scalar values. Tag a value
-`!markdown` or `!md` (or add `# fmt: markdown`) and Yamark wraps it as
-Markdown, choosing folded or literal block style from the content.
+A `prompts.yaml` or `agents.yaml` file can store Markdown in selected scalar
+values. Tag a value `!markdown` or `!md` (or add `# fmt: markdown`) and Yamark
+wraps it as Markdown, choosing folded or literal block style from the content.
 
 :::: {.showcase-before-after}
 **Before**
 
 ```yaml
-pages:
-  install:
-    body: !markdown "Install the command, run it on a file, and inspect the diff before committing the result."
-  release:
-    body: !markdown |
-      Before publishing:
+agents:
+  reviewer:
+    instructions: !markdown "Focus on correctness and tests. Flag any change that lacks a regression test. Prefer concrete suggestions: name the function, name the case."
+  summarizer:
+    instructions: !markdown |
+      You write release notes.
 
-      - Run the test suite.
-      - Review the generated documentation.
+      - One bullet per user-visible change.
+      - No internal refactors.
 ```
 
 **After**
 
 ```yaml
-pages:
-  install:
-    body: !markdown |
-      Install the command, run it on a file, and inspect the diff before
-      committing the result.
-  release:
-    body: !markdown |
-      Before publishing:
+agents:
+  reviewer:
+    instructions: !markdown |
+      Focus on correctness and tests. Flag any change that lacks a regression
+      test. Prefer concrete suggestions: name the function, name the case.
+  summarizer:
+    instructions: !markdown |
+      You write release notes.
 
-      - Run the test suite.
-      - Review the generated documentation.
+      - One bullet per user-visible change.
+      - No internal refactors.
 ```
 ::::
 
@@ -127,21 +129,22 @@ summary: >-
 
 ### Embedded Markdown in Python
 
-Yamark can format marked Markdown without changing the surrounding Python. Add
-`# fmt: markdown` before the string:
+When a prompt lives next to the code that uses it, Yamark can format the prose
+without changing the surrounding Python. Add `# fmt: markdown` before the
+string:
 
 :::: {.showcase-before-after}
 **Before**
 
 ```python
 # fmt: markdown
-HELP_TEXT = """
-# Configuration
+REVIEW_PROMPT = """
+# Review
 
-Set the input directory and choose whether Yamark should check files or write changes.
+Read the diff and flag anything that violates the style guide, has obvious correctness issues, or looks untested.
 
--   Use `check = true` in CI.
--   Leave it false for local formatting.
+-   Prefer specific suggestions over vague concerns.
+-   Name the function and the case.
 """
 ```
 
@@ -149,14 +152,14 @@ Set the input directory and choose whether Yamark should check files or write ch
 
 ```python
 # fmt: markdown
-HELP_TEXT = """
-# Configuration
+REVIEW_PROMPT = """
+# Review
 
-Set the input directory and choose whether Yamark should check files or
-write changes.
+Read the diff and flag anything that violates the style guide, has
+obvious correctness issues, or looks untested.
 
-- Use `check = true` in CI.
-- Leave it false for local formatting.
+- Prefer specific suggestions over vague concerns.
+- Name the function and the case.
 """
 ```
 ::::
@@ -470,7 +473,7 @@ preflight: |
 ::::
 
 Yamark sends the scalar to the configured formatter and re-indents the result in
-the YAML block. Pass `--verify` to reparse the resulting YAML before writing.
+the YAML block.
 
 ### Markdown links, footnotes, and tables
 

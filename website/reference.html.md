@@ -141,7 +141,6 @@ yamark format --prose-width 80 docs/
 yamark format --indent-width 4 docs/
 yamark format --compact docs/
 yamark format --diagnostics docs/
-yamark format --verify docs/
 yamark format --skip-embedded-formatters docs/
 yamark format --config path/to/yamark.toml docs/
 ```
@@ -160,7 +159,6 @@ yamark format --config path/to/yamark.toml docs/
 | `--indent-width <n>` | Set YAML indentation width for emitted block collections. |
 | `--compact` | Enable eligible YAML block-to-flow collection compaction. |
 | `--diagnostics` | Print notes for supported preserved constructs and optional embedded formatter skips. |
-| `--verify` | Reparse changed YAML and reject invalid or value-changing output. Verification adds a second parse and is disabled by default. |
 | `--skip-embedded-formatters` | Disable external embedded formatters while keeping Yamark's own Markdown, YAML, front matter, and recursive Markdown fence formatting active. |
 | `--config <path>` | Use one explicit `yamark.toml` for all selected files. |
 
@@ -634,22 +632,18 @@ After:
 ### Rejection rules
 
 A repair is attempted only when the hint targets one independent collection and
-the collapsed output fits the configured `--line-width`. Use `--verify` to
-reparse the result and reject invalid or value-changing output before writing.
-If the hint is not applicable, Yamark reports the original parse error and
-leaves the file unchanged.
+the collapsed output fits the configured `--line-width`. If the hint is not
+applicable, Yamark reports the original parse error and leaves the file
+unchanged.
 
 ## Safety
 
 Yamark is a formatter, not a validator. It formats supported regions and keeps
 unsupported regions unchanged when a supported rewrite is not available.
 
-By default, Yamark parses the input and emits formatted output without a second
-parse. Pass `--verify` to reparse changed YAML regions and reject invalid or
-value-changing output before writing. For Markdown and Markdown-valued YAML
-scalars, Yamark only emits transformations its parser supports. For configured
-embedded formatters, only explicitly marked targets can change.
+Yamark parses YAML before formatting. For Markdown and Markdown-valued YAML
+scalars, it only emits transformations its parser supports. Configured embedded
+formatters can change only explicitly marked targets.
 
-If parsing, formatting, requested verification, UTF-8 decoding, external
-formatter execution, or I/O fails, the affected file is left unchanged and a
-diagnostic is reported.
+If parsing, formatting, UTF-8 decoding, external formatter execution, or I/O
+fails, the affected file is left unchanged and a diagnostic is reported.

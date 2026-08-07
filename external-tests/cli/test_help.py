@@ -7,11 +7,11 @@ import pytest
 from _support import decode_output, run_cli_case
 
 
-def test_format_help_shows_verify_and_omits_hidden_compat_flag() -> None:
+def test_format_help_omits_internal_flags() -> None:
     result = run_cli_case("yamark format --help", stderr="")
     stdout = decode_output(result.stdout)
 
-    assert "--verify" in stdout
+    assert "--verify" not in stdout
     assert "--double-check" not in stdout
 
 

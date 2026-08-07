@@ -18,20 +18,22 @@ if (!nzchar(yamark_bin)) {
   }
 
   yamark_exe <- if (.Platform$OS.type == "windows") "yamark.exe" else "yamark"
-  yamark_bin <- file.path("..", "target", "debug", yamark_exe)
+  yamark_bin <- normalizePath(
+    file.path("..", "target", "debug", yamark_exe),
+    winslash = "/",
+    mustWork = TRUE
+  )
 }
 
 yamark_help <- function(...) {
   args <- c(..., "--help")
-  old_options <- options(cli.num_colors = 256L)
-  on.exit(options(old_options), add = TRUE)
 
   output <- system2(
     yamark_bin,
     args,
     stdout = TRUE,
     stderr = TRUE,
-    env = c("CLICOLOR_FORCE=1", "CLICOLOR=1")
+    env = c("NO_COLOR=", "CLICOLOR_FORCE=1")
   )
   status <- attr(output, "status")
 

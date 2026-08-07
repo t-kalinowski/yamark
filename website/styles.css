@@ -14,6 +14,7 @@
   --yamark-ansi-green: #007f3b;
   --yamark-ansi-blue: #2f49a3;
   --yamark-ansi-yellow: #7c5f00;
+  --yamark-ansi-gray: #52616b;
 }
 
 body.quarto-dark {
@@ -32,6 +33,7 @@ body.quarto-dark {
   --yamark-ansi-green: #5fe084;
   --yamark-ansi-blue: #9eb6ff;
   --yamark-ansi-yellow: #ecd46b;
+  --yamark-ansi-gray: #aeb8be;
 }
 
 body {
@@ -373,6 +375,10 @@ pre.yamark-cli-help span[style*="#00BBBB"] {
 
 pre.yamark-cli-help span[style*="#BBBB00"] {
   color: var(--yamark-ansi-yellow) !important;
+}
+
+pre.yamark-cli-help span[style*="#555555"] {
+  color: var(--yamark-ansi-gray) !important;
 }
 
 code {

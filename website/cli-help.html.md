@@ -16,19 +16,19 @@ configuration, directives, and supported syntax.
 ## `yamark`
 
 `````{=html}
-<pre class="yamark-cli-help"><code>A formatter for YAML and Markdown.
+<pre class="yamark-cli-help"><code>An extremely fast formatter for YAML and Markdown, written in Rust.
 
 Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 
-Usage: yamark &lt;COMMAND&gt;
+<span style='color: #5555FF; font-weight: bold;'>Usage:</span> <span style='color: #00BBBB; font-weight: bold;'>yamark</span> <span style='color: #555555;'>&lt;COMMAND&gt;</span>
 
-Commands:
-  format
-  git-filter  Git clean/smudge filter helpers for Markdown files
-  help        Print this message or the help of the given subcommand(s)
+<span style='color: #5555FF; font-weight: bold;'>Commands:</span>
+  <span style='color: #00BBBB; font-weight: bold;'>format</span>
+  <span style='color: #00BBBB; font-weight: bold;'>git-filter</span>  Git clean/smudge filter helpers for Markdown files
+  <span style='color: #00BBBB; font-weight: bold;'>help</span>        Print this message or the help of the given subcommand(s)
 
-Options:
-  -h, --help
+<span style='color: #5555FF; font-weight: bold;'>Options:</span>
+  <span style='color: #00BBBB; font-weight: bold;'>-h</span>, <span style='color: #00BBBB; font-weight: bold;'>--help</span>
           Print help (see a summary with '-h')
 </code></pre>
 
@@ -37,27 +37,26 @@ Options:
 ## `yamark format`
 
 `````{=html}
-<pre class="yamark-cli-help"><code>Usage: yamark format [OPTIONS] [PATHS]...
+<pre class="yamark-cli-help"><code><span style='color: #5555FF; font-weight: bold;'>Usage:</span> <span style='color: #00BBBB; font-weight: bold;'>yamark format</span> <span style='color: #555555;'>[OPTIONS]</span> <span style='color: #555555;'>[PATHS]...</span>
 
-Arguments:
-  [PATHS]...
+<span style='color: #5555FF; font-weight: bold;'>Arguments:</span>
+  <span style='color: #555555;'>[PATHS]...</span>
 
-Options:
-      --check
-      --diff
-      --diagnostics
-      --verify                       Reparse changed YAML and reject invalid or value-changing output
-      --stdin-file-path &lt;PATH&gt;
-      --config &lt;PATH&gt;
-      --wrap &lt;WRAP&gt;                  [default: 72]
-      --canonical
-      --preserve-footnotes
-      --line-width &lt;LINE_WIDTH&gt;      [default: 80]
-      --prose-width &lt;PROSE_WIDTH&gt;    [default: 72]
-      --indent-width &lt;INDENT_WIDTH&gt;  [default: 2]
-      --compact
-      --skip-embedded-formatters
-  -h, --help                         Print help</code></pre>
+<span style='color: #5555FF; font-weight: bold;'>Options:</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--check</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--diff</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--diagnostics</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--stdin-file-path</span><span style='color: #555555;'> &lt;PATH&gt;</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--config</span><span style='color: #555555;'> &lt;PATH&gt;</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--wrap</span><span style='color: #555555;'> &lt;WRAP&gt;</span>                  [default: 72]
+      <span style='color: #00BBBB; font-weight: bold;'>--canonical</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--preserve-footnotes</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--line-width</span><span style='color: #555555;'> &lt;LINE_WIDTH&gt;</span>      [default: 80]
+      <span style='color: #00BBBB; font-weight: bold;'>--prose-width</span><span style='color: #555555;'> &lt;PROSE_WIDTH&gt;</span>    [default: 72]
+      <span style='color: #00BBBB; font-weight: bold;'>--indent-width</span><span style='color: #555555;'> &lt;INDENT_WIDTH&gt;</span>  [default: 2]
+      <span style='color: #00BBBB; font-weight: bold;'>--compact</span>
+      <span style='color: #00BBBB; font-weight: bold;'>--skip-embedded-formatters</span>
+  <span style='color: #00BBBB; font-weight: bold;'>-h</span>, <span style='color: #00BBBB; font-weight: bold;'>--help</span>                         Print help</code></pre>
 
 `````
 
@@ -85,20 +84,20 @@ Git only runs the filter for paths matched by attributes. Put these patterns in
   *.Rmd filter=yamark-md
   *.rmd filter=yamark-md
 
-Usage: yamark git-filter &lt;COMMAND&gt;
+<span style='color: #5555FF; font-weight: bold;'>Usage:</span> <span style='color: #00BBBB; font-weight: bold;'>yamark git-filter</span> <span style='color: #555555;'>&lt;COMMAND&gt;</span>
 
-Commands:
-  clean
-  smudge
-  adopt     Adopt the yamark Git filter for a shared repository
-  join      Join a repository that has already adopted the yamark Git filter
-  check     Check committed yamark Git filter blobs round-trip safely
-  setup     Configure the yamark Git filter in a repository
-  teardown  Remove the local yamark Git filter setup from a repository
-  help      Print this message or the help of the given subcommand(s)
+<span style='color: #5555FF; font-weight: bold;'>Commands:</span>
+  <span style='color: #00BBBB; font-weight: bold;'>clean</span>
+  <span style='color: #00BBBB; font-weight: bold;'>smudge</span>
+  <span style='color: #00BBBB; font-weight: bold;'>adopt</span>     Adopt the yamark Git filter for a shared repository
+  <span style='color: #00BBBB; font-weight: bold;'>join</span>      Join a repository that has already adopted the yamark Git filter
+  <span style='color: #00BBBB; font-weight: bold;'>check</span>     Check committed yamark Git filter blobs round-trip safely
+  <span style='color: #00BBBB; font-weight: bold;'>setup</span>     Configure the yamark Git filter in a repository
+  <span style='color: #00BBBB; font-weight: bold;'>teardown</span>  Remove the local yamark Git filter setup from a repository
+  <span style='color: #00BBBB; font-weight: bold;'>help</span>      Print this message or the help of the given subcommand(s)
 
-Options:
-  -h, --help
+<span style='color: #5555FF; font-weight: bold;'>Options:</span>
+  <span style='color: #00BBBB; font-weight: bold;'>-h</span>, <span style='color: #00BBBB; font-weight: bold;'>--help</span>
           Print help (see a summary with '-h')</code></pre>
 
 `````

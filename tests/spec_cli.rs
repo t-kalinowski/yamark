@@ -138,14 +138,41 @@ fn format_help_shows_default_wrap() {
 }
 
 #[test]
-fn format_help_shows_verify() {
+fn format_help_hides_verify() {
     let (status, stdout, stderr) = run_stdin(&["format", "--help"], "");
     assert_eq!(status, 0, "{stderr}");
     assert!(
-        stdout.lines().any(|line| line.contains("--verify")),
+        stdout.lines().all(|line| !line.contains("--verify")),
         "{stdout}"
     );
     assert_eq!(stderr, "");
+}
+
+#[test]
+fn cli_help_honors_clap_color_env() {
+    let output = yamark()
+        .env_remove("NO_COLOR")
+        .env("CLICOLOR_FORCE", "1")
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("\u{1b}[94mUsage:"), "{stdout}");
+    assert!(stdout.contains("\u{1b}[36myamark"), "{stdout}");
+    assert!(stdout.contains("\u{1b}[90m<COMMAND>"), "{stdout}");
+
+    let output = yamark()
+        .env("NO_COLOR", "1")
+        .env_remove("CLICOLOR_FORCE")
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(!stdout.contains("\u{1b}["), "{stdout}");
 }
 
 #[test]

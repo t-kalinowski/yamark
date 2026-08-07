@@ -5,6 +5,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 
+use clap::builder::styling::{AnsiColor, Styles};
 use clap::{
     CommandFactory, FromArgMatches, Parser, Subcommand, error::ErrorKind, parser::ValueSource,
 };
@@ -15,12 +16,19 @@ use crate::workspace::{
     format_source_for_path_with_overrides,
 };
 
+const HELP_STYLES: Styles = Styles::styled()
+    .header(AnsiColor::BrightBlue.on_default().bold())
+    .usage(AnsiColor::BrightBlue.on_default().bold())
+    .literal(AnsiColor::Cyan.on_default().bold())
+    .placeholder(AnsiColor::BrightBlack.on_default());
+
 #[derive(Debug, Parser)]
 #[command(name = "yamark")]
-#[command(about = "A formatter for YAML and Markdown")]
+#[command(about = "An extremely fast formatter for YAML and Markdown, written in Rust")]
 #[command(
-    long_about = "A formatter for YAML and Markdown.\n\nRun `yamark <COMMAND> --help` for command-level help."
+    long_about = "An extremely fast formatter for YAML and Markdown, written in Rust.\n\nRun `yamark <COMMAND> --help` for command-level help."
 )]
+#[command(styles = HELP_STYLES)]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -37,6 +45,7 @@ enum Command {
         diagnostics: bool,
         #[arg(
             long,
+            hide = true,
             help = "Reparse changed YAML and reject invalid or value-changing output"
         )]
         verify: bool,

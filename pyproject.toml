@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "yamark"
 version = "0.2.0"
-description = "A formatter for YAML and Markdown."
+description = "An extremely fast formatter for YAML and Markdown, written in Rust."
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"

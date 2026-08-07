@@ -1,6 +1,6 @@
 ---
 title: Yamark
-description: A formatter for YAML and Markdown.
+description: An extremely fast formatter for YAML and Markdown, written in Rust.
 toc: false
 ---
 
@@ -11,11 +11,12 @@ toc: false
 [Beta]{.status-chip}
 :::
 
-Yamark is a command-line formatter for YAML and Markdown. It formats YAML front
-matter and supported fenced blocks alongside Markdown prose. It can also format
-explicitly marked Markdown in YAML, Python, and R files. Optional formatters
-such as Ruff, Air, and Prettier handle their matching fenced code blocks when
-installed.
+Yamark is an extremely fast formatter for YAML and Markdown, written in Rust.
+It follows both languages through mixed documents: YAML front matter,
+supported fenced blocks, Markdown-valued YAML scalars, and explicitly marked
+strings or comments in Python and R. Embedded Python, R, JSON, and web code in
+fenced blocks, YAML scalars, or marked source strings can be sent to Ruff, Air,
+Prettier, or another configured formatter when available.
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}
@@ -58,9 +59,9 @@ Format marked Markdown in YAML, Python, or R.
 :::
 
 ::: {.workflow-item}
-**Fences**
+**Dispatch**
 
-Format supported fenced code blocks.
+Send supported embedded code to its formatter.
 :::
 :::
 
@@ -122,24 +123,35 @@ emit_before_after <- function(label, stdin_file_path = "example.md") {
 
 ## A quick example
 
-A Markdown file with YAML front matter. The first pane is the input; the second
-is what `yamark format` writes back.
+YAML and Markdown make a practical collaboration surface for people, agents,
+and software. YAML carries fields a program can inspect; Markdown carries
+prose, instructions, examples, and code that people and language models can
+read. Yamark formats those layers together, much as a code formatter formats
+source.
+
+The file below deliberately combines a long YAML scalar, a long Markdown
+paragraph, and a nested list. The first pane is the input; the second is what
+`yamark format` writes back.
 
 ```{cat}
 #| label: example-text
 #| include: false
 ---
-title: Project notes
-description: Notes for the next Yamark release.
-tags: [yaml,markdown,cli]
+title: Why YAML + Markdown?
+description: Structured fields for software alongside prose, instructions, examples, and code that people and language models can read.
+tags: [agents,authoring,formats]
 ---
 
-#   Project notes ##
+#   Why YAML + Markdown? ##
 
-Yamark formats YAML front matter and the Markdown body in one pass. It wraps long paragraphs, normalizes list indentation, and formats supported fenced code blocks.
+YAML front matter and a Markdown body work well for files shared between people, language models, and software. The front matter carries fields a program can inspect; the body carries instructions that people can edit and review in a diff.
 
--  Run `yamark format` to write changes.
-- Run `yamark format --check` in CI.
+This shape is useful for:
+
+- Agent skills and prompt files where metadata sits next to free-form instructions.
+  - The body can carry examples and nested Markdown structures.
+- Repository documents that need to render for readers and remain easy for tools to inspect.
+- Text that moves between code, documentation, and agent context without a separate source format.
 ```
 
 ```{r}
@@ -150,7 +162,7 @@ emit_before_after("example-text")
 ```
 
 Toggle soft wrap on the Before pane to inspect the input's physical lines.
-Yamark wraps YAML and Markdown separately, then writes one combined document.
+Yamark wraps and indents each region according to its own grammar.
 
 ```{=html}
 <script>
@@ -175,15 +187,15 @@ Format YAML front matter and the Markdown body with one command.
 ::: {.feature}
 ### Rewrap after writing
 
-Edit Markdown prose, YAML descriptions, and front matter without maintaining
-line breaks by hand.
+Edit Markdown prose, YAML descriptions, prompt bodies, and front matter without
+maintaining line breaks by hand.
 :::
 
 ::: {.feature}
-### Optional verification
+### Nested formatters
 
-Use `--verify` to reparse changed YAML regions and reject invalid or
-value-changing output before writing.
+Format YAML and Markdown recursively, and pass supported embedded source to
+Ruff, Air, Prettier, or another configured formatter.
 :::
 :::
 

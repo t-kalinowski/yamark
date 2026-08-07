@@ -76,7 +76,7 @@ fn public_repo_metadata_is_ready() {
     assert!(license.contains("Copyright (c) 2026 Tomasz Kalinowski"));
 
     for field in [
-        r#"description = "A formatter for YAML and Markdown.""#,
+        r#"description = "An extremely fast formatter for YAML and Markdown, written in Rust.""#,
         r#"repository = "https://github.com/t-kalinowski/yamark""#,
         r#"homepage = "https://t-kalinowski.github.io/yamark/""#,
         r#"readme = "README.md""#,
@@ -89,7 +89,9 @@ fn public_repo_metadata_is_ready() {
         !pyproject.contains("Add your description here"),
         "pyproject description should not be a template placeholder"
     );
-    assert!(pyproject.contains("description = \"A formatter for YAML and Markdown.\""));
+    assert!(pyproject.contains(
+        "description = \"An extremely fast formatter for YAML and Markdown, written in Rust.\""
+    ));
     assert!(pyproject.contains("[build-system]"));
     assert!(pyproject.contains(r#"build-backend = "maturin""#));
     assert!(pyproject.contains("[tool.maturin]"));
@@ -394,13 +396,16 @@ fn website_includes_homepage_and_examples_content() {
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
-    assert!(index.contains("Yamark is a command-line formatter for YAML and Markdown"));
+    assert!(index.contains("Yamark is an extremely fast formatter for YAML and Markdown"));
+    assert!(index.contains("practical collaboration surface"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));
     assert!(!index.contains("## The pitch"));
 
     assert!(examples.contains("### Markdown-valued YAML scalars"));
+    assert!(examples.contains("REVIEW_PROMPT"));
+    assert!(examples.contains("agents:"));
     assert!(examples.contains("### Collapse to flow by typing a bracket"));
     assert!(examples.contains("### Recursive Markdown code fences"));
     assert!(examples.contains("### Markdown links, footnotes, and tables"));
@@ -538,6 +543,7 @@ fn website_documents_cli_help_on_dedicated_page() {
     assert!(cli_help.contains("title: CLI Help"));
     assert!(cli_help.contains("yamark_bin <- Sys.getenv(\"YAMARK_BIN\", unset = \"\")"));
     assert!(cli_help.contains("yamark_help <- function(...)"));
+    assert!(cli_help.contains("NO_COLOR="));
     for invocation in [
         "yamark_help()",
         "yamark_help(\"format\")",
@@ -562,7 +568,7 @@ fn website_documents_cli_help_on_dedicated_page() {
 
     for term in [
         "class=\"yamark-cli-help\"",
-        "A formatter for YAML and Markdown",
+        "An extremely fast formatter for YAML and Markdown",
         "Usage:",
         "Commands:",
         "yamark git-filter setup",
@@ -577,6 +583,36 @@ fn website_documents_cli_help_on_dedicated_page() {
         !rendered_cli_help.contains("\u{1b}["),
         "rendered CLI help should be converted to HTML spans, not raw ANSI escapes"
     );
+    for style in [
+        "color: #5555FF",
+        "color: #00BBBB",
+        "color: #555555",
+        "font-weight: bold",
+    ] {
+        assert!(
+            rendered_cli_help.contains(style),
+            "rendered CLI help should contain {style}"
+        );
+    }
+}
+
+#[test]
+fn public_docs_do_not_advertise_verify() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for file in [
+        "README.md",
+        "website/cli-help.html.md",
+        "website/examples.qmd",
+        "website/index.qmd",
+        "website/reference.qmd",
+        "website/usage.qmd",
+    ] {
+        let contents = fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            !contents.contains("--verify"),
+            "{file} should not advertise the internal verification option"
+        );
+    }
 }
 
 #[test]
