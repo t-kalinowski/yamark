@@ -14,10 +14,10 @@ website:
   repo-subdir: website
   repo-actions: [edit, issue]
   open-graph:
-    image: assets/favicon.svg
+    image: assets/social-card.svg
   twitter-card:
-    image: assets/favicon.svg
-    card-style: summary
+    image: assets/social-card.svg
+    card-style: summary_large_image
   navbar:
     left:
       - text: Home

@@ -137,18 +137,6 @@ body.quarto-dark h1 {
   width: 2.25rem;
 }
 
-.status-chip {
-  background: color-mix(in srgb, var(--yamark-gold) 13%, var(--yamark-surface));
-  border: 1px solid color-mix(in srgb, var(--yamark-gold) 36%, var(--yamark-line));
-  border-radius: 999px;
-  color: var(--yamark-gold);
-  display: inline-block;
-  font-size: 0.78rem;
-  font-weight: 800;
-  line-height: 1;
-  padding: 0.32rem 0.65rem;
-}
-
 .hero-actions {
   display: flex;
   flex-wrap: wrap;

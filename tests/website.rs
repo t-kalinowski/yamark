@@ -268,6 +268,13 @@ fn github_pages_workflow_publishes_website() {
 fn website_social_images_exist() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
+    assert!(config.contains("image: assets/social-card.svg"));
+    assert!(!config.contains("image: assets/favicon.svg"));
+
+    let social_card = fs::read_to_string(root.join("assets/social-card.svg")).unwrap();
+    assert!(social_card.contains(r#"viewBox="0 0 1200 630""#));
+    assert!(social_card.contains("Markdown and YAML are source files too."));
+
     let mut expected = Vec::new();
     for line in config.lines() {
         let trimmed = line.trim();
@@ -370,6 +377,8 @@ fn website_homepage_has_visual_landing_sections() {
     assert!(index.contains("hero-shell"));
     assert!(index.contains("terminal-window"));
     assert!(index.contains("workflow-strip"));
+    assert!(!index.contains("[Beta]{.status-chip}"));
+    assert!(!styles.contains(".status-chip"));
     assert!(styles.contains("--yamark-ink"));
     assert!(styles.contains(".hero-shell"));
     assert!(styles.contains(".terminal-window"));
@@ -397,8 +406,15 @@ fn website_includes_homepage_and_examples_content() {
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
-    assert!(index.contains("It handles both languages itself"));
-    assert!(index.contains("practical collaboration surface"));
+    let index_prose = index.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(index_prose.contains(
+        "Markdown and YAML are source files too: they hold documentation, configuration, prompts, and agent instructions. Yamark gives them the consistent formatting we expect from code, wherever they appear."
+    ));
+    assert!(index.contains("**Recurse**"));
+    assert!(index.contains("### Nested content"));
+    assert!(!index.contains("**Dispatch**"));
+    assert!(!index.contains("### Nested formatters"));
+    assert!(!index.contains("language models"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));
@@ -429,6 +445,7 @@ fn public_docs_describe_formatting_boundaries_consistently() {
     let vscode_prose = vscode.split_whitespace().collect::<Vec<_>>().join(" ");
 
     assert!(readme.contains("It rewrites supported regions and preserves unsupported input."));
+    assert!(readme.contains("For supported embedded code, Yamark can also call"));
     for statement in [
         "Yamark formats `#|` hashpipe YAML comment blocks and explicitly marked targets",
         "It preserves the surrounding source code.",

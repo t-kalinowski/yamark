@@ -8,13 +8,13 @@ toc: false
 ::: {.hero-copy}
 ::: {.hero-kicker}
 ![](assets/favicon.svg){.hero-mark}
-[Beta]{.status-chip}
 :::
 
-Yamark formats YAML and Markdown, whether they stand alone or live inside
-another document or source file. It handles both languages itself and can hand
-embedded Python, R, JSON, and web code to Ruff, Air, Prettier, or another
-configured formatter.
+Markdown and YAML are source files too: they hold documentation, configuration,
+prompts, and agent instructions. Yamark gives them the consistent formatting we
+expect from code, wherever they appear. That includes standalone files, front
+matter, fenced blocks, YAML scalars, and marked strings or comments in Python
+and R.
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}
@@ -57,9 +57,9 @@ Format marked Markdown in YAML, Python, or R.
 :::
 
 ::: {.workflow-item}
-**Dispatch**
+**Recurse**
 
-Send supported embedded code to its formatter.
+Format nested YAML and Markdown inside fenced blocks.
 :::
 :::
 
@@ -97,11 +97,9 @@ emit_before_after <- function(label, stdin_file_path = "example.md") {
 
 ## A quick example
 
-YAML and Markdown make a practical collaboration surface for people, agents,
-and software. YAML carries fields a program can inspect; Markdown carries
-prose, instructions, examples, and code that people and language models can
-read. Yamark formats those layers together, much as a code formatter formats
-source.
+YAML and Markdown often share a file. YAML carries fields software can inspect;
+Markdown carries prose, instructions, examples, and code. Yamark formats both
+layers together, much as a code formatter formats source.
 
 The file below deliberately combines a long YAML scalar, a long Markdown
 paragraph, and a nested list. The first pane is the input; the second is what
@@ -112,20 +110,20 @@ paragraph, and a nested list. The first pane is the input; the second is what
 #| include: false
 ---
 title: Why YAML + Markdown?
-description: Structured fields for software alongside prose, instructions, examples, and code that people and language models can read.
-tags: [agents,authoring,formats]
+description: Structured fields for software alongside prose, instructions, examples, and code for readers.
+tags: [documentation,configuration,formatting]
 ---
 
 #   Why YAML + Markdown? ##
 
-YAML front matter and a Markdown body work well for files shared between people, language models, and software. The front matter carries fields a program can inspect; the body carries instructions that people can edit and review in a diff.
+YAML front matter and a Markdown body let one file serve readers and software. The front matter carries fields a program can inspect; the body carries prose that people can edit and review in a diff.
 
 This shape is useful for:
 
-- Agent skills and prompt files where metadata sits next to free-form instructions.
-  - The body can carry examples and nested Markdown structures.
 - Repository documents that need to render for readers and remain easy for tools to inspect.
-- Text that moves between code, documentation, and agent context without a separate source format.
+  - The body can carry examples and nested Markdown structures.
+- Prompts and agent instructions where metadata sits next to free-form text.
+- Text that moves between documentation, configuration, and tool input without a separate source format.
 ```
 
 ```{r}
@@ -166,10 +164,10 @@ maintaining line breaks by hand.
 :::
 
 ::: {.feature}
-### Nested formatters
+### Nested content
 
-Format YAML and Markdown recursively, and pass supported embedded source to
-Ruff, Air, Prettier, or another configured formatter.
+Format YAML and Markdown recursively, and send supported embedded code to its
+own formatter when configured.
 :::
 :::
 
