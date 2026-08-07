@@ -109,7 +109,7 @@ body.quarto-dark h1 {
   border-bottom: 1px solid var(--yamark-line);
   border-top: 1px solid var(--yamark-line);
   margin: 1.4rem 0 1.5rem;
-  padding: 2.6rem 0 1.4rem;
+  padding: 2.6rem 0;
 }
 
 .hero-copy {
@@ -224,34 +224,6 @@ body.quarto-dark .hero-button.primary {
   font-size: 0.9rem;
   padding: 0;
   white-space: nowrap;
-}
-
-.hero-coverage {
-  border-top: 1px solid var(--yamark-line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem 1.1rem;
-  list-style: none;
-  margin: 1.8rem 0 0;
-  padding: 1rem 0 0;
-}
-
-.hero-coverage li {
-  align-items: center;
-  color: var(--yamark-muted);
-  display: inline-flex;
-  font-size: 0.83rem;
-  font-weight: 700;
-  gap: 0.45rem;
-  white-space: nowrap;
-}
-
-.hero-coverage li::before {
-  background: var(--yamark-teal);
-  border-radius: 50%;
-  content: "";
-  height: 0.25rem;
-  width: 0.25rem;
 }
 
 .workflow-strip {
@@ -652,7 +624,7 @@ table.perf-table th {
 
 @media (max-width: 560px) {
   .hero-shell {
-    padding: 1.6rem 0 1.1rem;
+    padding: 1.6rem 0;
   }
 
   .hero-thesis {

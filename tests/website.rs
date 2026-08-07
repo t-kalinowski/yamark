@@ -377,8 +377,8 @@ fn website_homepage_has_visual_landing_sections() {
     assert!(index.contains("assets/favicon.svg"));
     assert!(index.contains("hero-shell"));
     assert!(index.contains("hero-thesis"));
-    assert!(index.contains("hero-coverage"));
     assert!(index.contains("hero-command"));
+    assert!(!index.contains("hero-coverage"));
     assert!(!index.contains("hero-specimen"));
     assert!(!index.contains("hero-diff"));
     assert!(!index.contains("terminal-window"));
@@ -391,14 +391,14 @@ fn website_homepage_has_visual_landing_sections() {
         )
     );
     assert!(!rendered.contains("class=\"level2 hero-thesis\""));
-    assert!(rendered.contains("hero-coverage"));
+    assert!(!rendered.contains("hero-coverage"));
     assert!(!rendered.contains("hero-specimen"));
     assert!(!styles.contains(".status-chip"));
     assert!(styles.contains("--yamark-ink"));
     assert!(styles.contains(".hero-shell"));
     assert!(styles.contains(".hero-thesis"));
-    assert!(styles.contains(".hero-coverage"));
     assert!(styles.contains(".hero-command"));
+    assert!(!styles.contains(".hero-coverage"));
     assert!(!styles.contains(".hero-specimen"));
     assert!(!styles.contains(".hero-diff"));
     assert!(!styles.contains(".terminal-window"));
@@ -426,22 +426,10 @@ fn website_homepage_leads_with_purpose_and_scope() {
         assert!(rendered.contains(text), "homepage should include {text:?}");
     }
     assert!(rendered_prose.contains(
-        "Yamark keeps documentation, configuration, prompts, and agent instructions consistent across standalone files, front matter, fenced blocks, and source code."
+        "Yamark formats whole files and embedded content with the consistency we expect from code, keeping source readable and changes easy to review."
     ));
-    for item in [
-        "Markdown",
-        "YAML",
-        "Quarto",
-        "Front matter",
-        "Fenced blocks",
-        "YAML scalars",
-        "Marked Python and R",
-    ] {
-        assert!(
-            rendered.contains(&format!("<li>{item}</li>")),
-            "homepage hero should include the exact coverage item {item:?}"
-        );
-    }
+    assert!(!rendered.contains("<ul class=\"hero-coverage\""));
+    assert!(!rendered.contains("documentation, configuration, prompts, and agent instructions"));
     assert!(!index.contains("label: hero-example"));
     assert!(!index.contains("emit_hero_specimen"));
     assert!(!rendered.contains("files scanned"));
@@ -484,7 +472,7 @@ fn website_includes_homepage_and_examples_content() {
         .join(" ");
     assert!(index.contains("Format Markdown and YAML wherever they live."));
     assert!(index_prose.contains(
-        "Yamark keeps documentation, configuration, prompts, and agent instructions consistent across standalone files, front matter, fenced blocks, and source code."
+        "Yamark formats whole files and embedded content with the consistency we expect from code, keeping source readable and changes easy to review."
     ));
     assert!(!index.contains("Markdown and YAML are source files too."));
     assert!(!index.contains("they hold documentation, configuration"));
@@ -497,7 +485,7 @@ fn website_includes_homepage_and_examples_content() {
     assert!(!index.contains("**Dispatch**"));
     assert!(!index.contains("### Nested formatters"));
     assert!(!index.contains("language models"));
-    assert!(index.contains("<li>Marked Python and R</li>"));
+    assert!(!index.contains("hero-coverage"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));

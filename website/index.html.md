@@ -13,9 +13,8 @@ toc: false
 
 <h2 class="hero-thesis">Format Markdown and YAML wherever they live.</h2>
 
-Yamark keeps documentation, configuration, prompts, and agent instructions
-consistent across standalone files, front matter, fenced blocks, and source
-code.
+Yamark formats whole files and embedded content with the consistency we expect
+from code, keeping source readable and changes easy to review.
 
 ::: {.hero-proof}
 Fast, deterministic, and written in Rust.
@@ -31,16 +30,6 @@ Fast, deterministic, and written in Rust.
 `uvx yamark format`
 :::
 :::
-
-<ul class="hero-coverage" aria-label="Where Yamark formats Markdown and YAML">
-<li>Markdown</li>
-<li>YAML</li>
-<li>Quarto</li>
-<li>Front matter</li>
-<li>Fenced blocks</li>
-<li>YAML scalars</li>
-<li>Marked Python and R</li>
-</ul>
 :::
 
 ::: {.workflow-strip}
