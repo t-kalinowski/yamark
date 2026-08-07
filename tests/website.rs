@@ -415,6 +415,7 @@ fn website_includes_homepage_and_examples_content() {
     assert!(!index.contains("**Dispatch**"));
     assert!(!index.contains("### Nested formatters"));
     assert!(!index.contains("language models"));
+    assert!(index.contains("Python&nbsp;and&nbsp;R."));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));

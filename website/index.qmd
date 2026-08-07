@@ -13,8 +13,8 @@ toc: false
 Markdown and YAML are source files too: they hold documentation, configuration,
 prompts, and agent instructions. Yamark gives them the consistent formatting we
 expect from code, wherever they appear. That includes standalone files, front
-matter, fenced blocks, YAML scalars, and marked strings or comments in Python
-and R.
+matter, fenced blocks, YAML scalars, and marked strings or comments in
+Python&nbsp;and&nbsp;R.
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}
