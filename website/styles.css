@@ -207,19 +207,21 @@ body.quarto-dark .hero-button.primary {
 
 .terminal-window .code-copy-outer-scaffold,
 .terminal-window div.sourceCode,
-.terminal-window pre.sourceCode {
+.terminal-window pre {
   background: transparent;
   border: 0;
   margin: 0;
 }
 
-.terminal-window pre.sourceCode {
+.terminal-window pre {
   padding: 1rem 1.1rem 1.2rem;
+  white-space: pre-wrap;
 }
 
 .terminal-window code {
   color: #f8fafc;
   font-size: 0.92rem;
+  white-space: inherit;
 }
 
 .terminal-window code span {

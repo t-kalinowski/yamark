@@ -10,10 +10,9 @@ toc: false
 ![](assets/favicon.svg){.hero-mark}
 :::
 
-Markdown and YAML are source files too: they hold documentation, configuration,
-prompts, and agent instructions. Yamark gives them the consistent formatting we
-expect from code, wherever they appear. That includes standalone files, front
-matter, fenced blocks, YAML scalars, and marked strings or comments in
+Markdown and YAML are source files too. Yamark gives them the consistent
+formatting we expect from code, whether they appear as standalone files, front
+matter, fenced blocks, YAML scalars, or marked strings and comments in
 Python&nbsp;and&nbsp;R.
 
 ::: {.hero-actions}
@@ -25,14 +24,12 @@ Python&nbsp;and&nbsp;R.
 
 ::: {.terminal-window}
 ::: {.terminal-chrome}
-<span>uvx yamark format</span>
+<span>Run from PyPI</span>
 :::
 
-```sh
-$ uvx yamark format config.yaml docs/
-format config.yaml
-format docs/index.md
-format docs/reference.qmd
+```console
+$ uvx yamark format
+3 files scanned, 3 formatted, 0 unchanged, 0 skipped, 0 failed
 ```
 :::
 :::

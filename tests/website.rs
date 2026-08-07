@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use std::fs;
 use std::path::Path;
+use tempfile::tempdir;
 
 #[test]
 fn public_materials_do_not_refer_to_legacy_product_names() {
@@ -386,6 +387,55 @@ fn website_homepage_has_visual_landing_sections() {
 }
 
 #[test]
+fn website_homepage_terminal_uses_real_cli_output() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let styles = fs::read_to_string(root.join("styles.css")).unwrap();
+    let styles = styles.split_whitespace().collect::<Vec<_>>().join(" ");
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("docs")).unwrap();
+    fs::write(dir.path().join("config.yaml"), "items: [one,two]\n").unwrap();
+    fs::write(dir.path().join("docs/index.md"), "#   Index ##\n").unwrap();
+    fs::write(dir.path().join("docs/reference.qmd"), "#   Reference ##\n").unwrap();
+
+    let output = Command::cargo_bin("yamark")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("format")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stderr, b"");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(
+        styles.contains(
+            ".terminal-window pre { padding: 1rem 1.1rem 1.2rem; white-space: pre-wrap; }"
+        )
+    );
+    assert!(styles.contains(
+        ".terminal-window code { color: #f8fafc; font-size: 0.92rem; white-space: inherit; }"
+    ));
+
+    for file in ["index.qmd", "index.html.md"] {
+        let contents = fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            contents.contains(&format!("$ uvx yamark format\n{}", stdout.trim_end())),
+            "{file} should show the real Yamark invocation and summary {stdout:?}"
+        );
+        for fabricated in [
+            "\nformat config.yaml\n",
+            "\nformat docs/index.md\n",
+            "\nformat docs/reference.qmd\n",
+        ] {
+            assert!(
+                !contents.contains(fabricated),
+                "{file} should not invent per-file progress output"
+            );
+        }
+    }
+}
+
+#[test]
 fn website_code_blocks_reset_quarto_wrapper_margins() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
@@ -417,10 +467,15 @@ fn website_includes_homepage_and_examples_content() {
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
-    let index_prose = index.split_whitespace().collect::<Vec<_>>().join(" ");
+    let index_prose = index
+        .replace("&nbsp;", " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(index_prose.contains(
-        "Markdown and YAML are source files too: they hold documentation, configuration, prompts, and agent instructions. Yamark gives them the consistent formatting we expect from code, wherever they appear."
+        "Markdown and YAML are source files too. Yamark gives them the consistent formatting we expect from code, whether they appear as standalone files, front matter, fenced blocks, YAML scalars, or marked strings and comments in Python and R."
     ));
+    assert!(!index.contains("they hold documentation, configuration"));
     assert!(index_prose.contains(
         "Here is a Markdown file with YAML front matter, a long paragraph, and a nested list. Yamark formats the YAML and Markdown in one pass. The first pane shows the input; the second shows what `yamark format` writes back."
     ));
