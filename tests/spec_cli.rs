@@ -138,11 +138,12 @@ fn format_help_shows_default_wrap() {
 }
 
 #[test]
-fn format_help_hides_verify() {
+fn format_help_verify_visibility_matches_build_profile() {
     let (status, stdout, stderr) = run_stdin(&["format", "--help"], "");
     assert_eq!(status, 0, "{stderr}");
-    assert!(
-        stdout.lines().all(|line| !line.contains("--verify")),
+    assert_eq!(
+        stdout.lines().any(|line| line.contains("--verify")),
+        cfg!(debug_assertions),
         "{stdout}"
     );
     assert_eq!(stderr, "");

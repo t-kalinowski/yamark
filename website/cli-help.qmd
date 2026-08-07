@@ -12,14 +12,17 @@ execute:
 #| include: false
 yamark_bin <- Sys.getenv("YAMARK_BIN", unset = "")
 if (!nzchar(yamark_bin)) {
-  status <- system2("cargo", c("build", "--manifest-path", "../Cargo.toml"))
+  status <- system2(
+    "cargo",
+    c("build", "--release", "--manifest-path", "../Cargo.toml")
+  )
   if (!identical(status, 0L)) {
     stop("`cargo build` failed with status ", status, call. = FALSE)
   }
 
   yamark_exe <- if (.Platform$OS.type == "windows") "yamark.exe" else "yamark"
   yamark_bin <- normalizePath(
-    file.path("..", "target", "debug", yamark_exe),
+    file.path("..", "target", "release", yamark_exe),
     winslash = "/",
     mustWork = TRUE
   )

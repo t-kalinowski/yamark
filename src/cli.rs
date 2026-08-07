@@ -21,6 +21,7 @@ const HELP_STYLES: Styles = Styles::styled()
     .usage(AnsiColor::BrightBlue.on_default().bold())
     .literal(AnsiColor::Cyan.on_default().bold())
     .placeholder(AnsiColor::BrightBlack.on_default());
+const HIDE_VERIFY_FROM_HELP: bool = !cfg!(debug_assertions);
 
 #[derive(Debug, Parser)]
 #[command(name = "yamark")]
@@ -45,7 +46,7 @@ enum Command {
         diagnostics: bool,
         #[arg(
             long,
-            hide = true,
+            hide = HIDE_VERIFY_FROM_HELP,
             help = "Reparse changed YAML and reject invalid or value-changing output"
         )]
         verify: bool,

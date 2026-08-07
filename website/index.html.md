@@ -11,12 +11,10 @@ toc: false
 [Beta]{.status-chip}
 :::
 
-Yamark is an extremely fast formatter for YAML and Markdown, written in Rust.
-It follows both languages through mixed documents: YAML front matter,
-supported fenced blocks, Markdown-valued YAML scalars, and explicitly marked
-strings or comments in Python and R. Embedded Python, R, JSON, and web code in
-fenced blocks, YAML scalars, or marked source strings can be sent to Ruff, Air,
-Prettier, or another configured formatter when available.
+Yamark formats YAML and Markdown, whether they stand alone or live inside
+another document or source file. It handles both languages itself and can hand
+embedded Python, R, JSON, and web code to Ruff, Air, Prettier, or another
+configured formatter.
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}

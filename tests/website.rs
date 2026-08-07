@@ -396,7 +396,7 @@ fn website_includes_homepage_and_examples_content() {
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
-    assert!(index.contains("Yamark is an extremely fast formatter for YAML and Markdown"));
+    assert!(index.contains("It handles both languages itself"));
     assert!(index.contains("practical collaboration surface"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
@@ -542,6 +542,8 @@ fn website_documents_cli_help_on_dedicated_page() {
     assert!(not_found.contains("[CLI Help](cli-help.qmd)"));
     assert!(cli_help.contains("title: CLI Help"));
     assert!(cli_help.contains("yamark_bin <- Sys.getenv(\"YAMARK_BIN\", unset = \"\")"));
+    assert!(cli_help.contains("c(\"build\", \"--release\", \"--manifest-path\""));
+    assert!(cli_help.contains(r#"file.path("..", "target", "release", yamark_exe)"#));
     assert!(cli_help.contains("yamark_help <- function(...)"));
     assert!(cli_help.contains("NO_COLOR="));
     for invocation in [
