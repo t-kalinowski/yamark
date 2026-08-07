@@ -66,39 +66,15 @@ Send supported embedded code to its formatter.
 ```{r}
 #| label: setup-before-after
 #| include: false
+source("_yamark-build.R")
+
 get_chunk <- function(label) {
   paste(knitr::knit_code$get(label), collapse = "\n")
 }
 
-markdown_fence <- function(x, lang = "markdown") {
-  runs <- regmatches(x, gregexpr("`+", x, perl = TRUE))[[1]]
-  fence <- strrep("`", max(3, max(nchar(runs), 0) + 1))
-
-  paste0(fence, lang, "\n", x, "\n", fence)
-}
-
-run_yamark <- function(md, stdin_file_path = "example.md") {
-  input <- strsplit(md, "\n", fixed = TRUE)[[1]]
-
-  out <- system2(
-    "yamark",
-    args = c("format", "--wrap", "72", "--stdin-file-path", stdin_file_path),
-    input = input,
-    stdout = TRUE,
-    stderr = FALSE
-  )
-
-  status <- attr(out, "status")
-  if (!is.null(status) && !identical(status, 0L)) {
-    stop("yamark exited with status ", status, call. = FALSE)
-  }
-
-  paste(out, collapse = "\n")
-}
-
 emit_before_after <- function(label, stdin_file_path = "example.md") {
   before <- get_chunk(label)
-  after <- run_yamark(before, stdin_file_path = stdin_file_path)
+  after <- yamark_format(before, stdin_file_path = stdin_file_path)
 
   writeLines(c(
     ":::: {.before-after}",

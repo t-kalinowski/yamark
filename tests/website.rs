@@ -1,3 +1,4 @@
+use assert_cmd::Command;
 use std::fs;
 use std::path::Path;
 
@@ -541,9 +542,7 @@ fn website_documents_cli_help_on_dedicated_page() {
     assert!(usage.contains("[CLI Help](cli-help.qmd)"));
     assert!(not_found.contains("[CLI Help](cli-help.qmd)"));
     assert!(cli_help.contains("title: CLI Help"));
-    assert!(cli_help.contains("yamark_bin <- Sys.getenv(\"YAMARK_BIN\", unset = \"\")"));
-    assert!(cli_help.contains("c(\"build\", \"--release\", \"--manifest-path\""));
-    assert!(cli_help.contains(r#"file.path("..", "target", "release", yamark_exe)"#));
+    assert!(cli_help.contains("source(\"_yamark-build.R\")"));
     assert!(cli_help.contains("yamark_help <- function(...)"));
     assert!(cli_help.contains("NO_COLOR="));
     for invocation in [
@@ -596,6 +595,44 @@ fn website_documents_cli_help_on_dedicated_page() {
             "rendered CLI help should contain {style}"
         );
     }
+}
+
+#[test]
+fn website_renders_examples_with_one_current_yamark_binary() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let helper = fs::read_to_string(root.join("_yamark-build.R")).unwrap();
+
+    assert!(helper.contains("YAMARK_BIN"));
+    assert!(helper.contains("cargo"));
+    assert!(helper.contains("--release"));
+    assert!(helper.contains(r#"file.path("..", "target", "release", yamark_exe)"#));
+    assert!(helper.contains("yamark_format <- function"));
+
+    for file in ["index.qmd", "examples.qmd", "reference.qmd", "cli-help.qmd"] {
+        let contents = fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            contents.contains("source(\"_yamark-build.R\")"),
+            "{file} should resolve Yamark through the shared site helper"
+        );
+        assert!(
+            !contents.contains("target\", \"debug"),
+            "{file} should not select a debug build"
+        );
+    }
+
+    let reference = fs::read_to_string(root.join("reference.qmd")).unwrap();
+    let rendered_reference = fs::read_to_string(root.join("reference.html.md")).unwrap();
+    assert!(reference.contains("reference_before_after("));
+    let output = Command::cargo_bin("yamark")
+        .unwrap()
+        .args(["format", "--wrap", "72", "--stdin-file-path", "layout.yaml"])
+        .write_stdin("tags: [\n  - yaml\n  - markdown\n  - docs\n")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let expected = String::from_utf8(output.stdout).unwrap();
+    assert!(rendered_reference.contains(expected.trim_end()));
+    assert!(!rendered_reference.contains("tags: [llm, authoring, formats]"));
 }
 
 #[test]
@@ -715,6 +752,7 @@ fn website_showcase_generates_after_examples_with_yamark() {
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let root = project_root.join("website");
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
+    let helper = fs::read_to_string(root.join("_yamark-build.R")).unwrap();
     let rendered = fs::read_to_string(root.join("examples.html.md")).unwrap();
     let pages = fs::read_to_string(project_root.join(".github/workflows/pages.yml")).unwrap();
 
@@ -723,9 +761,10 @@ fn website_showcase_generates_after_examples_with_yamark() {
     assert!(rendered.contains("# fmt: skip file"));
     assert!(rendered.contains("<!-- fmt: skip file -->"));
     assert!(examples.contains("showcase_before_after <- function"));
-    assert!(examples.contains("system2("));
-    assert!(examples.contains("\"yamark\""));
+    assert!(examples.contains("yamark_format("));
     assert!(examples.contains("showcase_before_after("));
+    assert!(helper.contains("system2("));
+    assert!(helper.contains("yamark_bin"));
 
     for command in [
         "uv tool install ruff==0.16.1",

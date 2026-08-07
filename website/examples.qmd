@@ -10,62 +10,11 @@ description: >-
 ```{r}
 #| label: setup-showcase-examples
 #| include: false
-local_yamark <- file.path("..", "target", "debug", "yamark")
-if (file.exists(local_yamark)) {
-  Sys.setenv(PATH = paste(
-    dirname(normalizePath(local_yamark)),
-    Sys.getenv("PATH"),
-    sep = .Platform$path.sep
-  ))
-}
-
-trim_one_trailing_newline <- function(x) {
-  sub("\n\\z", "", x, perl = TRUE)
-}
-
-markdown_fence <- function(x, lang = "markdown") {
-  runs <- regmatches(x, gregexpr("`+", x, perl = TRUE))[[1]]
-  longest_run <- if (length(runs) == 0) 0 else max(nchar(runs))
-  fence <- strrep("`", max(3, longest_run + 1))
-
-  paste0(fence, lang, "\n", x, "\n", fence)
-}
-
-run_yamark <- function(input, stdin_file_path, args = character()) {
-  stopifnot(is.character(input), length(input) == 1)
-  stopifnot(is.character(stdin_file_path), length(stdin_file_path) == 1)
-  stopifnot(is.character(args))
-
-  stderr_path <- tempfile()
-  on.exit(unlink(stderr_path), add = TRUE)
-
-  out <- system2(
-    "yamark",
-    args = c("format", "--wrap", "72", "--stdin-file-path", stdin_file_path, args),
-    input = strsplit(input, "\n", fixed = TRUE)[[1]],
-    stdout = TRUE,
-    stderr = stderr_path
-  )
-
-  status <- attr(out, "status")
-  if (!is.null(status) && !identical(status, 0L)) {
-    stderr <- paste(readLines(stderr_path, warn = FALSE), collapse = "\n")
-    stop(
-      "yamark exited with status ",
-      status,
-      " for ",
-      stdin_file_path,
-      if (nzchar(stderr)) paste0(":\n", stderr) else "",
-      call. = FALSE
-    )
-  }
-
-  trim_one_trailing_newline(paste(out, collapse = "\n"))
-}
+source("_yamark-build.R")
 
 showcase_before_after <- function(before, lang, stdin_file_path, args = character()) {
   before <- trim_one_trailing_newline(before)
-  after <- run_yamark(before, stdin_file_path, args = args)
+  after <- yamark_format(before, stdin_file_path, args = args)
 
   writeLines(c(
     ":::: {.showcase-before-after}",

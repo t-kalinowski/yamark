@@ -8,6 +8,8 @@ execute:
   comment: ""
 ---
 
+
+
 ## File types
 
 Path-aware formatting supports:
@@ -480,6 +482,8 @@ rows: # fmt: compact table
 
 Format source-file `#|` hashpipe YAML comment blocks:
 
+Before:
+
 ```r
 #| name: demo
 #| launcher:
@@ -489,7 +493,7 @@ Format source-file `#|` hashpipe YAML comment blocks:
 main <- function() NULL
 ```
 
-becomes:
+After:
 
 ```r
 #| name: demo
@@ -582,7 +586,7 @@ tags: [
 After:
 
 ```yaml
-tags: [llm, authoring, formats]
+tags: [yaml, markdown, docs]
 ```
 
 The opener can also sit on the line after an empty mapping value header:
@@ -597,6 +601,8 @@ tags:
 
 The same hint works on mappings:
 
+Before:
+
 ```yaml
 config: {
   host: example.com
@@ -604,7 +610,7 @@ config: {
   tls: true
 ```
 
-becomes:
+After:
 
 ```yaml
 config: {host: example.com, port: 8080, tls: true}

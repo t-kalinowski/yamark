@@ -8,6 +8,27 @@ execute:
   comment: ""
 ---
 
+```{r}
+#| label: setup-reference-examples
+#| include: false
+source("_yamark-build.R")
+
+reference_before_after <- function(before, lang, stdin_file_path) {
+  before <- trim_one_trailing_newline(before)
+  after <- yamark_format(before, stdin_file_path)
+
+  writeLines(c(
+    "Before:",
+    "",
+    markdown_fence(before, lang),
+    "",
+    "After:",
+    "",
+    markdown_fence(after, lang)
+  ))
+}
+```
+
 ## File types
 
 Path-aware formatting supports:
@@ -480,24 +501,20 @@ rows: # fmt: compact table
 
 Format source-file `#|` hashpipe YAML comment blocks:
 
-```r
-#| name: demo
+```{r}
+#| label: reference-hashpipe-before-after
+#| results: asis
+reference_before_after(
+  before = r"---(#| name: demo
 #| launcher:
 #|  vanilla: true
 #|  default-packages: [base,utils]
 
 main <- function() NULL
-```
-
-becomes:
-
-```r
-#| name: demo
-#| launcher:
-#|   vanilla: true
-#|   default-packages: [base, utils]
-
-main <- function() NULL
+)---",
+  lang = "r",
+  stdin_file_path = "example.R"
+)
 ```
 
 Format a YAML literal scalar with an embedded formatter:
@@ -570,19 +587,18 @@ Drop an unmatched `[` or `{` where a block sequence or mapping value starts.
 Yamark removes the opener and emits the collection in flow style when the
 result fits the active line width.
 
-Before:
-
-```yaml
-tags: [
+```{r}
+#| label: reference-collapse-sequence-before-after
+#| results: asis
+reference_before_after(
+  before = r"---(tags: [
   - yaml
   - markdown
   - docs
-```
-
-After:
-
-```yaml
-tags: [llm, authoring, formats]
+)---",
+  lang = "yaml",
+  stdin_file_path = "layout.yaml"
+)
 ```
 
 The opener can also sit on the line after an empty mapping value header:
@@ -597,17 +613,18 @@ tags:
 
 The same hint works on mappings:
 
-```yaml
-config: {
+```{r}
+#| label: reference-collapse-mapping-before-after
+#| results: asis
+reference_before_after(
+  before = r"---(config: {
   host: example.com
   port: 8080
   tls: true
-```
-
-becomes:
-
-```yaml
-config: {host: example.com, port: 8080, tls: true}
+)---",
+  lang = "yaml",
+  stdin_file_path = "layout.yaml"
+)
 ```
 
 ### Expand to block with a newline
@@ -615,18 +632,16 @@ config: {host: example.com, port: 8080, tls: true}
 A line break inside a flow collection is taken as a request to expand it to
 block style.
 
-Before:
-
-```yaml
-- {a: b,
+```{r}
+#| label: reference-expand-mapping-before-after
+#| results: asis
+reference_before_after(
+  before = r"---(- {a: b,
    c: d}
-```
-
-After:
-
-```yaml
-- a: b
-  c: d
+)---",
+  lang = "yaml",
+  stdin_file_path = "layout.yaml"
+)
 ```
 
 ### Rejection rules
