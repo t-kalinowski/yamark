@@ -106,22 +106,34 @@ body.quarto-dark h1 {
 }
 
 .hero-shell {
-  align-items: center;
   border-bottom: 1px solid var(--yamark-line);
   border-top: 1px solid var(--yamark-line);
-  display: grid;
-  gap: 2rem;
-  grid-template-columns: minmax(0, 1.1fr) minmax(22rem, 0.9fr);
   margin: 1.4rem 0 1.5rem;
-  padding: 2rem 0;
+  padding: 2.6rem 0 1.4rem;
+}
+
+.hero-copy {
+  max-width: 56rem;
+}
+
+.hero-thesis {
+  border: 0;
+  color: var(--yamark-ink);
+  font-size: clamp(2.1rem, 4.5vw, 3.35rem);
+  font-weight: 820;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  margin: 0;
+  max-width: 50rem;
+  padding: 0;
 }
 
 .hero-copy > p {
   color: var(--yamark-ink);
   font-size: 1.15rem;
   line-height: 1.7;
-  margin-bottom: 0;
-  max-width: 45rem;
+  margin: 1.15rem 0 0;
+  max-width: 50rem;
 }
 
 .hero-kicker {
@@ -135,6 +147,17 @@ body.quarto-dark h1 {
   border-radius: 8px;
   height: 2.25rem;
   width: 2.25rem;
+}
+
+.hero-proof {
+  color: var(--yamark-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-top: 0.85rem;
+}
+
+.hero-proof p {
+  margin: 0;
 }
 
 .hero-actions {
@@ -203,84 +226,32 @@ body.quarto-dark .hero-button.primary {
   white-space: nowrap;
 }
 
-.hero-specimen {
-  background: var(--yamark-surface);
-  border: 1px solid var(--yamark-line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.hero-specimen-header {
-  align-items: baseline;
-  border-bottom: 1px solid var(--yamark-line);
-  color: var(--yamark-muted);
+.hero-coverage {
+  border-top: 1px solid var(--yamark-line);
   display: flex;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  justify-content: space-between;
-  padding: 0.65rem 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.1rem;
+  list-style: none;
+  margin: 1.8rem 0 0;
+  padding: 1rem 0 0;
 }
 
-.hero-specimen-header p {
-  display: contents;
-}
-
-.hero-specimen-path {
-  color: var(--yamark-ink);
+.hero-coverage li {
+  align-items: center;
+  color: var(--yamark-muted);
+  display: inline-flex;
+  font-size: 0.83rem;
   font-weight: 700;
+  gap: 0.45rem;
+  white-space: nowrap;
 }
 
-.hero-specimen .cell,
-.hero-specimen .cell-output,
-.hero-specimen .cell-output-display {
-  margin: 0;
-}
-
-.hero-diff-body {
-  padding: 1rem 0 1.1rem;
-}
-
-.hero-diff-line {
-  display: grid;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.88rem;
-  grid-template-columns: 1.4rem minmax(0, 1fr);
-  line-height: 1.55;
-  padding: 0.28rem 1rem 0.28rem 0.7rem;
-}
-
-.hero-diff-line code {
-  background: transparent;
-  color: var(--yamark-ink);
-  font-size: inherit;
-  overflow-wrap: anywhere;
-  padding: 0;
-  white-space: pre-wrap;
-}
-
-.hero-diff-line.remove {
-  background: color-mix(in srgb, var(--yamark-red) 8%, transparent);
-}
-
-.hero-diff-line.add {
-  background: color-mix(in srgb, var(--yamark-teal) 10%, transparent);
-}
-
-.hero-diff-line.remove .hero-diff-sign {
-  color: var(--yamark-red);
-}
-
-.hero-diff-line.add .hero-diff-sign {
-  color: var(--yamark-teal-strong);
-}
-
-.hero-diff-sign {
-  font-weight: 800;
-  text-align: center;
-}
-
-.hero-diff-gap {
-  height: 0.65rem;
+.hero-coverage li::before {
+  background: var(--yamark-teal);
+  border-radius: 50%;
+  content: "";
+  height: 0.25rem;
+  width: 0.25rem;
 }
 
 .workflow-strip {
@@ -655,10 +626,6 @@ table.perf-table th {
     font-size: 3rem;
   }
 
-  .hero-shell {
-    grid-template-columns: 1fr;
-  }
-
   .workflow-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -685,7 +652,11 @@ table.perf-table th {
 
 @media (max-width: 560px) {
   .hero-shell {
-    padding: 1.3rem 0;
+    padding: 1.6rem 0 1.1rem;
+  }
+
+  .hero-thesis {
+    font-size: 2rem;
   }
 
   .hero-actions {

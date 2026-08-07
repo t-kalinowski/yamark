@@ -1,10 +1,7 @@
 ---
 title: Yamark
-description: An extremely fast formatter for YAML and Markdown, written in Rust.
 toc: false
 ---
-
-
 
 
 
@@ -14,15 +11,19 @@ toc: false
 ![](assets/favicon.svg){.hero-mark}
 :::
 
-Markdown and YAML are source files too. Yamark gives them the consistent
-formatting we expect from code, whether they appear as standalone files, front
-matter, fenced blocks, YAML scalars, or marked strings and comments in
-Python&nbsp;and&nbsp;R.
+<h2 class="hero-thesis">Format Markdown and YAML wherever they live.</h2>
+
+Yamark keeps documentation, configuration, prompts, and agent instructions
+consistent across standalone files, front matter, fenced blocks, and source
+code.
+
+::: {.hero-proof}
+Fast, deterministic, and written in Rust.
+:::
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}
 [See examples](examples.qmd){.hero-button}
-[Benchmarks](benchmarks.qmd){.hero-button}
 :::
 
 ::: {.hero-command}
@@ -31,20 +32,15 @@ Python&nbsp;and&nbsp;R.
 :::
 :::
 
-::: {.hero-specimen}
-::: {.hero-specimen-header}
-<span class="hero-specimen-path">guide.qmd</span>
-<span class="hero-specimen-kind">YAML + Markdown</span>
-:::
-
-<div class="hero-diff-body">
-<div class="hero-diff-line remove"><span class="hero-diff-sign" aria-hidden="true">-</span><span class="visually-hidden">Before: </span><code>tags: [docs,agents,yaml]</code></div>
-<div class="hero-diff-line add"><span class="hero-diff-sign" aria-hidden="true">+</span><span class="visually-hidden">After: </span><code>tags: [docs, agents, yaml]</code></div>
-<div class="hero-diff-gap" aria-hidden="true"></div>
-<div class="hero-diff-line remove"><span class="hero-diff-sign" aria-hidden="true">-</span><span class="visually-hidden">Before: </span><code># Agent guide ##</code></div>
-<div class="hero-diff-line add"><span class="hero-diff-sign" aria-hidden="true">+</span><span class="visually-hidden">After: </span><code># Agent guide</code></div>
-</div>
-:::
+<ul class="hero-coverage" aria-label="Where Yamark formats Markdown and YAML">
+<li>Markdown</li>
+<li>YAML</li>
+<li>Quarto</li>
+<li>Front matter</li>
+<li>Fenced blocks</li>
+<li>YAML scalars</li>
+<li>Marked Python and R</li>
+</ul>
 :::
 
 ::: {.workflow-strip}

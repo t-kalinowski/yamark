@@ -371,20 +371,36 @@ fn website_includes_benchmarks_page() {
 fn website_homepage_has_visual_landing_sections() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let index = fs::read_to_string(root.join("index.qmd")).unwrap();
+    let rendered = fs::read_to_string(root.join("index.html.md")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
     assert!(index.contains("assets/favicon.svg"));
     assert!(index.contains("hero-shell"));
-    assert!(index.contains("hero-specimen"));
+    assert!(index.contains("hero-thesis"));
+    assert!(index.contains("hero-coverage"));
     assert!(index.contains("hero-command"));
+    assert!(!index.contains("hero-specimen"));
+    assert!(!index.contains("hero-diff"));
     assert!(!index.contains("terminal-window"));
     assert!(index.contains("workflow-strip"));
     assert!(!index.contains("[Beta]{.status-chip}"));
+    assert!(rendered.contains("Format Markdown and YAML wherever they live."));
+    assert!(
+        rendered.contains(
+            "<h2 class=\"hero-thesis\">Format Markdown and YAML wherever they live.</h2>"
+        )
+    );
+    assert!(!rendered.contains("class=\"level2 hero-thesis\""));
+    assert!(rendered.contains("hero-coverage"));
+    assert!(!rendered.contains("hero-specimen"));
     assert!(!styles.contains(".status-chip"));
     assert!(styles.contains("--yamark-ink"));
     assert!(styles.contains(".hero-shell"));
-    assert!(styles.contains(".hero-specimen"));
+    assert!(styles.contains(".hero-thesis"));
+    assert!(styles.contains(".hero-coverage"));
     assert!(styles.contains(".hero-command"));
+    assert!(!styles.contains(".hero-specimen"));
+    assert!(!styles.contains(".hero-diff"));
     assert!(!styles.contains(".terminal-window"));
     assert!(styles.contains(".workflow-strip"));
 
@@ -397,38 +413,38 @@ fn website_homepage_has_visual_landing_sections() {
 }
 
 #[test]
-fn website_homepage_specimen_uses_current_yamark() {
+fn website_homepage_leads_with_purpose_and_scope() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let index = fs::read_to_string(root.join("index.qmd")).unwrap();
     let rendered = fs::read_to_string(root.join("index.html.md")).unwrap();
-    let styles = fs::read_to_string(root.join("styles.css")).unwrap();
-    let input = "---\ntags: [docs,agents,yaml]\n---\n\n# Agent guide ##\n";
-    let output = Command::cargo_bin("yamark")
-        .unwrap()
-        .args(["format", "--wrap", "72", "--stdin-file-path", "guide.qmd"])
-        .write_stdin(input)
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stderr, b"");
-    let after = String::from_utf8(output.stdout).unwrap();
+    let rendered_prose = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    assert!(index.contains("label: hero-example"));
-    assert!(index.contains("emit_hero_specimen(\"hero-example\")"));
-    assert!(!index.contains("tags: [docs, agents, yaml]"));
-    for line in after
-        .lines()
-        .filter(|line| line.starts_with("tags:") || line.starts_with("# "))
-    {
+    for text in [
+        "Format Markdown and YAML wherever they live.",
+        "uvx yamark format",
+    ] {
+        assert!(rendered.contains(text), "homepage should include {text:?}");
+    }
+    assert!(rendered_prose.contains(
+        "Yamark keeps documentation, configuration, prompts, and agent instructions consistent across standalone files, front matter, fenced blocks, and source code."
+    ));
+    for item in [
+        "Markdown",
+        "YAML",
+        "Quarto",
+        "Front matter",
+        "Fenced blocks",
+        "YAML scalars",
+        "Marked Python and R",
+    ] {
         assert!(
-            rendered.contains(line),
-            "rendered homepage should show Yamark output line {line:?}"
+            rendered.contains(&format!("<li>{item}</li>")),
+            "homepage hero should include the exact coverage item {item:?}"
         );
     }
+    assert!(!index.contains("label: hero-example"));
+    assert!(!index.contains("emit_hero_specimen"));
     assert!(!rendered.contains("files scanned"));
-    assert!(styles.contains(".hero-specimen"));
-    assert!(styles.contains(".hero-diff-line.remove"));
-    assert!(styles.contains(".hero-diff-line.add"));
 }
 
 #[test]
@@ -466,9 +482,11 @@ fn website_includes_homepage_and_examples_content() {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
+    assert!(index.contains("Format Markdown and YAML wherever they live."));
     assert!(index_prose.contains(
-        "Markdown and YAML are source files too. Yamark gives them the consistent formatting we expect from code, whether they appear as standalone files, front matter, fenced blocks, YAML scalars, or marked strings and comments in Python and R."
+        "Yamark keeps documentation, configuration, prompts, and agent instructions consistent across standalone files, front matter, fenced blocks, and source code."
     ));
+    assert!(!index.contains("Markdown and YAML are source files too."));
     assert!(!index.contains("they hold documentation, configuration"));
     assert!(index_prose.contains(
         "Here is a Markdown file with YAML front matter, a long paragraph, and a nested list. Yamark formats the YAML and Markdown in one pass. The first pane shows the input; the second shows what `yamark format` writes back."
@@ -479,7 +497,7 @@ fn website_includes_homepage_and_examples_content() {
     assert!(!index.contains("**Dispatch**"));
     assert!(!index.contains("### Nested formatters"));
     assert!(!index.contains("language models"));
-    assert!(index.contains("Python&nbsp;and&nbsp;R."));
+    assert!(index.contains("<li>Marked Python and R</li>"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));
