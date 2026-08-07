@@ -125,6 +125,61 @@ summary: >-
 ```
 ::::
 
+## Markdown links, footnotes, and tables
+
+Long inline links are split at Markdown syntax boundaries. Footnote
+definitions wrap under the marker unless the document or CLI asks to
+preserve them.
+
+:::: {.showcase-before-after}
+**Before**
+
+```markdown
+Please be mindful of our [code of conduct](https://github.com/quarto-dev/quarto-cli/blob/main/.github/CODE_OF_CONDUCT.md) as you interact with other community members.
+
+Body text with a footnote.[^long]
+
+[^long]: This footnote explains that comments were removed because people used comments to hold parsing directives and enough extra words to wrap.
+```
+
+**After**
+
+```markdown
+Please be mindful of our [code of conduct](
+  https://github.com/quarto-dev/quarto-cli/blob/main/.github/CODE_OF_CONDUCT.md
+) as you interact with other community members.
+
+Body text with a footnote.[^long]
+
+[^long]: This footnote explains that comments were removed because
+  people used comments to hold parsing directives and enough extra words
+  to wrap.
+```
+::::
+
+Simple GFM pipe tables are aligned by display width. Git clean/smudge filters
+always use compact pipe-table output.
+
+:::: {.showcase-before-after}
+**Before**
+
+```markdown
+| package | label |
+|---|---|
+| dplyr | tidy |
+| tidyr | pivoting |
+```
+
+**After**
+
+```markdown
+| package | label    |
+| ------- | -------- |
+| dplyr   | tidy     |
+| tidyr   | pivoting |
+```
+::::
+
 ## Markdown in source files
 
 ### Embedded Markdown in Python
@@ -474,61 +529,6 @@ preflight: |
 
 Yamark sends the scalar to the configured formatter and re-indents the result in
 the YAML block.
-
-### Markdown links, footnotes, and tables
-
-Long inline links are split at Markdown syntax boundaries. Footnote
-definitions wrap under the marker unless the document or CLI asks to
-preserve them.
-
-:::: {.showcase-before-after}
-**Before**
-
-```markdown
-Please be mindful of our [code of conduct](https://github.com/quarto-dev/quarto-cli/blob/main/.github/CODE_OF_CONDUCT.md) as you interact with other community members.
-
-Body text with a footnote.[^long]
-
-[^long]: This footnote explains that comments were removed because people used comments to hold parsing directives and enough extra words to wrap.
-```
-
-**After**
-
-```markdown
-Please be mindful of our [code of conduct](
-  https://github.com/quarto-dev/quarto-cli/blob/main/.github/CODE_OF_CONDUCT.md
-) as you interact with other community members.
-
-Body text with a footnote.[^long]
-
-[^long]: This footnote explains that comments were removed because
-  people used comments to hold parsing directives and enough extra words
-  to wrap.
-```
-::::
-
-Simple GFM pipe tables are aligned by display width. Git clean/smudge filters
-always use compact pipe-table output.
-
-:::: {.showcase-before-after}
-**Before**
-
-```markdown
-| package | label |
-|---|---|
-| dplyr | tidy |
-| tidyr | pivoting |
-```
-
-**After**
-
-```markdown
-| package | label    |
-| ------- | -------- |
-| dplyr   | tidy     |
-| tidyr   | pivoting |
-```
-::::
 
 ---
 

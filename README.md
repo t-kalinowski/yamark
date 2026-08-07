@@ -6,6 +6,8 @@ blocks, YAML scalars, and marked strings or comments in Python and R.
 Embedded Python, R, JSON, and web code can be sent to Ruff, Air,
 Prettier, or another configured formatter.
 
+It rewrites supported regions and preserves unsupported input.
+
 See the [documentation](https://t-kalinowski.github.io/yamark/) for
 examples, configuration, editor integrations, and the full syntax
 reference.

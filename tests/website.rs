@@ -409,10 +409,37 @@ fn website_includes_homepage_and_examples_content() {
     assert!(examples.contains("agents:"));
     assert!(examples.contains("### Collapse to flow by typing a bracket"));
     assert!(examples.contains("### Recursive Markdown code fences"));
-    assert!(examples.contains("### Markdown links, footnotes, and tables"));
+    let markdown_documents = examples
+        .find("\n## Markdown links, footnotes, and tables\n")
+        .expect("Markdown document examples should have a top-level section");
+    let markdown_in_source = examples
+        .find("\n## Markdown in source files\n")
+        .expect("source-file examples should have a top-level section");
+    assert!(markdown_documents < markdown_in_source);
 
     assert!(styles.contains(".before-after"));
     assert!(styles.contains(".showcase-before-after"));
+}
+
+#[test]
+fn public_docs_describe_formatting_boundaries_consistently() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let readme = fs::read_to_string(root.join("README.md")).unwrap();
+    let vscode = fs::read_to_string(root.join("editors/vscode/README.md")).unwrap();
+    let vscode_prose = vscode.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(readme.contains("It rewrites supported regions and preserves unsupported input."));
+    for statement in [
+        "Yamark formats `#|` hashpipe YAML comment blocks and explicitly marked targets",
+        "It preserves the surrounding source code.",
+        "Embedded target formatting and whole-document chaining have different scopes.",
+        "`yamark.nextFormatterExecutable` instead receives Yamark's full document output",
+    ] {
+        assert!(
+            vscode_prose.contains(statement),
+            "VS Code documentation should explain: {statement}"
+        );
+    }
 }
 
 #[test]

@@ -102,16 +102,18 @@ Opt into R Markdown, R, or Python files by adding extensions:
 }
 ```
 
-For R and Python, Yamark formats explicitly marked embedded Markdown
-strings inside the source file. It can also run a language formatter
-after Yamark when that formatter exposes a stdin/stdout CLI. See
-"Composing with native formatters" below.
+For R and Python, Yamark formats `#|` hashpipe YAML comment blocks and
+explicitly marked targets: Markdown comment blocks and string literals,
+or string literals marked for an embedded formatter. It preserves the
+surrounding source code. To format the whole source document as well,
+configure a follow-up formatter; see "Composing with native formatters"
+below.
 
 ## Yamark config for embedded formatters
 
-Yamark can also format explicitly marked embedded targets through
-`yamark.toml`. In this repository, embedded formatter entries use
-`[embedded.<name>]` with a `formatter = ...` value:
+`yamark.toml` can configure the formatter used for an explicit embedded
+target. Embedded formatter entries use `[embedded.<name>]` with a
+`formatter = ...` value:
 
 ```toml
 [embedded.python]
@@ -170,12 +172,14 @@ extension API.
 
 ## Composing with native formatters
 
-Yamark only formats Markdown prose, YAML front matter, and embedded
-Markdown string literals inside source files. Each language has its own
-formatter for the surrounding code (Ruff for Python, Air for R, the
-Quarto extension's formatter for Quarto, rust-analyzer or rustfmt for
-Rust, etc.). Yamark can compose with those formatters only when they
-expose a stdin/stdout executable.
+Embedded target formatting and whole-document chaining have different
+scopes. An embedded formatter receives only its target inside a
+document. `yamark.nextFormatterExecutable` instead receives Yamark's
+full document output, so it can format the surrounding Python or R
+source afterward.
+
+The extension can chain one formatter only when it exposes a
+stdin/stdout executable. Ruff and Air are examples for Python and R.
 
 ### How the chain works
 
