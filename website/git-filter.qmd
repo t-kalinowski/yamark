@@ -12,15 +12,13 @@ The filter only applies to paths matched by Git attributes.
 
 ## Experimental status
 
-The Git filter is experimental and may change or be removed. The design idea is
-to normalize Markdown at the Git boundary: agents get a sentence-per-line form
-that is easier to diff and edit mechanically, while humans get column-wrapped
-files in the editor.
+The Git filter is experimental and may change or be removed. It stores
+sentence-per-line Markdown in Git while checking out column-wrapped files for
+editing.
 
-That boundary is imperfect. On checkout, Git writes the smudged working-tree
-view, so the working tree can still be rewritten into the human-facing format
-before an agent sees it. Treat this feature as a design experiment, not a stable
-repository policy.
+On checkout, Git applies the smudge filter before other tools read the working
+tree. Those tools therefore see the column-wrapped form, not the stored
+sentence-per-line form. Treat this feature as an experimental repository policy.
 
 ## Behavior
 

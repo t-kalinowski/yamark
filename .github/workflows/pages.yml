@@ -31,6 +31,20 @@ jobs:
         with:
           toolchain: "1.88"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install example formatters
+        run: |
+          uv tool install ruff==0.16.1
+          uv tool dir --bin >> "$GITHUB_PATH"
+          npm install --global prettier@3.8.3
+
       - name: Install R
         uses: r-lib/actions/setup-r@v2
 

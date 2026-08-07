@@ -12,9 +12,9 @@ source("_benchmark-data.R")
 
 `r bigfile_headline()` `r directory_headline()`
 
-There is one comparison per input kind, and each lists every tool whose own
-CLI formats that input natively, used simply: no formatting options, no
-shims, no adapters. The tool roster therefore differs by input kind.
+There is one comparison per input kind. Each table includes the tools in this
+harness whose own CLI accepts that input, with no formatting options, shims, or
+adapters. The tool roster therefore differs by input kind.
 
 ::: {.panel-tabset}
 
@@ -69,9 +69,9 @@ write_table(
 
 The harness derives that column from the output bytes: trailing-whitespace
 trimming does not count as formatting. `dprint`'s Markdown plugin passes
-front matter through unformatted, and `mdformat` (installed without its
-front-matter plugin) reads the opening `---` as a thematic break and
-corrupts the block.
+front matter through unformatted. `mdformat`, installed without its front-matter
+plugin, reads the opening `---` as a thematic break and does not preserve the
+front matter delimiters.
 
 ## Directory
 
@@ -105,7 +105,7 @@ write_table(directory_table, align = c("l", "r", "r", "r", "r"))
 
 Yamark formats the directory in parallel (as do `deno-fmt` and `dprint`),
 so wall time can beat user CPU time; the User CPU column is the
-single-core comparison, and yamark is fastest on that column too.
+single-core comparison, and Yamark is fastest on that column too.
 Throughput is input MB/s.
 
 :::
@@ -113,13 +113,13 @@ Throughput is input MB/s.
 ## How to read these results
 
 Every number comes from the same harness (`tools/bench/big.py` and
-`tools/bench/run.py` in the repository), running each tool the way a user
-would: its own CLI, default configuration, no formatting options, against
-deterministic generated corpora. The comparison set is the other formatters
-in the space - `r compared_tools_inline()`.
+`tools/bench/run.py` in the repository). It runs each included tool through its
+own CLI with default configuration and no formatting options against
+deterministic generated corpora. The current tool set is
+`r compared_tools_inline()`.
 
-Two harness details keep that comparison clean without changing how any
-tool is invoked:
+Two harness details prevent cached work or plugin defaults from affecting the
+comparison without changing how any tool is invoked:
 
 - `panache` and `dprint` cache format results. The harness redirects each
   tool's cache into the benchmark work directory and clears it between
@@ -129,9 +129,8 @@ tool is invoked:
   names its first-party plugin for the input kind (Markdown or YAML) and
   sets nothing else.
 
-Lint fixers with an autofix mode (`pymarkdown`, `markdownlint-cli2`) are
-not formatters, so they are not part of the comparison. The harness can
-still run them via `--tools`.
+Lint fixers with an autofix mode (`pymarkdown`, `markdownlint-cli2`) are outside
+this formatter-CLI comparison. The harness can still run them via `--tools`.
 
 Measured on a MacBook Pro (`r host_inline()`). `r tool_versions_block()`
 

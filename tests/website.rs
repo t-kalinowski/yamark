@@ -1,3 +1,4 @@
+use assert_cmd::Command;
 use std::fs;
 use std::path::Path;
 
@@ -76,7 +77,7 @@ fn public_repo_metadata_is_ready() {
     assert!(license.contains("Copyright (c) 2026 Tomasz Kalinowski"));
 
     for field in [
-        r#"description = "Format YAML and Markdown with yamark.""#,
+        r#"description = "An extremely fast formatter for YAML and Markdown, written in Rust.""#,
         r#"repository = "https://github.com/t-kalinowski/yamark""#,
         r#"homepage = "https://t-kalinowski.github.io/yamark/""#,
         r#"readme = "README.md""#,
@@ -89,7 +90,9 @@ fn public_repo_metadata_is_ready() {
         !pyproject.contains("Add your description here"),
         "pyproject description should not be a template placeholder"
     );
-    assert!(pyproject.contains("description = \"Format YAML and Markdown with yamark.\""));
+    assert!(pyproject.contains(
+        "description = \"An extremely fast formatter for YAML and Markdown, written in Rust.\""
+    ));
     assert!(pyproject.contains("[build-system]"));
     assert!(pyproject.contains(r#"build-backend = "maturin""#));
     assert!(pyproject.contains("[tool.maturin]"));
@@ -265,6 +268,13 @@ fn github_pages_workflow_publishes_website() {
 fn website_social_images_exist() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
+    assert!(config.contains("image: assets/social-card.svg"));
+    assert!(!config.contains("image: assets/favicon.svg"));
+
+    let social_card = fs::read_to_string(root.join("assets/social-card.svg")).unwrap();
+    assert!(social_card.contains(r#"viewBox="0 0 1200 630""#));
+    assert!(social_card.contains("Markdown and YAML are source files too."));
+
     let mut expected = Vec::new();
     for line in config.lines() {
         let trimmed = line.trim();
@@ -307,11 +317,11 @@ fn website_includes_benchmarks_page() {
     assert!(benchmarks.contains("--files 500 --items 540"));
     assert!(benchmarks.contains("MacBook Pro"));
 
-    // The page must say, in visible prose, why the lint fixers are not part
-    // of the comparison - not bury them in a comment.
+    // The page must say, in visible prose, why the lint fixers are outside
+    // this comparison instead of burying the scope choice in a comment.
     assert!(benchmarks.contains("pymarkdown"));
     assert!(benchmarks.contains("markdownlint-cli2"));
-    assert!(benchmarks.contains("not formatters"));
+    assert!(benchmarks.contains("formatter-CLI comparison"));
 
     // Cache handling is a disclosed part of the methodology.
     assert!(benchmarks.contains("cache"));
@@ -361,16 +371,77 @@ fn website_includes_benchmarks_page() {
 fn website_homepage_has_visual_landing_sections() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let index = fs::read_to_string(root.join("index.qmd")).unwrap();
+    let rendered = fs::read_to_string(root.join("index.html.md")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
     assert!(index.contains("assets/favicon.svg"));
     assert!(index.contains("hero-shell"));
-    assert!(index.contains("terminal-window"));
+    assert!(index.contains("hero-thesis"));
+    assert!(index.contains("hero-command"));
+    assert!(!index.contains("hero-coverage"));
+    assert!(!index.contains("hero-specimen"));
+    assert!(!index.contains("hero-diff"));
+    assert!(!index.contains("terminal-window"));
     assert!(index.contains("workflow-strip"));
+    assert!(!index.contains("[Beta]{.status-chip}"));
+    assert!(rendered.contains("Format Markdown and YAML wherever they live."));
+    assert!(
+        rendered.contains(
+            "<h2 class=\"hero-thesis\">Format Markdown and YAML wherever they live.</h2>"
+        )
+    );
+    assert!(!rendered.contains("class=\"level2 hero-thesis\""));
+    assert!(!rendered.contains("hero-coverage"));
+    assert!(!rendered.contains("hero-specimen"));
+    assert!(!styles.contains(".status-chip"));
     assert!(styles.contains("--yamark-ink"));
     assert!(styles.contains(".hero-shell"));
-    assert!(styles.contains(".terminal-window"));
+    assert!(styles.contains(".hero-thesis"));
+    assert!(styles.contains(".hero-command"));
+    assert!(!styles.contains(".hero-coverage"));
+    assert!(!styles.contains(".hero-specimen"));
+    assert!(!styles.contains(".hero-diff"));
+    assert!(!styles.contains(".terminal-window"));
     assert!(styles.contains(".workflow-strip"));
+
+    let mobile = styles
+        .split("@media (max-width: 560px)")
+        .nth(1)
+        .expect("website should have narrow-screen styles");
+    assert!(mobile.contains(".hero-command"));
+    assert!(mobile.contains("flex-direction: column"));
+}
+
+#[test]
+fn website_homepage_leads_with_purpose_and_scope() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let index = fs::read_to_string(root.join("index.qmd")).unwrap();
+    let rendered = fs::read_to_string(root.join("index.html.md")).unwrap();
+    let rendered_prose = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    for text in [
+        "Format Markdown and YAML wherever they live.",
+        "uvx yamark format",
+    ] {
+        assert!(rendered.contains(text), "homepage should include {text:?}");
+    }
+    assert!(rendered_prose.contains(
+        "Yamark formats whole files and embedded content with the consistency we expect from code, keeping source readable and changes easy to review."
+    ));
+    assert!(!rendered.contains("<ul class=\"hero-coverage\""));
+    assert!(!rendered.contains("documentation, configuration, prompts, and agent instructions"));
+    assert!(!index.contains("label: hero-example"));
+    assert!(!index.contains("emit_hero_specimen"));
+    assert!(!rendered.contains("files scanned"));
+}
+
+#[test]
+fn website_code_blocks_reset_quarto_wrapper_margins() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let styles = fs::read_to_string(root.join("styles.css")).unwrap();
+    let styles = styles.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(styles.contains(".code-copy-outer-scaffold div.sourceCode { border: 0; margin: 0; }"));
 }
 
 #[test]
@@ -388,25 +459,75 @@ fn public_docs_show_pypi_commands() {
 }
 
 #[test]
-fn website_includes_imported_homepage_and_showcase_content() {
+fn website_includes_homepage_and_examples_content() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let index = fs::read_to_string(root.join("index.qmd")).unwrap();
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
 
-    assert!(index.contains("Yamark formats every layer of a Markdown file"));
+    let index_prose = index
+        .replace("&nbsp;", " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(index.contains("Format Markdown and YAML wherever they live."));
+    assert!(index_prose.contains(
+        "Yamark formats whole files and embedded content with the consistency we expect from code, keeping source readable and changes easy to review."
+    ));
+    assert!(!index.contains("Markdown and YAML are source files too."));
+    assert!(!index.contains("they hold documentation, configuration"));
+    assert!(index_prose.contains(
+        "Here is a Markdown file with YAML front matter, a long paragraph, and a nested list. Yamark formats the YAML and Markdown in one pass. The first pane shows the input; the second shows what `yamark format` writes back."
+    ));
+    assert!(!index.contains("YAML and Markdown often share a file."));
+    assert!(index.contains("**Recurse**"));
+    assert!(index.contains("### Nested content"));
+    assert!(!index.contains("**Dispatch**"));
+    assert!(!index.contains("### Nested formatters"));
+    assert!(!index.contains("language models"));
+    assert!(!index.contains("hero-coverage"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("feature-grid"));
     assert!(!index.contains("## The pitch"));
 
-    assert!(examples.contains("## Markdown-valued YAML scalars"));
-    assert!(examples.contains("## Collapse to flow by typing a bracket"));
-    assert!(examples.contains("## Recursive Markdown code fences"));
-    assert!(examples.contains("## Markdown links, footnotes, and tables"));
+    assert!(examples.contains("### Markdown-valued YAML scalars"));
+    assert!(examples.contains("REVIEW_PROMPT"));
+    assert!(examples.contains("agents:"));
+    assert!(examples.contains("### Collapse to flow by typing a bracket"));
+    assert!(examples.contains("### Recursive Markdown code fences"));
+    let markdown_documents = examples
+        .find("\n## Markdown links, footnotes, and tables\n")
+        .expect("Markdown document examples should have a top-level section");
+    let markdown_in_source = examples
+        .find("\n## Markdown in source files\n")
+        .expect("source-file examples should have a top-level section");
+    assert!(markdown_documents < markdown_in_source);
 
     assert!(styles.contains(".before-after"));
     assert!(styles.contains(".showcase-before-after"));
+}
+
+#[test]
+fn public_docs_describe_formatting_boundaries_consistently() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let readme = fs::read_to_string(root.join("README.md")).unwrap();
+    let vscode = fs::read_to_string(root.join("editors/vscode/README.md")).unwrap();
+    let vscode_prose = vscode.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(readme.contains("It rewrites supported regions and preserves unsupported input."));
+    assert!(readme.contains("For supported embedded code, Yamark can also call"));
+    for statement in [
+        "Yamark formats `#|` hashpipe YAML comment blocks and explicitly marked targets",
+        "It preserves the surrounding source code.",
+        "Embedded target formatting and whole-document chaining have different scopes.",
+        "`yamark.nextFormatterExecutable` instead receives Yamark's full document output",
+    ] {
+        assert!(
+            vscode_prose.contains(statement),
+            "VS Code documentation should explain: {statement}"
+        );
+    }
 }
 
 #[test]
@@ -536,8 +657,9 @@ fn website_documents_cli_help_on_dedicated_page() {
     assert!(usage.contains("[CLI Help](cli-help.qmd)"));
     assert!(not_found.contains("[CLI Help](cli-help.qmd)"));
     assert!(cli_help.contains("title: CLI Help"));
-    assert!(cli_help.contains("yamark_bin <- Sys.getenv(\"YAMARK_BIN\", unset = \"\")"));
+    assert!(cli_help.contains("source(\"_yamark-build.R\")"));
     assert!(cli_help.contains("yamark_help <- function(...)"));
+    assert!(cli_help.contains("NO_COLOR="));
     for invocation in [
         "yamark_help()",
         "yamark_help(\"format\")",
@@ -562,7 +684,7 @@ fn website_documents_cli_help_on_dedicated_page() {
 
     for term in [
         "class=\"yamark-cli-help\"",
-        "An ultra-fast YAML and Markdown formatter",
+        "An extremely fast formatter for YAML and Markdown",
         "Usage:",
         "Commands:",
         "yamark git-filter setup",
@@ -577,6 +699,74 @@ fn website_documents_cli_help_on_dedicated_page() {
         !rendered_cli_help.contains("\u{1b}["),
         "rendered CLI help should be converted to HTML spans, not raw ANSI escapes"
     );
+    for style in [
+        "color: #5555FF",
+        "color: #00BBBB",
+        "color: #555555",
+        "font-weight: bold",
+    ] {
+        assert!(
+            rendered_cli_help.contains(style),
+            "rendered CLI help should contain {style}"
+        );
+    }
+}
+
+#[test]
+fn website_renders_examples_with_one_current_yamark_binary() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let helper = fs::read_to_string(root.join("_yamark-build.R")).unwrap();
+
+    assert!(helper.contains("YAMARK_BIN"));
+    assert!(helper.contains("cargo"));
+    assert!(helper.contains("--release"));
+    assert!(helper.contains(r#"file.path("..", "target", "release", yamark_exe)"#));
+    assert!(helper.contains("yamark_format <- function"));
+
+    for file in ["index.qmd", "examples.qmd", "reference.qmd", "cli-help.qmd"] {
+        let contents = fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            contents.contains("source(\"_yamark-build.R\")"),
+            "{file} should resolve Yamark through the shared site helper"
+        );
+        assert!(
+            !contents.contains("target\", \"debug"),
+            "{file} should not select a debug build"
+        );
+    }
+
+    let reference = fs::read_to_string(root.join("reference.qmd")).unwrap();
+    let rendered_reference = fs::read_to_string(root.join("reference.html.md")).unwrap();
+    assert!(reference.contains("reference_before_after("));
+    let output = Command::cargo_bin("yamark")
+        .unwrap()
+        .args(["format", "--wrap", "72", "--stdin-file-path", "layout.yaml"])
+        .write_stdin("tags: [\n  - yaml\n  - markdown\n  - docs\n")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let expected = String::from_utf8(output.stdout).unwrap();
+    assert!(rendered_reference.contains(expected.trim_end()));
+    assert!(!rendered_reference.contains("tags: [llm, authoring, formats]"));
+}
+
+#[test]
+fn public_docs_do_not_advertise_verify() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for file in [
+        "README.md",
+        "website/cli-help.html.md",
+        "website/examples.qmd",
+        "website/index.qmd",
+        "website/reference.qmd",
+        "website/usage.qmd",
+    ] {
+        let contents = fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            !contents.contains("--verify"),
+            "{file} should not advertise the internal verification option"
+        );
+    }
 }
 
 #[test]
@@ -643,8 +833,8 @@ fn website_documents_editor_and_git_filter_integrations() {
         "## Experimental status",
         "The Git filter is experimental",
         "may change or be removed",
-        "normalize Markdown at the Git boundary",
-        "working tree can still be rewritten",
+        "sentence-per-line Markdown in Git",
+        "tools therefore see the column-wrapped form",
         "yamark git-filter clean",
         "yamark git-filter smudge",
         "yamark git-filter adopt",
@@ -674,18 +864,32 @@ fn website_documents_editor_and_git_filter_integrations() {
 
 #[test]
 fn website_showcase_generates_after_examples_with_yamark() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = project_root.join("website");
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
+    let helper = fs::read_to_string(root.join("_yamark-build.R")).unwrap();
     let rendered = fs::read_to_string(root.join("examples.html.md")).unwrap();
+    let pages = fs::read_to_string(project_root.join(".github/workflows/pages.yml")).unwrap();
 
     assert!(examples.contains("# fmt: skip file"));
     assert!(examples.contains("<!-- fmt: skip file -->"));
     assert!(rendered.contains("# fmt: skip file"));
     assert!(rendered.contains("<!-- fmt: skip file -->"));
     assert!(examples.contains("showcase_before_after <- function"));
-    assert!(examples.contains("system2("));
-    assert!(examples.contains("\"yamark\""));
+    assert!(examples.contains("yamark_format("));
     assert!(examples.contains("showcase_before_after("));
+    assert!(helper.contains("system2("));
+    assert!(helper.contains("yamark_bin"));
+
+    for command in [
+        "uv tool install ruff==0.16.1",
+        "npm install --global prettier@3.8.3",
+    ] {
+        assert!(
+            pages.contains(command),
+            "Pages should install the formatter used by generated examples: {command}"
+        );
+    }
 }
 
 #[test]

@@ -1,41 +1,34 @@
 ---
 title: Yamark
-description: An extremely fast formatter for YAML and Markdown, written in Rust.
 toc: false
 ---
+
+
 
 ::: {.hero-shell}
 ::: {.hero-copy}
 ::: {.hero-kicker}
 ![](assets/favicon.svg){.hero-mark}
-[Beta]{.status-chip}
 :::
 
-Yamark formats every layer of a Markdown file in one pass: prose rewraps, YAML
-frontmatter tidies, and fenced code goes to its language's formatter -
-recursively, all the way down. It formats Markdown wherever it lives: `.md` and
-`.qmd` files, YAML scalars, and marked strings or comments in Python and R
-source. Pass `--verify` to reparse changed YAML and reject invalid or
-value-changing output.
+<h2 class="hero-thesis">Format Markdown and YAML wherever they live.</h2>
+
+Yamark formats whole files and embedded content with the consistency we expect
+from code, keeping source readable and changes easy to review.
+
+::: {.hero-proof}
+Fast, deterministic, and written in Rust.
+:::
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}
 [See examples](examples.qmd){.hero-button}
-[Benchmarks](benchmarks.qmd){.hero-button}
-:::
 :::
 
-::: {.terminal-window}
-::: {.terminal-chrome}
-<span>yamark format</span>
+::: {.hero-command}
+<span>Run directly from PyPI</span>
+`uvx yamark format`
 :::
-
-```sh
-$ yamark format config.yaml docs/
-format config.yaml
-format docs/index.md
-format docs/reference.qmd
-```
 :::
 :::
 
@@ -55,23 +48,21 @@ Use non-mutating CI and diff modes.
 ::: {.workflow-item}
 **Embed**
 
-Format marked Markdown in Python or R.
+Format marked Markdown in YAML, Python, or R.
 :::
 
 ::: {.workflow-item}
 **Recurse**
 
-Format YAML and Markdown inside fences.
+Format nested YAML and Markdown inside fenced blocks.
 :::
 :::
-
-
 
 ## A quick example
 
-A short Markdown file with YAML frontmatter - the shape of most skills, prompts,
-and LLM-readable docs. The first pane is the file as typed; the second is what
-`yamark format` writes back.
+Here is a Markdown file with YAML front matter, a long paragraph, and a nested
+list. Yamark formats the YAML and Markdown in one pass. The first pane shows the
+input; the second shows what `yamark format` writes back.
 
 
 
@@ -82,22 +73,20 @@ and LLM-readable docs. The first pane is the file as typed; the second is what
 ```markdown
 ---
 title: Why YAML + Markdown?
-description: Token-efficient and human-readable, structured enough for programs and free-form enough for prose - the lingua franca between people and language models.
-tags: [llm, authoring, formats]
+description: Structured fields for software alongside prose, instructions, examples, and code for readers.
+tags: [documentation,configuration,formatting]
 ---
 
-# Why YAML + Markdown?
+#   Why YAML + Markdown? ##
 
-YAML and Markdown are the closest thing the web has to a native interface between humans and language models: cheap to tokenize, easy to read, and trivial to render. The frontmatter holds the metadata your code wants to query; the body holds the prose people and models want to write.
+YAML front matter and a Markdown body let one file serve readers and software. The front matter carries fields a program can inspect; the body carries prose that people can edit and review in a diff.
 
-Where the combination shines:
+This shape is useful for:
 
-- Skills and prompt files where typed frontmatter sits next to free-form instructions in one diffable file.
-  - Agent skills, OpenAI custom GPT instructions, and Cursor rules all follow this shape.
-  - The body can carry code samples and nested Markdown structures with their own escapes and indentation.
-- Retrieval and RAG corpora that humans author and models consume without a build step.
-- Tool inputs and outputs that round-trip through chat UIs and stay recognizable after the model rewrites them.
-- Authoring pipelines that render the same source to HTML, PDF, and agent context, with no template engine in the middle.
+- Repository documents that need to render for readers and remain easy for tools to inspect.
+  - The body can carry examples and nested Markdown structures.
+- Prompts and agent instructions where metadata sits next to free-form text.
+- Text that moves between documentation, configuration, and tool input without a separate source format.
 ```
 
 :::
@@ -109,42 +98,32 @@ Where the combination shines:
 ---
 title: Why YAML + Markdown?
 description: >-
-  Token-efficient and human-readable, structured enough for programs and
-  free-form enough for prose - the lingua franca between people and
-  language models.
-tags: [llm, authoring, formats]
+  Structured fields for software alongside prose, instructions, examples,
+  and code for readers.
+tags: [documentation, configuration, formatting]
 ---
 
 # Why YAML + Markdown?
 
-YAML and Markdown are the closest thing the web has to a native
-interface between humans and language models: cheap to tokenize, easy to
-read, and trivial to render. The frontmatter holds the metadata your
-code wants to query; the body holds the prose people and models want to
-write.
+YAML front matter and a Markdown body let one file serve readers and
+software. The front matter carries fields a program can inspect; the
+body carries prose that people can edit and review in a diff.
 
-Where the combination shines:
+This shape is useful for:
 
-- Skills and prompt files where typed frontmatter sits next to free-form
-  instructions in one diffable file.
-  - Agent skills, OpenAI custom GPT instructions, and Cursor rules all
-    follow this shape.
-  - The body can carry code samples and nested Markdown structures with
-    their own escapes and indentation.
-- Retrieval and RAG corpora that humans author and models consume
-  without a build step.
-- Tool inputs and outputs that round-trip through chat UIs and stay
-  recognizable after the model rewrites them.
-- Authoring pipelines that render the same source to HTML, PDF, and
-  agent context, with no template engine in the middle.
+- Repository documents that need to render for readers and remain easy
+  for tools to inspect.
+  - The body can carry examples and nested Markdown structures.
+- Prompts and agent instructions where metadata sits next to free-form
+  text.
+- Text that moves between documentation, configuration, and tool input
+  without a separate source format.
 ```
 :::
 ::::
 
-Toggle soft wrap on the Before pane to see what the raw file actually looks
-like. Yamark wraps each region the way its grammar expects: folded scalars at
-their column, prose at a comfortable width, and list continuations indented
-under their bullets.
+Toggle soft wrap on the Before pane to inspect the input's physical lines.
+Yamark wraps and indents each region according to its own grammar.
 
 ```{=html}
 <script>
@@ -161,24 +140,23 @@ under their bullets.
 
 ::: {.feature-grid}
 ::: {.feature}
-### One command
+### Mixed documents
 
-Run `yamark format` on a file, a folder, or the whole repository. The same
-command also reads from stdin and runs in CI or editor integrations.
+Format YAML front matter and the Markdown body with one command.
 :::
 
 ::: {.feature}
 ### Rewrap after writing
 
 Edit Markdown prose, YAML descriptions, prompt bodies, and front matter without
-hand-maintaining line breaks.
+maintaining line breaks by hand.
 :::
 
 ::: {.feature}
-### Optional verification
+### Nested content
 
-Use `--verify` to reparse changed YAML regions and reject invalid or
-value-changing output before writing.
+Format YAML and Markdown recursively, and send supported embedded code to its
+own formatter when configured.
 :::
 :::
 
@@ -186,9 +164,7 @@ value-changing output before writing.
 
 
 
-**Yamark formats a 4 MB Markdown document in 106 ms and a 4 MB YAML file in 75 ms.** The next-fastest tool on each is `dprint-markdown` (326 ms) and `yamlfmt` (193 ms). On a directory of 500 YAML files (50 MB), yamark finishes in 137 ms; the next-fastest formatter, `deno-fmt`, takes 2.6 s.
+**Yamark formats a 4 MB Markdown document in 109 ms and a 4 MB YAML file in 69 ms.** The next-fastest tool on each is `dprint-markdown` (349 ms) and `yamlfmt` (187 ms). On a directory of 500 YAML files (50 MB), Yamark finishes in 133 ms; the next-fastest formatter, `deno-fmt`, takes 2.6 s.
 
-Same harness, same input, every tool's own CLI used simply, and
-the median of 3 measured runs after 1 warmup run. Full tables per input kind - Markdown, YAML,
-Markdown with front matter, and a directory tree - plus methodology and
-reproduce commands are on the [Benchmarks](benchmarks.qmd) page.
+The [Benchmarks](benchmarks.qmd) page has the full tables, methodology, checked-in
+results, and reproduction commands.

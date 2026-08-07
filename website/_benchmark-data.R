@@ -392,7 +392,7 @@ bigfile_headline <- function() {
 
 directory_headline <- function() {
   sprintf(
-    "On a directory of %d YAML files (%s), yamark finishes in %s; the next-fastest formatter, `%s`, takes %s.",
+    "On a directory of %d YAML files (%s), Yamark finishes in %s; the next-fastest formatter, `%s`, takes %s.",
     flow_directory_rows$files[[1]],
     fmt_mb_round(flow_directory_rows$corpus_bytes[[1]]),
     fmt_duration(directory_yamark_seconds),
@@ -401,7 +401,7 @@ directory_headline <- function() {
   )
 }
 
-# Inline comma-separated roster of every tool yamark is compared against.
+# Inline comma-separated roster of every tool Yamark is compared against.
 compared_tools_inline <- function() {
   tools <- sort(unique(c(markdown_formatters, yaml_formatters)))
   tools <- setdiff(tools, "yamark")

@@ -14,6 +14,7 @@
   --yamark-ansi-green: #007f3b;
   --yamark-ansi-blue: #2f49a3;
   --yamark-ansi-yellow: #7c5f00;
+  --yamark-ansi-gray: #52616b;
 }
 
 body.quarto-dark {
@@ -32,6 +33,7 @@ body.quarto-dark {
   --yamark-ansi-green: #5fe084;
   --yamark-ansi-blue: #9eb6ff;
   --yamark-ansi-yellow: #ecd46b;
+  --yamark-ansi-gray: #aeb8be;
 }
 
 body {
@@ -104,22 +106,34 @@ body.quarto-dark h1 {
 }
 
 .hero-shell {
-  align-items: center;
   border-bottom: 1px solid var(--yamark-line);
   border-top: 1px solid var(--yamark-line);
-  display: grid;
-  gap: 2rem;
-  grid-template-columns: minmax(0, 1.1fr) minmax(22rem, 0.9fr);
   margin: 1.4rem 0 1.5rem;
-  padding: 2rem 0;
+  padding: 2.6rem 0;
+}
+
+.hero-copy {
+  max-width: 56rem;
+}
+
+.hero-thesis {
+  border: 0;
+  color: var(--yamark-ink);
+  font-size: clamp(2.1rem, 4.5vw, 3.35rem);
+  font-weight: 820;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  margin: 0;
+  max-width: 50rem;
+  padding: 0;
 }
 
 .hero-copy > p {
   color: var(--yamark-ink);
   font-size: 1.15rem;
   line-height: 1.7;
-  margin-bottom: 0;
-  max-width: 45rem;
+  margin: 1.15rem 0 0;
+  max-width: 50rem;
 }
 
 .hero-kicker {
@@ -135,16 +149,15 @@ body.quarto-dark h1 {
   width: 2.25rem;
 }
 
-.status-chip {
-  background: color-mix(in srgb, var(--yamark-gold) 13%, var(--yamark-surface));
-  border: 1px solid color-mix(in srgb, var(--yamark-gold) 36%, var(--yamark-line));
-  border-radius: 999px;
-  color: var(--yamark-gold);
-  display: inline-block;
-  font-size: 0.78rem;
-  font-weight: 800;
-  line-height: 1;
-  padding: 0.32rem 0.65rem;
+.hero-proof {
+  color: var(--yamark-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-top: 0.85rem;
+}
+
+.hero-proof p {
+  margin: 0;
 }
 
 .hero-actions {
@@ -188,56 +201,29 @@ body.quarto-dark .hero-button.primary {
   color: #061211;
 }
 
-.terminal-window {
-  background: var(--yamark-code);
-  border: 1px solid color-mix(in srgb, var(--yamark-line) 40%, #000000);
-  border-radius: 8px;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
-  overflow: hidden;
+.hero-command {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--yamark-surface) 72%, transparent);
+  border: 1px solid var(--yamark-line);
+  border-radius: 6px;
+  color: var(--yamark-muted);
+  display: inline-flex;
+  font-size: 0.82rem;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+  padding: 0.48rem 0.68rem;
 }
 
-.terminal-chrome {
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  color: #d1d5db;
-  display: flex;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  justify-content: space-between;
-  padding: 0.65rem 0.85rem;
+.hero-command p {
+  display: contents;
 }
 
-.terminal-chrome p {
-  margin: 0;
-}
-
-.terminal-window .code-copy-button {
-  display: none;
-}
-
-.terminal-window .code-copy-outer-scaffold,
-.terminal-window div.sourceCode,
-.terminal-window pre.sourceCode {
+.hero-command code {
   background: transparent;
-  border: 0;
-  margin: 0;
-}
-
-.terminal-window pre.sourceCode {
-  padding: 1rem 1.1rem 1.2rem;
-}
-
-.terminal-window code {
-  color: #f8fafc;
-  font-size: 0.92rem;
-}
-
-.terminal-window code span {
-  color: #f8fafc !important;
-}
-
-.terminal-window .ex {
-  color: var(--yamark-code-muted) !important;
+  color: var(--yamark-ink);
+  font-size: 0.9rem;
+  padding: 0;
+  white-space: nowrap;
 }
 
 .workflow-strip {
@@ -326,15 +312,16 @@ h3 {
   margin-bottom: 0;
 }
 
-:not(.terminal-window) > .code-copy-outer-scaffold,
+.code-copy-outer-scaffold,
 div.sourceCode {
   background: var(--yamark-surface);
   border: 1px solid var(--yamark-line);
   border-radius: 8px;
 }
 
-:not(.terminal-window) > .code-copy-outer-scaffold div.sourceCode {
+.code-copy-outer-scaffold div.sourceCode {
   border: 0;
+  margin: 0;
 }
 
 pre.sourceCode {
@@ -373,6 +360,10 @@ pre.yamark-cli-help span[style*="#00BBBB"] {
 
 pre.yamark-cli-help span[style*="#BBBB00"] {
   color: var(--yamark-ansi-yellow) !important;
+}
+
+pre.yamark-cli-help span[style*="#555555"] {
+  color: var(--yamark-ansi-gray) !important;
 }
 
 code {
@@ -607,10 +598,6 @@ table.perf-table th {
     font-size: 3rem;
   }
 
-  .hero-shell {
-    grid-template-columns: 1fr;
-  }
-
   .workflow-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -637,12 +624,23 @@ table.perf-table th {
 
 @media (max-width: 560px) {
   .hero-shell {
-    padding: 1.3rem 0;
+    padding: 1.6rem 0;
+  }
+
+  .hero-thesis {
+    font-size: 2rem;
   }
 
   .hero-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .hero-command {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
   }
 
   .hero-button {

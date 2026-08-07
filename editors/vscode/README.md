@@ -9,9 +9,26 @@ yamark format --stdin-file-path <file>
 It uses the public VS Code extension API, so it also works in Positron
 and compatible VS Code forks.
 
-## Requirements
+## Install
 
-Install `yamark` and make it available on `PATH`, or set:
+The extension is not yet published to an extension marketplace. Install the
+Yamark command from PyPI:
+
+```sh
+uv tool install yamark
+```
+
+Then install the extension from a checkout without bundling another binary:
+
+```sh
+cd editors/vscode
+YAMARK_BUNDLE=0 npm run install:local
+```
+
+For Positron, use `YAMARK_BUNDLE=0 npm run install:positron`. Reload the editor
+after installation. The extension runs `yamark` from `PATH` by default.
+
+To use another executable, set:
 
 ```json
 {
@@ -19,37 +36,21 @@ Install `yamark` and make it available on `PATH`, or set:
 }
 ```
 
-The extension can also use a bundled executable when a VSIX package includes
-one. Package platform-specific Yamark binaries under `bin/<platform>-<arch>/`
-and enable:
+## Bundled development build
 
-```json
-{
-  "yamark.useBundledExecutable": true
-}
-```
-
-`yamark.useBundledExecutable` defaults to `false`, so a public install uses the
-`yamark` executable from `PATH` unless configured otherwise.
-
-## Local Development Install
-
-Build a VSIX with the current local Yamark binary bundled:
-
-```sh
-npm run build:dev
-```
-
-Install into VS Code:
+For extension development, build and install a VSIX with the current local
+Yamark binary bundled. This requires Rust 1.88 or newer:
 
 ```sh
 npm run install:local
 ```
 
-Install into Positron:
+Use `npm run install:positron` for Positron. Then enable the bundled executable:
 
-```sh
-npm run install:positron
+```json
+{
+  "yamark.useBundledExecutable": true
+}
 ```
 
 Use `CODE_BIN` for a custom Positron path or another VS Code-compatible
@@ -61,16 +62,16 @@ CODE_BIN=codium npm run install:local
 CODE_BIN=cursor npm run install:local
 ```
 
-Without a command line launcher, run `npm run build:dev`, then use
+To build the VSIX without installing it, run `npm run build:dev`. Without a
+command-line launcher, use
 `Extensions: Install from VSIX...` and select
 `target/vscode/yamark-dev.vsix`.
 
-The dev package builds the local `yamark` package and bundles
-`target/release/yamark` by default. Use `YAMARK_PROFILE=debug` to bundle
-the debug build, or `YAMARK_BUNDLE=0` to build the extension package
-without copying a binary.
+The development package builds and bundles `target/release/yamark` by default.
+Use `YAMARK_PROFILE=debug` to bundle the debug build, or `YAMARK_BUNDLE=0` to
+build the extension without copying a binary.
 
-## File Extensions
+## File extensions
 
 Open `Preferences: Open User Settings (JSON)` in VS Code. The examples
 below are complete `settings.json` files. If your settings file already
@@ -101,16 +102,18 @@ Opt into R Markdown, R, or Python files by adding extensions:
 }
 ```
 
-For R and Python, Yamark formats explicitly marked embedded Markdown
-strings inside the source file. It can also run a language formatter
-after Yamark when that formatter exposes a stdin/stdout CLI. See
-"Composing With Native Formatters" below.
+For R and Python, Yamark formats `#|` hashpipe YAML comment blocks and
+explicitly marked targets: Markdown comment blocks and string literals,
+or string literals marked for an embedded formatter. It preserves the
+surrounding source code. To format the whole source document as well,
+configure a follow-up formatter; see "Composing with native formatters"
+below.
 
-## Yamark Config For Embedded Formatters
+## Yamark config for embedded formatters
 
-Yamark can also format explicitly marked embedded targets through
-`yamark.toml`. In this repository, embedded formatter entries use
-`[embedded.<name>]` with a `formatter = ...` value:
+`yamark.toml` can configure the formatter used for an explicit embedded
+target. Embedded formatter entries use `[embedded.<name>]` with a
+`formatter = ...` value:
 
 ```toml
 [embedded.python]
@@ -123,12 +126,11 @@ formatter = "air"
 formatter = { command = ["tool", "--stdin-file-path", "{path}"], path_suffix = ".ext" }
 ```
 
-Do not use the old nested `[embedded.<name>.formatter]` table shape.
 This config belongs to Yamark itself; VS Code save-time composition with
 another formatter uses `yamark.nextFormatterExecutable` as described
 below.
 
-## Format And Save Behavior
+## Format and save behavior
 
 Yamark registers as a document formatting provider for the configured
 file extensions. To use it, set `editor.defaultFormatter` to
@@ -140,7 +142,7 @@ go through Yamark's provider.
 When Yamark also needs to compose with a stdin/stdout language
 formatter, see the next section.
 
-## Format Selection As Markdown
+## Format selection as Markdown
 
 Run `Yamark: Format Selection as Markdown` from the Command Palette to
 format only the active selection as Markdown. This command is useful for
@@ -152,7 +154,7 @@ Yamark leaves the document unchanged and reports `Yamark: no text
 selected.` in the status bar. The selected text is formatted as Markdown
 only; configured native formatter chains are not run for this command.
 
-## Git Filter Diffs
+## Git filter diffs
 
 VS Code's built-in unstaged preview compares the clean index blob with the
 smudged working-tree file. For files managed by `filter=yamark-md`, wrapping
@@ -168,16 +170,18 @@ This command does not replace VS Code's default row click or gutter markers.
 VS Code does not expose those parts of its Git integration through the public
 extension API.
 
-## Composing With Native Formatters
+## Composing with native formatters
 
-Yamark only formats Markdown prose, YAML frontmatter, and embedded
-Markdown string literals inside source files. Each language has its own
-formatter for the surrounding code (Ruff for Python, Air for R, the
-Quarto extension's formatter for Quarto, rust-analyzer or rustfmt for
-Rust, etc.). Yamark can compose with those formatters only when they
-expose a stdin/stdout executable.
+Embedded target formatting and whole-document chaining have different
+scopes. An embedded formatter receives only its target inside a
+document. `yamark.nextFormatterExecutable` instead receives Yamark's
+full document output, so it can format the surrounding Python or R
+source afterward.
 
-### How The Chain Works
+The extension can chain one formatter only when it exposes a
+stdin/stdout executable. Ruff and Air are examples for Python and R.
+
+### How the chain works
 
 Yamark supports one save-stable chaining shape:
 
@@ -234,7 +238,7 @@ The setting is an argv array, not a shell string. Put each executable
 and argument in its own array element; shell quoting and shell
 expansion are not applied.
 
-### Uniform Per-Language Shape
+### Uniform per-language shape
 
 Use the same shape inside `[<lang>]` for every language Yamark touches:
 
@@ -281,7 +285,7 @@ Ruff's extension bundles a stdin/stdout formatter executable:
 Disable the chain for a specific language (rarely needed) with
 `"yamark.runNextFormatter": false` inside the language block.
 
-### Common Setup
+### Common setup
 
 This complete `settings.json` enables Yamark for Markdown, YAML, Quarto,
 R Markdown, R, and Python. The R and Python blocks show executable
@@ -360,7 +364,7 @@ The common R Markdown language id is `rmd`. If VS Code shows a
 different language id in the status bar for `.Rmd` files, replace
 `[rmd]` with that id.
 
-### Adding A New Language
+### Adding a new language
 
 To compose Yamark with a new language's formatter:
 
@@ -374,42 +378,21 @@ To compose Yamark with a new language's formatter:
 
 No code change to Yamark is needed.
 
-### Removed Settings
-
-Older development builds exposed `yamark.formatOnSave`,
-`yamark.formatThenNextFormatter`, `yamark.nextFormatterCommand`, and
-`yamark.nextFormatterCommands`. They are no longer contributed by the
-extension, and command-based formatter chaining is ignored.
-
-Use VS Code's `editor.formatOnSave` and `editor.defaultFormatter` for
-save behavior. Use `yamark.nextFormatterExecutable` when Yamark should
-run a second stdin/stdout formatter after Yamark.
-
-## Inspecting Logs
+## Inspecting logs
 
 Yamark writes a structured trace of each format-on-save run to its own
 output channel. Open it with `View → Output → Yamark`, or run
 `Yamark: Show Log` from the command palette.
 
-Each format operation uses one `[format <id>]` correlation id. Start
-with the `document` entry: `uri`, `path`, `languageId`, `version`,
-`dirty`, and `trigger` show which document was formatted and whether
-the provider or `Yamark: Format Document` command started the run.
-
-Formatter entries use `formatter step=start|end|skip|error` with a
-`name` such as `vscode-provider`, `yamark`, `next-executable`, or
-`legacy-command`. The `edits`, `applied`, `captured`, `changed`, and
-byte-count fields show whether each formatter changed text, whether
-Yamark captured those edits for VS Code to apply, and whether a command
-run applied them directly. `suppression action=add|hit|remove` entries
-mark command-apply windows where reentrant provider calls intentionally
-return no edits.
+Each format operation has one `[format <id>]` correlation id. The log records
+the active document, Yamark arguments, optional follow-up formatter, whether
+text changed, and any error.
 
 For manual verification, install the development VSIX and check
 format-on-save plus `Yamark: Format Document` on `.py`, `.r`, `.R`,
 `.qmd`, `.md`, and `.yaml` files.
 
-## Extra Yamark Arguments
+## Extra Yamark arguments
 
 Pass formatter options through `yamark.extraArguments`:
 
