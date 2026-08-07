@@ -421,6 +421,10 @@ fn website_includes_homepage_and_examples_content() {
     assert!(index_prose.contains(
         "Markdown and YAML are source files too: they hold documentation, configuration, prompts, and agent instructions. Yamark gives them the consistent formatting we expect from code, wherever they appear."
     ));
+    assert!(index_prose.contains(
+        "Here is a Markdown file with YAML front matter, a long paragraph, and a nested list. Yamark formats the YAML and Markdown in one pass. The first pane shows the input; the second shows what `yamark format` writes back."
+    ));
+    assert!(!index.contains("YAML and Markdown often share a file."));
     assert!(index.contains("**Recurse**"));
     assert!(index.contains("### Nested content"));
     assert!(!index.contains("**Dispatch**"));

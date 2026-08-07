@@ -67,13 +67,9 @@ Format nested YAML and Markdown inside fenced blocks.
 
 ## A quick example
 
-YAML and Markdown often share a file. YAML carries fields software can inspect;
-Markdown carries prose, instructions, examples, and code. Yamark formats both
-layers together, much as a code formatter formats source.
-
-The file below deliberately combines a long YAML scalar, a long Markdown
-paragraph, and a nested list. The first pane is the input; the second is what
-`yamark format` writes back.
+Here is a Markdown file with YAML front matter, a long paragraph, and a nested
+list. Yamark formats the YAML and Markdown in one pass. The first pane shows the
+input; the second shows what `yamark format` writes back.
 
 
 
