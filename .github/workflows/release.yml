@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - v*.*.*
 
 permissions:
   contents: read
@@ -39,6 +39,16 @@ jobs:
               "editors/vscode/package.json": json.loads(
                   Path("editors/vscode/package.json").read_text()
               )["version"],
+              "Cargo.lock": next(
+                  package["version"]
+                  for package in tomllib.loads(Path("Cargo.lock").read_text())["package"]
+                  if package["name"] == "yamark"
+              ),
+              "uv.lock": next(
+                  package["version"]
+                  for package in tomllib.loads(Path("uv.lock").read_text())["package"]
+                  if package["name"] == "yamark"
+              ),
           }
 
           mismatches = {name: value for name, value in versions.items() if value != version}
@@ -106,9 +116,96 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  wheels:
+    name: Build wheel ${{ matrix.asset }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: x86_64-unknown-linux-gnu
+            manylinux: "2014"
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            asset: x86_64-apple-darwin
+            manylinux: off
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: aarch64-apple-darwin
+            manylinux: off
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: x86_64-pc-windows-msvc
+            manylinux: off
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.14.1
+          rust-toolchain: "1.88"
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --compatibility pypi --out dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install wheel
+        run: uv tool install --no-index --find-links dist yamark
+
+      - name: Smoke test wheel
+        if: runner.os != 'Windows'
+        run: '"$(uv tool dir --bin)/yamark" --help'
+
+      - name: Smoke test wheel on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $yamark = Join-Path (uv tool dir --bin) "yamark.exe"
+          & $yamark --help
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ matrix.asset }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    name: Build source distribution
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build source distribution
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          maturin-version: v1.14.1
+          rust-toolchain: "1.88"
+          args: --out dist
+
+      - name: Upload source distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
   release:
     name: Create GitHub release
-    needs: build
+    needs: [build, wheels, sdist]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -120,6 +217,7 @@ jobs:
       - name: Download archives
         uses: actions/download-artifact@v4
         with:
+          pattern: yamark-${{ github.ref_name }}-*
           path: dist
           merge-multiple: true
 
@@ -130,4 +228,27 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+        run: >-
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title
+          "$GITHUB_REF_NAME" --generate-notes
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [release, wheels, sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download Python distributions
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish Python distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

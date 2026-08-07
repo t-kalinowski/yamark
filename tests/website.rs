@@ -170,6 +170,72 @@ fn ci_runs_public_readiness_checks() {
 }
 
 #[test]
+fn package_versions_stay_in_sync() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cargo = fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let pyproject = fs::read_to_string(root.join("pyproject.toml")).unwrap();
+    let extension = fs::read_to_string(root.join("editors/vscode/package.json")).unwrap();
+    let cargo_lock = fs::read_to_string(root.join("Cargo.lock")).unwrap();
+    let uv_lock = fs::read_to_string(root.join("uv.lock")).unwrap();
+
+    let cargo: toml::Value = toml::from_str(&cargo).unwrap();
+    let pyproject: toml::Value = toml::from_str(&pyproject).unwrap();
+    let extension: serde_json::Value = serde_json::from_str(&extension).unwrap();
+    let version = cargo["package"]["version"].as_str().unwrap();
+
+    assert_eq!(pyproject["project"]["version"].as_str(), Some(version));
+    assert_eq!(extension["version"].as_str(), Some(version));
+    let package = format!("name = \"yamark\"\nversion = \"{version}\"");
+    assert!(cargo_lock.contains(&package));
+    assert!(uv_lock.contains(&package));
+}
+
+#[test]
+fn release_workflow_publishes_python_package() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let release = fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    let readme = fs::read_to_string(root.join("README.md")).unwrap();
+
+    for target in [
+        "x86_64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+    ] {
+        assert!(
+            release.contains(target),
+            "release workflow should build a Python wheel for {target}"
+        );
+    }
+    for contract in [
+        "PyO3/maturin-action@v1",
+        "manylinux: \"2014\"",
+        "--release --locked --compatibility pypi",
+        "command: sdist",
+        "uv tool install --no-index --find-links dist yamark",
+        r#""$(uv tool dir --bin)/yamark" --help"#,
+        "Join-Path (uv tool dir --bin)",
+        "needs: [build, wheels, sdist]",
+        "pattern: yamark-${{ github.ref_name }}-*",
+        "needs: [release, wheels, sdist]",
+        "pattern: python-*",
+        "environment: pypi",
+        "id-token: write",
+        "pypa/gh-action-pypi-publish@release/v1",
+        "packages-dir: dist/",
+    ] {
+        assert!(
+            release.contains(contract),
+            "release workflow should include {contract}"
+        );
+    }
+    assert!(
+        readme.contains("uvx yamark format"),
+        "README should document running the published package"
+    );
+}
+
+#[test]
 fn github_pages_workflow_publishes_website() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let pages = fs::read_to_string(root.join(".github/workflows/pages.yml")).unwrap();
@@ -308,16 +374,14 @@ fn website_homepage_has_visual_landing_sections() {
 }
 
 #[test]
-fn public_docs_keep_unpublished_uv_install_command_in_comments() {
+fn public_docs_show_pypi_commands() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let uv_install = concat!("uv tool install ", "yamark");
-    for file in ["website/index.qmd", "website/index.html.md"] {
+    for file in ["README.md", "website/usage.qmd", "website/usage.html.md"] {
         let contents = fs::read_to_string(root.join(file)).unwrap();
-        for line in contents.lines() {
-            let line = line.trim_start();
+        for command in ["uvx yamark format", "uv tool install yamark"] {
             assert!(
-                !line.contains(uv_install) || line.starts_with('#'),
-                "{file} should only keep the unpublished uv install command in comments"
+                contents.contains(command),
+                "{file} should document {command}"
             );
         }
     }
