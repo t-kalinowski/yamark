@@ -18,7 +18,7 @@ use crate::core::yaml_model::{
 use crate::core::yaml_scan::{YamlLineScan, scan_yaml_lines, scan_yaml_lines_basic};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
-use memchr::memchr2;
+use memchr::{memchr, memchr2};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
@@ -10648,6 +10648,8 @@ fn escaped_double_quoted_scalar_block_at(
 ) -> Option<QuotedScalarBlock> {
     let line_info = source.lines.get(line)?;
     let text = source.line_text(line);
+    // A supported multiline double-quoted scalar must escape its first newline.
+    memchr(b'\\', text.as_bytes())?;
     let value_start = yaml_line_value_content_start(text)?;
     if let Some(block) = escaped_double_quoted_scalar_block_from_value(
         source,
