@@ -164,7 +164,7 @@ own formatter when configured.
 
 
 
-**Yamark formats a 4 MB Markdown document in 109 ms and a 4 MB YAML file in 69 ms.** The next-fastest tool on each is `dprint-markdown` (349 ms) and `yamlfmt` (187 ms). On a directory of 500 YAML files (50 MB), Yamark finishes in 133 ms; the next-fastest formatter, `deno-fmt`, takes 2.6 s.
+**Yamark formats a 4 MB Markdown document in 114 ms and a 4 MB YAML file in 82 ms.** The next-fastest tool on each is `dprint-markdown` (358 ms) and `yamlfmt` (194 ms). On a directory of 500 YAML files (50 MB), Yamark finishes in 188 ms; the next-fastest formatter, `deno-fmt`, takes 2.7 s.
 
 The [Benchmarks](benchmarks.qmd) page has the full tables, methodology, checked-in
 results, and reproduction commands.
