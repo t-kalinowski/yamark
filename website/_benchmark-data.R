@@ -246,14 +246,9 @@ flow_directory_rows <- flow_rows[
 flow_directory_rows <- flow_directory_rows[
   order(flow_directory_rows$median_seconds),
 ]
-# The page says yamark is the fastest on wall time and on single-core user
-# CPU; fail the render rather than publish either sentence against an
-# artifact where it is false.
-stopifnot(
-  identical(flow_directory_rows$formatter[[1]], "yamark"),
-  which.min(flow_directory_rows$median_user_seconds) ==
-    which(flow_directory_rows$formatter == "yamark")
-)
+# The page says yamark has the lowest elapsed time; fail the render rather
+# than publish that sentence against an artifact where it is false.
+stopifnot(identical(flow_directory_rows$formatter[[1]], "yamark"))
 
 big_rows <- select_big_artifact()
 big_ok_rows <- big_rows[big_rows$status == "ok", ]
@@ -286,8 +281,12 @@ fmt_sec <- function(x) sprintf("%.3f s", x)
 fmt_duration <- function(x) {
   ifelse(x < 1, sprintf("%.0f ms", x * 1000), sprintf("%.1f s", x))
 }
-fmt_mbps <- function(x) {
-  ifelse(x >= 10, sprintf("%.1f MB/s", x), sprintf("%.2f MB/s", x))
+fmt_duration_range <- function(x) {
+  if (all(x < 1)) {
+    sprintf("%.0f–%.0f ms", min(x) * 1000, max(x) * 1000)
+  } else {
+    sprintf("%s–%s", fmt_duration(min(x)), fmt_duration(max(x)))
+  }
 }
 fmt_mb <- function(bytes) sprintf("%.1f MB", bytes / 1e6)
 fmt_mb_round <- function(bytes) sprintf("%.0f MB", bytes / 1e6)
@@ -301,18 +300,8 @@ artifact_url <- function(rows) {
     rows$artifact_file[[1]]
   )
 }
-artifact_link <- function(rows) {
-  sprintf("[`%s`](%s)", substr(rows$commit[[1]], 1, 7), artifact_url(rows))
-}
-slower_than <- function(seconds, base) {
-  ratio <- seconds / base
-  if (abs(ratio - 1) < 0.005) {
-    "1x"
-  } else if (ratio < 1) {
-    sprintf("%.2fx faster", 1 / ratio)
-  } else {
-    sprintf("%.1fx slower", ratio)
-  }
+artifact_link <- function(rows, label) {
+  sprintf("[%s](%s)", label, artifact_url(rows))
 }
 row_value <- function(rows, formatter, column) {
   rows[rows$formatter == formatter, column][[1]]
@@ -321,19 +310,13 @@ row_value <- function(rows, formatter, column) {
 directory_yamark_seconds <- row_value(
   flow_directory_rows, "yamark", "median_seconds"
 )
-directory_next_row <- flow_directory_rows[
-  flow_directory_rows$formatter != "yamark", ,
-  drop = FALSE
-][1, , drop = FALSE]
-stopifnot(nrow(directory_next_row) == 1)
 
 big_table <- function(target_file, front_matter = FALSE) {
   rows <- big_target_rows(target_file)
-  base <- rows$median_seconds[rows$formatter == "yamark"][[1]]
   out <- data.frame(
     Formatter = rows$formatter,
-    Time = fmt_duration(rows$median_seconds),
-    Memory = fmt_mb(rows$median_peak_rss_bytes),
+    `Wall time` = fmt_duration(rows$median_seconds),
+    `Peak RSS` = fmt_mb(rows$median_peak_rss_bytes),
     check.names = FALSE
   )
   if (front_matter) {
@@ -351,12 +334,6 @@ big_table <- function(target_file, front_matter = FALSE) {
       character(1)
     )
   }
-  out[["vs yamark"]] <- vapply(
-    rows$median_seconds,
-    slower_than,
-    character(1),
-    base = base
-  )
   out
 }
 
@@ -368,36 +345,27 @@ big_bytes <- function(target_file) {
   big_target_rows(target_file)$target_bytes[[1]]
 }
 
-big_next_row <- function(target_file) {
-  rows <- big_target_rows(target_file)
-  rows[rows$formatter != "yamark", , drop = FALSE][1, , drop = FALSE]
-}
-
 # One-sentence headlines shared by the home page and the benchmarks page.
-bigfile_headline <- function() {
-  markdown_next <- big_next_row(markdown_target)
-  yaml_next <- big_next_row(yaml_target)
-  sprintf(
-    "**Yamark formats a %s Markdown document in %s and a %s YAML file in %s.** The next-fastest tool on each is `%s` (%s) and `%s` (%s).",
-    fmt_mb_round(big_bytes(markdown_target)),
-    fmt_duration(big_seconds(markdown_target, "yamark")),
-    fmt_mb_round(big_bytes(yaml_target)),
-    fmt_duration(big_seconds(yaml_target, "yamark")),
-    markdown_next$formatter[[1]],
-    fmt_duration(markdown_next$median_seconds[[1]]),
-    yaml_next$formatter[[1]],
-    fmt_duration(yaml_next$median_seconds[[1]])
+benchmark_headline <- function() {
+  big_yamark_seconds <- vapply(
+    big_targets,
+    function(target) big_seconds(target, "yamark"),
+    numeric(1)
   )
-}
-
-directory_headline <- function() {
+  big_sizes <- unique(vapply(
+    big_targets,
+    function(target) fmt_mb_round(big_bytes(target)),
+    character(1)
+  ))
+  stopifnot(length(big_sizes) == 1)
   sprintf(
-    "On a directory of %d YAML files (%s), Yamark finishes in %s; the next-fastest formatter, `%s`, takes %s.",
-    flow_directory_rows$files[[1]],
-    fmt_mb_round(flow_directory_rows$corpus_bytes[[1]]),
+    "**On the benchmark host (%s), Yamark recorded the lowest elapsed time in all four workloads:** %s for each generated %s file and %s for %d generated YAML files (%s).",
+    host_inline(),
+    fmt_duration_range(big_yamark_seconds),
+    big_sizes,
     fmt_duration(directory_yamark_seconds),
-    directory_next_row$formatter[[1]],
-    fmt_duration(directory_next_row$median_seconds[[1]])
+    flow_directory_rows$files[[1]],
+    fmt_mb_round(flow_directory_rows$corpus_bytes[[1]])
   )
 }
 

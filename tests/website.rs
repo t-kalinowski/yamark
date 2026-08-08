@@ -305,7 +305,8 @@ fn website_includes_benchmarks_page() {
     assert!(config.contains("benchmarks.qmd"));
     assert!(benchmarks.contains("title: Benchmarks"));
     assert!(benchmarks.contains("label: benchmark-data"));
-    assert!(benchmarks.contains("How to read these results"));
+    assert!(benchmarks.contains("## Methodology"));
+    assert!(!benchmarks.contains("How to read these results"));
     assert!(benchmarks.contains("Reproducing"));
 
     // One comparison per input kind, each with its own native-CLI roster.
@@ -316,6 +317,8 @@ fn website_includes_benchmarks_page() {
     assert!(benchmarks.contains("tools/bench/big.py"));
     assert!(benchmarks.contains("--files 500 --items 540"));
     assert!(benchmarks.contains("MacBook Pro"));
+    assert!(benchmarks.contains("total user CPU time"));
+    assert!(!benchmarks.contains("single-core comparison"));
 
     // The page must say, in visible prose, why the lint fixers are outside
     // this comparison instead of burying the scope choice in a comment.
@@ -357,11 +360,15 @@ fn website_includes_benchmarks_page() {
     assert!(rendered.contains("big-with-frontmatter.md"));
     assert!(rendered.contains("docs/benchmarks/big"));
     assert!(rendered.contains("MacBook Pro"));
-    assert!(rendered.contains("<th style=\"text-align:right;\"> Time </th>"));
-    assert!(rendered.contains("<th style=\"text-align:right;\"> Memory </th>"));
-    assert!(rendered.contains("<th style=\"text-align:right;\"> User CPU </th>"));
+    assert!(rendered.contains("<th style=\"text-align:right;\"> Wall time </th>"));
+    assert!(rendered.contains("<th style=\"text-align:right;\"> Peak RSS </th>"));
+    assert!(rendered.contains("<th style=\"text-align:right;\"> User CPU time </th>"));
     assert!(rendered.contains("<th style=\"text-align:center;\"> Front matter </th>"));
+    assert!(!rendered.contains("> Throughput </th>"));
+    assert!(!rendered.contains("> vs yamark </th>"));
     for page in [&rendered, &rendered_index] {
+        assert!(page.contains("lowest elapsed time in all four workloads"));
+        assert!(!page.contains("next-fastest"));
         assert!(!page.contains("py-yaml12"));
     }
     assert!(not_found.contains("[Benchmarks](benchmarks.qmd)"));

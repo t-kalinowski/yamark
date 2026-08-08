@@ -168,7 +168,7 @@ own formatter when configured.
 source("_benchmark-data.R")
 ```
 
-`r bigfile_headline()` `r directory_headline()`
+`r benchmark_headline()`
 
-The [Benchmarks](benchmarks.qmd) page has the full tables, methodology, checked-in
-results, and reproduction commands.
+The [Benchmarks](benchmarks.qmd) page includes the complete comparisons,
+methodology, checked-in results, and reproduction commands.

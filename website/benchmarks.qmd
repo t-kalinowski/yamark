@@ -10,28 +10,27 @@ description: Yamark performance against other YAML and Markdown formatters.
 source("_benchmark-data.R")
 ```
 
-`r bigfile_headline()` `r directory_headline()`
+`r benchmark_headline()`
 
-There is one comparison per input kind. Each table includes the tools in this
-harness whose own CLI accepts that input, with no formatting options, shims, or
-adapters. The tool roster therefore differs by input kind.
+Each table compares the formatter CLIs in this harness that accept that input.
+Tools use their default formatting behavior, with no formatting options, shims,
+or adapters, so the roster differs by input kind.
 
 ::: {.panel-tabset}
 
 ## Markdown
 
-One generated 4 MB Markdown document (`big.md`): prose paragraphs with
-links - some longer than the line width - and nested lists with mixed
-markers. Each tool's CLI formats the file in place; time includes process
-startup. Time is `r measurement_inline(big_target_rows(markdown_target))`,
-on a fresh copy of the file each run. Memory is median peak RSS.
+One generated 4 MB Markdown document (`big.md`): prose paragraphs, links, and
+nested lists. Each tool's CLI formats a fresh copy. Wall time includes process
+startup and is `r measurement_inline(big_target_rows(markdown_target))`. Peak
+RSS is the median across measured runs.
 
 ```{r}
 #| echo: false
 #| results: asis
 write_table(
   big_table(markdown_target),
-  align = c("l", "r", "r", "r")
+  align = c("l", "r", "r")
 )
 ```
 
@@ -45,7 +44,7 @@ block scalars, and comments. Same procedure as the Markdown comparison.
 #| results: asis
 write_table(
   big_table(yaml_target),
-  align = c("l", "r", "r", "r")
+  align = c("l", "r", "r")
 )
 ```
 
@@ -63,7 +62,7 @@ preserved** (broke the delimiters).
 #| results: asis
 write_table(
   big_table(frontmatter_target, front_matter = TRUE),
-  align = c("l", "r", "r", "c", "r")
+  align = c("l", "r", "r", "c")
 )
 ```
 
@@ -75,13 +74,11 @@ front matter delimiters.
 
 ## Directory
 
-`r flow_directory_rows$files[[1]]` generated YAML service-configuration
-files of about 100 KB each
-(`r fmt_mb_round(flow_directory_rows$corpus_bytes[[1]])` in total). Each
-tool is passed the directory root once and discovers the files itself;
-every run is verified to have reformatted all
-`r flow_directory_rows$files[[1]]` files. Time is
-`r measurement_inline()`, on a fresh copy of the corpus each run.
+`r flow_directory_rows$files[[1]]` generated YAML service-configuration files
+of about 100 KB each (`r fmt_mb_round(flow_directory_rows$corpus_bytes[[1]])` in
+total). Each tool receives the directory root once and discovers the files
+itself. Every run uses a fresh copy and is verified to reformat all
+`r flow_directory_rows$files[[1]]` files. Wall time is `r measurement_inline()`.
 
 ```{r}
 #| echo: false
@@ -89,57 +86,46 @@ every run is verified to have reformatted all
 
 directory_table <- data.frame(
   Formatter = flow_directory_rows$formatter,
-  Time = fmt_sec(flow_directory_rows$median_seconds),
-  `User CPU` = fmt_sec(flow_directory_rows$median_user_seconds),
-  Throughput = fmt_mbps(flow_directory_rows$mb_per_second),
-  `vs yamark` = vapply(
-    flow_directory_rows$median_seconds,
-    slower_than,
-    character(1),
-    base = directory_yamark_seconds
-  ),
+  `Wall time` = fmt_sec(flow_directory_rows$median_seconds),
+  `User CPU time` = fmt_sec(flow_directory_rows$median_user_seconds),
   check.names = FALSE
 )
-write_table(directory_table, align = c("l", "r", "r", "r", "r"))
+write_table(directory_table, align = c("l", "r", "r"))
 ```
 
-Yamark formats the directory in parallel (as do `deno-fmt` and `dprint`),
-so wall time can beat user CPU time; the User CPU column is the
-single-core comparison, and Yamark is fastest on that column too.
-Throughput is input MB/s.
+Yamark formats the directory in parallel, as do `deno-fmt` and `dprint`, so
+total user CPU time can exceed wall time. User CPU time is summed across threads
+and processes and excludes system CPU time.
 
 :::
 
-## How to read these results
+## Methodology
 
-Every number comes from the same harness (`tools/bench/big.py` and
-`tools/bench/run.py` in the repository). It runs each included tool through its
-own CLI with default configuration and no formatting options against
-deterministic generated corpora. The current tool set is
-`r compared_tools_inline()`.
+The benchmark scripts (`tools/bench/big.py` and `tools/bench/run.py`) generate
+the corpora deterministically and run each included tool through its own CLI.
+Across the four workloads, Yamark is compared with `r compared_tools_inline()`.
 
-Two harness details prevent cached work or plugin defaults from affecting the
-comparison without changing how any tool is invoked:
+Two details keep cached work out of the timings and limit `dprint`'s
+configuration to plugin selection:
 
-- `panache` and `dprint` cache format results. The harness redirects each
-  tool's cache into the benchmark work directory and clears it between
-  repetitions, so every timed run formats from scratch rather than
-  replaying a cached result.
+- `panache` and `dprint` cache formatting results. The harness stores their
+  caches in the benchmark work directory and clears cached formatting results
+  between repetitions, so each timed run formats from scratch.
 - `dprint` has no built-in plugins, so it runs with a config file that
-  names its first-party plugin for the input kind (Markdown or YAML) and
-  sets nothing else.
+  names the first-party plugin for the input kind and sets no formatting
+  options.
 
-Lint fixers with an autofix mode (`pymarkdown`, `markdownlint-cli2`) are outside
-this formatter-CLI comparison. The harness can still run them via `--tools`.
+Autofixing linters (`pymarkdown`, `markdownlint-cli2`) are outside this
+formatter-CLI comparison. The harness can still run them with `--tools`.
 
-Measured on a MacBook Pro (`r host_inline()`). `r tool_versions_block()`
+Measured on a MacBook Pro (`r host_inline()`) with Yamark built in Cargo's
+release profile. `r tool_versions_block()`
 
-The tables render the latest checked-in artifacts -
-`r artifact_link(big_ok_rows)` for the single-file comparisons and
-`r artifact_link(flow_directory_rows)` for the directory comparison - which
-record the full per-run timings, output hashes, git commit, and host
-details. A table renders only if every tool in its roster completed the
-benchmark; degraded runs are never shown as smaller tables.
+The tables use the latest complete checked-in
+`r artifact_link(big_ok_rows, "single-file results")` and
+`r artifact_link(flow_directory_rows, "directory results")`. The artifacts
+record the full per-run timings, output hashes, git commit, and host details. A
+table renders only when every tool in its roster completes the benchmark.
 
 ## Reproducing
 
