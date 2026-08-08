@@ -16,9 +16,49 @@ Each table compares the formatter CLIs in this harness that accept that input.
 Tools use their default formatting behavior, with no formatting options, shims,
 or adapters, so the roster differs by input kind.
 
+## At a glance
+
+The next-lowest result is the lowest median wall time among the other CLIs for
+that workload. Peer / Yamark divides that result by Yamark's time. The output
+note keeps differences in default formatting behavior beside the timing.
+
+::: {.benchmark-summary-shell}
+```{r}
+#| label: benchmark-summary-table
+#| echo: false
+#| results: asis
+
+write_table(
+  benchmark_summary_table(),
+  align = c("l", "r", "l", "r", "l"),
+  table_class = "perf-table benchmark-summary-table",
+  caption = "Yamark and the next-lowest elapsed time in each workload"
+)
+```
+:::
+
+```{r}
+#| label: benchmark-full-field
+#| echo: false
+#| results: asis
+
+write_benchmark_chart(
+  kind = "full-field",
+  id = "benchmark-full-field",
+  title = "Elapsed time by formatter",
+  subtitle = paste(
+    "Median wall time; lower is better.",
+    "All four panels share a logarithmic seconds scale."
+  ),
+  rows = benchmark_full_field_rows()
+)
+```
+
+## Detailed results
+
 ::: {.panel-tabset}
 
-## Markdown
+### Markdown
 
 One generated 4 MB Markdown document (`big.md`): prose paragraphs, links, and
 nested lists. Each tool's CLI formats a fresh copy. Wall time includes process
@@ -34,7 +74,7 @@ write_table(
 )
 ```
 
-## YAML
+### YAML
 
 One generated 4 MB YAML file (`big.yaml`): block maps and sequences,
 block scalars, and comments. Same procedure as the Markdown comparison.
@@ -48,7 +88,7 @@ write_table(
 )
 ```
 
-## Markdown + front matter
+### Markdown + front matter
 
 The same 4 MB document shape (`big-with-frontmatter.md`) with a
 `r fmt_kb(big_requested_frontmatter_yaml)` deliberately unformatted YAML
@@ -72,7 +112,7 @@ front matter through unformatted. `mdformat`, installed without its front-matter
 plugin, reads the opening `---` as a thematic break and does not preserve the
 front matter delimiters.
 
-## Directory
+### Directory
 
 `r flow_directory_rows$files[[1]]` generated YAML service-configuration files
 of about 100 KB each (`r fmt_mb_round(flow_directory_rows$corpus_bytes[[1]])` in

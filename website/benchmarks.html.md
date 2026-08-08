@@ -11,9 +11,72 @@ Each table compares the formatter CLIs in this harness that accept that input.
 Tools use their default formatting behavior, with no formatting options, shims,
 or adapters, so the roster differs by input kind.
 
+## At a glance
+
+The next-lowest result is the lowest median wall time among the other CLIs for
+that workload. Peer / Yamark divides that result by Yamark's time. The output
+note keeps differences in default formatting behavior beside the timing.
+
+::: {.benchmark-summary-shell}
+<table class="perf-table benchmark-summary-table">
+<caption>Yamark and the next-lowest elapsed time in each workload</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> Workload </th>
+   <th style="text-align:right;"> Yamark </th>
+   <th style="text-align:left;"> Next-lowest elapsed </th>
+   <th style="text-align:right;"> Peer / Yamark </th>
+   <th style="text-align:left;"> Output note </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> 4 MB Markdown </td>
+   <td style="text-align:right;"> 114 ms </td>
+   <td style="text-align:left;"> dprint · 358 ms </td>
+   <td style="text-align:right;"> 3.1× </td>
+   <td style="text-align:left;"> Both rewrite Markdown </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 4 MB YAML </td>
+   <td style="text-align:right;"> 82 ms </td>
+   <td style="text-align:left;"> yamlfmt · 194 ms </td>
+   <td style="text-align:right;"> 2.4× </td>
+   <td style="text-align:left;"> Both rewrite YAML </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 4 MB Markdown + 200 KB YAML front matter </td>
+   <td style="text-align:right;"> 112 ms </td>
+   <td style="text-align:left;"> dprint · 346 ms </td>
+   <td style="text-align:right;"> 3.1× </td>
+   <td style="text-align:left;"> dprint leaves YAML front matter untouched </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 500 YAML files (50 MB) </td>
+   <td style="text-align:right;"> 188 ms </td>
+   <td style="text-align:left;"> Deno · 2.7 s </td>
+   <td style="text-align:right;"> 14.6× </td>
+   <td style="text-align:left;"> Both rewrite all 500 files </td>
+  </tr>
+</tbody>
+</table>
+:::
+
+<figure class="benchmark-chart benchmark-full-field-chart" aria-labelledby="benchmark-full-field-caption">
+<figcaption id="benchmark-full-field-caption">
+<h3>Elapsed time by formatter</h3>
+<p>Median wall time; lower is better. All four panels share a logarithmic seconds scale.</p>
+</figcaption>
+<div class="benchmark-chart-canvas" data-benchmark-chart="full-field" data-benchmark-source="benchmark-full-field-data"></div>
+<p class="benchmark-chart-fallback">Exact values are available in the detailed benchmark tables below.</p>
+<script type="application/json" id="benchmark-full-field-data">[{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Yamark","seconds":0.1137662914115936,"duration":"114 ms","is_yamark":true,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"dprint","seconds":0.3579473538557068,"duration":"358 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Deno","seconds":0.4110740624601021,"duration":"411 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Panache","seconds":0.4132706874515861,"duration":"413 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Prettier","seconds":1.841261958470568,"duration":"1.8 s","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"mdformat","seconds":3.27558045857586,"duration":"3.3 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Yamark","seconds":0.08179760456550866,"duration":"82 ms","is_yamark":true,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"yamlfmt","seconds":0.1940804164623842,"duration":"194 ms","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Deno","seconds":0.7867072710068896,"duration":"787 ms","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"dprint","seconds":1.16546812443994,"duration":"1.2 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"yamlfix","seconds":7.540690249530599,"duration":"7.5 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Prettier","seconds":20.278602770995349,"duration":"20.3 s","is_yamark":false,"outcome":"file unchanged"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Yamark","seconds":0.1116253123618662,"duration":"112 ms","is_yamark":true,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"dprint","seconds":0.3461023543495685,"duration":"346 ms","is_yamark":false,"outcome":"untouched"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Deno","seconds":0.4571173124713823,"duration":"457 ms","is_yamark":false,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Prettier","seconds":1.889959458028898,"duration":"1.9 s","is_yamark":false,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"mdformat","seconds":3.817337166517973,"duration":"3.8 s","is_yamark":false,"outcome":"not preserved"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Panache","seconds":6.686500750132836,"duration":"6.7 s","is_yamark":false,"outcome":"formatted"},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Yamark","seconds":0.1882577498909086,"duration":"188 ms","is_yamark":true,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Deno","seconds":2.743481750134379,"duration":"2.7 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"dprint","seconds":3.385561000090092,"duration":"3.4 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"yamlfmt","seconds":4.099927749950439,"duration":"4.1 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Prettier","seconds":49.826252792030573,"duration":"49.8 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"yamlfix","seconds":188.52111962507479,"duration":"188.5 s","is_yamark":false,"outcome":null}]</script>
+</figure>
+
+## Detailed results
+
 ::: {.panel-tabset}
 
-## Markdown
+### Markdown
 
 One generated 4 MB Markdown document (`big.md`): prose paragraphs, links, and
 nested lists. Each tool's CLI formats a fresh copy. Wall time includes process
@@ -62,7 +125,7 @@ RSS is the median across measured runs.
 </tbody>
 </table>
 
-## YAML
+### YAML
 
 One generated 4 MB YAML file (`big.yaml`): block maps and sequences,
 block scalars, and comments. Same procedure as the Markdown comparison.
@@ -109,7 +172,7 @@ block scalars, and comments. Same procedure as the Markdown comparison.
 </tbody>
 </table>
 
-## Markdown + front matter
+### Markdown + front matter
 
 The same 4 MB document shape (`big-with-frontmatter.md`) with a
 200 KB deliberately unformatted YAML
@@ -173,7 +236,7 @@ front matter through unformatted. `mdformat`, installed without its front-matter
 plugin, reads the opening `---` as a thematic break and does not preserve the
 front matter delimiters.
 
-## Directory
+### Directory
 
 500 generated YAML service-configuration files
 of about 100 KB each (50 MB in

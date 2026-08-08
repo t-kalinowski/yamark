@@ -2,6 +2,8 @@ project:
   type: website
   render:
     - "*.qmd"
+  resources:
+    - benchmark-charts.js
   output-dir: _site
 
 website:
@@ -58,3 +60,5 @@ format:
     code-copy: true
     code-overflow: wrap
     anchor-sections: true
+    include-after-body:
+      - text: <script defer src="benchmark-charts.js"></script>

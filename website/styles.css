@@ -407,6 +407,241 @@ table.perf-table th {
   padding: 0.7rem 0.8rem;
 }
 
+.benchmark-summary-shell {
+  container-name: benchmark-summary;
+  container-type: inline-size;
+}
+
+table.benchmark-summary-table {
+  display: table;
+  font-size: 0.9rem;
+  white-space: normal;
+}
+
+.benchmark-summary-table caption {
+  caption-side: top;
+  color: var(--yamark-ink);
+  font-size: 0.95rem;
+  font-weight: 750;
+  padding: 0 0 0.65rem;
+  text-align: left;
+}
+
+.benchmark-summary-table th:nth-child(2),
+.benchmark-summary-table th:nth-child(3),
+.benchmark-summary-table th:nth-child(4),
+.benchmark-summary-table td:nth-child(2),
+.benchmark-summary-table td:nth-child(3),
+.benchmark-summary-table td:nth-child(4) {
+  white-space: nowrap;
+}
+
+.benchmark-chart {
+  margin: 1.6rem 0 2.25rem;
+  max-width: 100%;
+}
+
+.benchmark-chart figcaption {
+  margin-bottom: 0.85rem;
+}
+
+.benchmark-chart figcaption h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.benchmark-chart figcaption p {
+  color: var(--yamark-muted);
+  font-size: 0.9rem;
+  margin: 0;
+  max-width: 50rem;
+}
+
+.benchmark-chart-canvas {
+  min-width: 0;
+  width: 100%;
+}
+
+.benchmark-chart-svg {
+  display: block;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  height: auto;
+  max-width: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.benchmark-chart-frame {
+  fill: transparent;
+  stroke: var(--yamark-line);
+  stroke-width: 1;
+}
+
+.benchmark-chart-gridline {
+  stroke: var(--yamark-line);
+  stroke-width: 1;
+}
+
+.benchmark-chart-axis-label,
+.benchmark-chart-axis-title,
+.benchmark-chart-note {
+  fill: var(--yamark-muted);
+}
+
+.benchmark-chart-axis-label {
+  font-size: 10px;
+}
+
+.benchmark-chart-axis-title {
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.benchmark-chart-workload,
+.benchmark-chart-formatter {
+  fill: var(--yamark-ink);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.benchmark-chart-workload-compact {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.benchmark-chart-formatter-yamark,
+.benchmark-chart-value-yamark {
+  font-weight: 800;
+}
+
+.benchmark-chart-note {
+  font-size: 9.5px;
+}
+
+.benchmark-chart-value {
+  fill: var(--yamark-ink);
+  font-size: 10.5px;
+}
+
+.benchmark-chart-value-peer {
+  fill: var(--yamark-muted);
+}
+
+.benchmark-dumbbell-line {
+  stroke: color-mix(in srgb, var(--yamark-muted) 60%, transparent);
+  stroke-width: 2;
+}
+
+.benchmark-mark-yamark {
+  fill: var(--yamark-teal);
+  stroke: var(--yamark-surface);
+  stroke-width: 1.5;
+}
+
+.benchmark-mark-peer {
+  fill: var(--yamark-surface);
+  stroke: var(--yamark-muted);
+  stroke-width: 2;
+}
+
+.benchmark-mark-peer-overview {
+  stroke: var(--yamark-gold);
+}
+
+.benchmark-chart-fallback {
+  color: var(--yamark-muted);
+  font-size: 0.9rem;
+}
+
+.benchmark-full-field-grid {
+  display: grid;
+  gap: 1.4rem 1.5rem;
+  min-width: 0;
+}
+
+.benchmark-full-field-panel {
+  min-width: 0;
+}
+
+.benchmark-full-field-panel h4 {
+  color: var(--yamark-ink);
+  font-size: 0.95rem;
+  font-weight: 800;
+  margin: 0 0 0.2rem;
+}
+
+@container benchmark-summary (max-width: 720px) {
+  table.benchmark-summary-table,
+  .benchmark-summary-table tbody,
+  .benchmark-summary-table tr,
+  .benchmark-summary-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .benchmark-summary-table thead {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  table.benchmark-summary-table {
+    white-space: normal;
+  }
+
+  .benchmark-summary-table caption {
+    display: block;
+    padding: 0.75rem 0.8rem;
+  }
+
+  .benchmark-summary-table tr {
+    border-top: 1px solid var(--yamark-line);
+    padding: 0.45rem 0;
+  }
+
+  .benchmark-summary-table td {
+    border: 0;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(8.5rem, 0.85fr) minmax(0, 1.4fr);
+    padding: 0.32rem 0.8rem;
+    text-align: left !important;
+    white-space: normal !important;
+  }
+
+  .benchmark-summary-table td::before {
+    color: var(--yamark-muted);
+    font-size: 0.78rem;
+    font-weight: 750;
+  }
+
+  .benchmark-summary-table td:nth-child(1)::before {
+    content: "Workload";
+  }
+
+  .benchmark-summary-table td:nth-child(2)::before {
+    content: "Yamark";
+  }
+
+  .benchmark-summary-table td:nth-child(3)::before {
+    content: "Next-lowest elapsed";
+  }
+
+  .benchmark-summary-table td:nth-child(4)::before {
+    content: "Peer / Yamark";
+  }
+
+  .benchmark-summary-table td:nth-child(5)::before {
+    content: "Output note";
+  }
+}
+
 .showcase-before-after {
   background: var(--yamark-surface);
   border: 1px solid var(--yamark-line);

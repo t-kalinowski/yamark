@@ -170,5 +170,22 @@ source("_benchmark-data.R")
 
 `r benchmark_headline()`
 
+```{r}
+#| label: homepage-benchmark-overview
+#| echo: false
+#| results: asis
+
+write_benchmark_chart(
+  kind = "overview",
+  id = "homepage-benchmark-overview",
+  title = "Yamark and the next-lowest elapsed time",
+  subtitle = paste(
+    "Median wall time for each generated workload.",
+    "Lower is better; the horizontal scale is logarithmic."
+  ),
+  rows = benchmark_summary_rows()
+)
+```
+
 The [Benchmarks](benchmarks.qmd) page includes the complete comparisons,
 methodology, checked-in results, and reproduction commands.

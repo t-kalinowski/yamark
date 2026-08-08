@@ -72,6 +72,8 @@ read_yaml_artifact <- function(path) {
         median_seconds = as.numeric(scalar(row$median_seconds, NA)),
         mb_per_second = as.numeric(scalar(row$mb_per_second, NA)),
         median_user_seconds = as.numeric(scalar(row$median_user_seconds, NA)),
+        changed_files = as.integer(scalar(row$changed_files, NA)),
+        output_files = as.integer(scalar(row$output_files, NA)),
         stringsAsFactors = FALSE
       )
     })
@@ -119,6 +121,7 @@ read_big_artifact <- function(path) {
         median_seconds = as.numeric(scalar(row$median_seconds, NA)),
         median_user_seconds = as.numeric(scalar(row$median_user_seconds, NA)),
         median_peak_rss_bytes = as.numeric(scalar(row$median_peak_rss_bytes, NA)),
+        changed = as.logical(scalar(row$changed, NA)),
         front_matter = as.character(scalar(row$front_matter, NA)),
         stringsAsFactors = FALSE
       )
@@ -291,6 +294,33 @@ fmt_duration_range <- function(x) {
 fmt_mb <- function(bytes) sprintf("%.1f MB", bytes / 1e6)
 fmt_mb_round <- function(bytes) sprintf("%.0f MB", bytes / 1e6)
 fmt_kb <- function(bytes) sprintf("%.0f KB", bytes / 1e3)
+
+formatter_label <- function(formatter) {
+  switch(
+    formatter,
+    yamark = "Yamark",
+    panache = "Panache",
+    mdformat = "mdformat",
+    prettier = "Prettier",
+    `dprint-markdown` = "dprint",
+    `dprint-yaml` = "dprint",
+    `deno-fmt` = "Deno",
+    yamlfmt = "yamlfmt",
+    yamlfix = "yamlfix",
+    stop("unknown formatter: ", formatter)
+  )
+}
+
+front_matter_label <- function(outcome) {
+  switch(
+    outcome,
+    rewritten = "formatted",
+    preserved = "untouched",
+    removed = "not preserved",
+    stop("unknown front matter outcome: ", outcome)
+  )
+}
+
 artifact_url <- function(rows) {
   artifact_kind <- basename(dirname(rows$artifact_path[[1]]))
   paste0(
@@ -322,15 +352,7 @@ big_table <- function(target_file, front_matter = FALSE) {
   if (front_matter) {
     out[["Front matter"]] <- vapply(
       rows$front_matter,
-      function(outcome) {
-        switch(
-          outcome,
-          rewritten = "formatted",
-          preserved = "untouched",
-          removed = "not preserved",
-          stop("unknown front matter outcome: ", outcome)
-        )
-      },
+      front_matter_label,
       character(1)
     )
   }
@@ -343,6 +365,256 @@ big_seconds <- function(target_file, formatter) {
 
 big_bytes <- function(target_file) {
   big_target_rows(target_file)$target_bytes[[1]]
+}
+
+benchmark_workload_rows <- function(
+  id,
+  label,
+  short_label,
+  order,
+  rows
+) {
+  stopifnot(
+    nrow(rows) >= 2,
+    sum(rows$formatter == "yamark") == 1,
+    all(is.finite(rows$median_seconds)),
+    all(rows$median_seconds > 0)
+  )
+  rank <- rank(rows$median_seconds, ties.method = "first")
+  changed <- if ("changed" %in% names(rows)) {
+    rows$changed
+  } else {
+    rows$changed_files == rows$files
+  }
+  stopifnot(!anyNA(changed))
+  outcome <- rep(NA_character_, nrow(rows))
+  if ("changed" %in% names(rows)) {
+    outcome[!is.na(rows$changed) & !rows$changed] <- "file unchanged"
+  }
+  if (identical(id, "frontmatter")) {
+    outcome <- vapply(rows$front_matter, front_matter_label, character(1))
+  }
+  data.frame(
+    workload_id = id,
+    workload = label,
+    short_workload = short_label,
+    workload_order = as.integer(order),
+    formatter_id = rows$formatter,
+    formatter = vapply(rows$formatter, formatter_label, character(1)),
+    seconds = rows$median_seconds,
+    duration = fmt_duration(rows$median_seconds),
+    rank = as.integer(rank),
+    is_yamark = rows$formatter == "yamark",
+    changed = changed,
+    outcome = outcome,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Canonical long-form elapsed-time data for every benchmark presentation.
+# The overview and summary table are derived from these rows so the three
+# views cannot select different formatters or report different values.
+benchmark_full_field_rows <- function() {
+  markdown_rows <- big_target_rows(markdown_target)
+  yaml_rows <- big_target_rows(yaml_target)
+  frontmatter_rows <- big_target_rows(frontmatter_target)
+
+  stopifnot(
+    all(flow_directory_rows$changed_files == flow_directory_rows$files),
+    all(flow_directory_rows$output_files == flow_directory_rows$files)
+  )
+
+  rows <- rbind(
+    benchmark_workload_rows(
+      "markdown",
+      "4 MB Markdown",
+      "4 MB Markdown",
+      1,
+      markdown_rows
+    ),
+    benchmark_workload_rows(
+      "yaml",
+      "4 MB YAML",
+      "4 MB YAML",
+      2,
+      yaml_rows
+    ),
+    benchmark_workload_rows(
+      "frontmatter",
+      "4 MB Markdown + 200 KB YAML front matter",
+      "4 MB Markdown + front matter",
+      3,
+      frontmatter_rows
+    ),
+    benchmark_workload_rows(
+      "directory",
+      "500 YAML files (50 MB)",
+      "500 YAML files · 50 MB",
+      4,
+      flow_directory_rows
+    )
+  )
+  rows <- rows[order(rows$workload_order, rows$rank), , drop = FALSE]
+  rownames(rows) <- NULL
+  rows
+}
+
+benchmark_summary_rows <- function() {
+  rows <- benchmark_full_field_rows()
+  by_workload <- split(rows, rows$workload_order)
+  do.call(rbind, lapply(by_workload, function(workload_rows) {
+    yamark <- workload_rows[workload_rows$is_yamark, , drop = FALSE]
+    peers <- workload_rows[!workload_rows$is_yamark, , drop = FALSE]
+    peer <- peers[which.min(peers$seconds), , drop = FALSE]
+    stopifnot(nrow(yamark) == 1, nrow(peer) == 1)
+    stopifnot(isTRUE(yamark$changed[[1]]))
+    output_note <- switch(
+      yamark$workload_id[[1]],
+      markdown = if (isTRUE(peer$changed[[1]])) {
+        "Both rewrite Markdown"
+      } else {
+        sprintf("%s leaves the generated Markdown unchanged", peer$formatter)
+      },
+      yaml = if (isTRUE(peer$changed[[1]])) {
+        "Both rewrite YAML"
+      } else {
+        sprintf("%s leaves the generated YAML unchanged", peer$formatter)
+      },
+      frontmatter = switch(
+        peer$outcome[[1]],
+        formatted = "Both format YAML front matter",
+        untouched = sprintf(
+          "%s leaves YAML front matter untouched",
+          peer$formatter
+        ),
+        `not preserved` = sprintf(
+          "%s does not preserve YAML front matter",
+          peer$formatter
+        ),
+        stop("unknown front matter outcome: ", peer$outcome[[1]])
+      ),
+      directory = {
+        stopifnot(isTRUE(peer$changed[[1]]))
+        sprintf("Both rewrite all %d files", flow_directory_rows$files[[1]])
+      },
+      stop("unknown workload: ", yamark$workload_id[[1]])
+    )
+    data.frame(
+      workload_id = yamark$workload_id,
+      workload = yamark$workload,
+      short_workload = yamark$short_workload,
+      workload_order = yamark$workload_order,
+      yamark_seconds = yamark$seconds,
+      yamark_duration = yamark$duration,
+      peer_formatter = peer$formatter,
+      peer_seconds = peer$seconds,
+      peer_duration = peer$duration,
+      peer_per_yamark = peer$seconds / yamark$seconds,
+      output_note = output_note,
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+benchmark_summary_table <- function() {
+  rows <- benchmark_summary_rows()
+  data.frame(
+    Workload = rows$workload,
+    Yamark = rows$yamark_duration,
+    `Next-lowest elapsed` = paste(rows$peer_formatter, rows$peer_duration, sep = " · "),
+    `Peer / Yamark` = sprintf("%.1f×", rows$peer_per_yamark),
+    `Output note` = rows$output_note,
+    check.names = FALSE
+  )
+}
+
+write_benchmark_chart <- function(kind, id, title, subtitle, rows) {
+  stopifnot(
+    kind %in% c("overview", "full-field"),
+    grepl("^[a-z][a-z0-9-]+$", id),
+    nrow(rows) > 0
+  )
+  seconds <- if (identical(kind, "overview")) {
+    c(rows$yamark_seconds, rows$peer_seconds)
+  } else {
+    rows$seconds
+  }
+  stopifnot(all(is.finite(seconds)), all(seconds > 0))
+
+  source_id <- paste0(id, "-data")
+  chart_columns <- if (identical(kind, "overview")) {
+    c(
+      "workload_id", "workload", "short_workload",
+      "yamark_seconds", "yamark_duration",
+      "peer_formatter", "peer_seconds", "peer_duration", "output_note"
+    )
+  } else {
+    c(
+      "workload_id", "short_workload", "workload_order",
+      "formatter", "seconds", "duration", "is_yamark", "outcome"
+    )
+  }
+  chart_rows <- rows[, chart_columns, drop = FALSE]
+  json <- jsonlite::toJSON(
+    chart_rows,
+    dataframe = "rows",
+    auto_unbox = TRUE,
+    na = "null",
+    digits = 15
+  )
+  json <- gsub("</", "<\\/", json, fixed = TRUE)
+  escape <- htmltools::htmlEscape
+  fallback <- if (identical(kind, "overview")) {
+    items <- vapply(seq_len(nrow(rows)), function(index) {
+      row <- rows[index, , drop = FALSE]
+      sprintf(
+        paste0(
+          "<li><strong>%s:</strong> Yamark %s; %s %s. %s.</li>"
+        ),
+        escape(row$workload),
+        escape(row$yamark_duration),
+        escape(row$peer_formatter),
+        escape(row$peer_duration),
+        escape(row$output_note)
+      )
+    }, character(1))
+    paste0(
+      '<div class="benchmark-chart-fallback"><p>Exact values:</p><ul>',
+      paste(items, collapse = ""),
+      "</ul></div>"
+    )
+  } else {
+    paste0(
+      '<p class="benchmark-chart-fallback">',
+      "Exact values are available in the detailed benchmark tables below.</p>"
+    )
+  }
+
+  cat(sprintf(
+    paste0(
+      '<figure class="benchmark-chart benchmark-%s-chart" ',
+      'aria-labelledby="%s-caption">\n',
+      '<figcaption id="%s-caption">\n',
+      '<h3>%s</h3>\n',
+      '<p>%s</p>\n',
+      '</figcaption>\n',
+      '<div class="benchmark-chart-canvas" data-benchmark-chart="%s" ',
+      'data-benchmark-source="%s"></div>\n',
+      '%s\n',
+      '<script type="application/json" id="%s">%s</script>\n',
+      '</figure>\n'
+    ),
+    escape(kind),
+    escape(id),
+    escape(id),
+    escape(title),
+    escape(subtitle),
+    escape(kind),
+    escape(source_id),
+    fallback,
+    escape(source_id),
+    json
+  ))
 }
 
 # One-sentence headlines shared by the home page and the benchmarks page.
@@ -443,13 +715,19 @@ tool_versions_block <- function() {
   )
 }
 
-write_table <- function(data, align = NULL) {
+write_table <- function(
+  data,
+  align = NULL,
+  table_class = "perf-table",
+  caption = NULL
+) {
   cat(knitr::kable(
     data,
     format = "html",
     escape = FALSE,
     align = align,
     row.names = FALSE,
-    table.attr = 'class="perf-table"'
+    caption = caption,
+    table.attr = sprintf('class="%s"', table_class)
   ))
 }

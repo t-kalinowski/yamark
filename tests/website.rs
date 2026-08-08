@@ -310,10 +310,12 @@ fn website_includes_benchmarks_page() {
     assert!(benchmarks.contains("Reproducing"));
 
     // One comparison per input kind, each with its own native-CLI roster.
-    assert!(benchmarks.contains("## Markdown"));
-    assert!(benchmarks.contains("## YAML"));
-    assert!(benchmarks.contains("## Markdown + front matter"));
-    assert!(benchmarks.contains("## Directory"));
+    assert!(benchmarks.contains("## At a glance"));
+    assert!(benchmarks.contains("## Detailed results"));
+    assert!(benchmarks.contains("\n### Markdown\n"));
+    assert!(benchmarks.contains("\n### YAML\n"));
+    assert!(benchmarks.contains("\n### Markdown + front matter\n"));
+    assert!(benchmarks.contains("\n### Directory\n"));
     assert!(benchmarks.contains("tools/bench/big.py"));
     assert!(benchmarks.contains("--files 500 --items 540"));
     assert!(benchmarks.contains("MacBook Pro"));
@@ -372,6 +374,40 @@ fn website_includes_benchmarks_page() {
         assert!(!page.contains("py-yaml12"));
     }
     assert!(not_found.contains("[Benchmarks](benchmarks.qmd)"));
+}
+
+#[test]
+fn website_presents_benchmarks_with_data_driven_visuals() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
+    let data = fs::read_to_string(root.join("_benchmark-data.R")).unwrap();
+    let charts = fs::read_to_string(root.join("benchmark-charts.js")).unwrap();
+    let styles = fs::read_to_string(root.join("styles.css")).unwrap();
+    let rendered = fs::read_to_string(root.join("benchmarks.html.md")).unwrap();
+    let rendered_index = fs::read_to_string(root.join("index.html.md")).unwrap();
+
+    assert!(config.contains("benchmark-charts.js"));
+    assert!(data.contains("benchmark_summary_rows"));
+    assert!(data.contains("benchmark_full_field_rows"));
+    assert!(data.contains("write_benchmark_chart"));
+
+    assert!(rendered_index.contains(r#"data-benchmark-chart="overview""#));
+    assert!(rendered.contains(r#"data-benchmark-chart="full-field""#));
+    assert!(rendered.contains("Next-lowest elapsed"));
+    assert!(rendered.contains("Peer / Yamark"));
+    assert!(rendered.contains("Output note"));
+    assert!(rendered.contains("benchmark-summary-table"));
+    assert!(rendered_index.contains("Exact values:"));
+
+    assert!(charts.contains("Math.log10"));
+    assert!(charts.contains("ResizeObserver"));
+    assert!(charts.contains(r#"setAttribute("role", "img")"#));
+    assert!(charts.contains("aria-labelledby"));
+    assert!(charts.contains("svgNode(\"title\""));
+    assert!(charts.contains("svgNode(\"desc\""));
+    assert!(styles.contains(".benchmark-chart"));
+    assert!(styles.contains(".benchmark-full-field-grid"));
+    assert!(styles.contains("@container benchmark-summary"));
 }
 
 #[test]
