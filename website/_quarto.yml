@@ -28,6 +28,8 @@ website:
         href: usage.qmd
       - text: Examples
         href: examples.qmd
+      - text: Directives
+        href: directives.qmd
       - text: Reference
         href: reference.qmd
       - text: CLI Help

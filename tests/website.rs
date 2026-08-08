@@ -552,6 +552,51 @@ fn website_includes_homepage_and_examples_content() {
 }
 
 #[test]
+fn website_guides_users_through_directives_before_configuration() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
+    let usage = fs::read_to_string(root.join("usage.qmd")).unwrap();
+    let directives = fs::read_to_string(root.join("directives.qmd")).unwrap();
+    let rendered = fs::read_to_string(root.join("directives.html.md")).unwrap();
+    let not_found = fs::read_to_string(root.join("404.qmd")).unwrap();
+
+    assert!(config.contains("text: Directives"));
+    assert!(usage.contains("[Directives](directives.qmd)"));
+    assert!(not_found.contains("[Directives](directives.qmd)"));
+
+    for term in [
+        "The source file is the primary interface",
+        "# fmt: markdown",
+        "<!-- fmt: ... -->",
+        "scope=file",
+        "fmt: skip file",
+        "fmt: off",
+        "format on save",
+        "pre-commit",
+        "Git filter",
+        "yamark.toml",
+        "--wrap",
+    ] {
+        assert!(
+            directives.contains(term),
+            "directives page should include {term:?}"
+        );
+        assert!(
+            rendered.contains(term),
+            "rendered directives page should include {term:?}"
+        );
+    }
+
+    let source_examples = [
+        directives.find("## YAML files").unwrap(),
+        directives.find("## Python files").unwrap(),
+        directives.find("## R files").unwrap(),
+    ];
+    assert!(source_examples[0] < source_examples[1]);
+    assert!(source_examples[1] < source_examples[2]);
+}
+
+#[test]
 fn public_docs_describe_formatting_boundaries_consistently() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let readme = fs::read_to_string(root.join("README.md")).unwrap();

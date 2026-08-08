@@ -428,5 +428,7 @@ the YAML block.
 
 ---
 
-See [Reference](reference.qmd) for the full directive list, options,
-and safety model.
+Once an example has shown you the behavior, see [Directives](directives.qmd)
+for how to place those instructions in Markdown, YAML, Python, and R files.
+The [Reference](reference.qmd) page has the complete directive grammar,
+options, and safety model.

@@ -10,8 +10,10 @@ execute:
 
 
 These captures come from the Yamark binary built from this repository. Start
-with [Usage](usage.qmd) for common commands; use [Reference](reference.qmd) for
-configuration, directives, and supported syntax.
+with [Usage](usage.qmd) for installation and common commands, then read
+[Directives](directives.qmd) for the file-based interface. Use
+[Reference](reference.qmd) for complete configuration, directive grammar, and
+supported syntax.
 
 ## `yamark`
 

@@ -73,11 +73,14 @@ chunks in the same save or CI chain.
 
 ## Integrations
 
+- [Directives](directives.qmd): a guided path for putting formatting intent in
+  Markdown, YAML, Python, and R files, then arranging for Yamark to run
+  automatically.
 - [Editors](editors.qmd): VS Code, Positron, and compatible forks -
   commands, settings, format-on-save, formatter chaining, and logs.
 - [Git Filter](git-filter.qmd): store Markdown sentence-per-line in Git
   while keeping the working tree column-wrapped.
-- [Reference](reference.qmd): the full CLI option list, `yamark.toml`
-  schema, directive syntax, and supported syntax coverage.
+- [Reference](reference.qmd): the full directive grammar, CLI option list,
+  `yamark.toml` schema, and supported syntax coverage.
 - [CLI Help](cli-help.qmd): rendered `yamark --help`,
   `yamark format --help`, and `yamark git-filter --help` output.
