@@ -652,6 +652,19 @@ host_inline <- function() {
   sprintf("%s, %s %s", cpu, label, machine)
 }
 
+benchmark_yamark_version_inline <- function() {
+  versions <- unique(c(
+    flow_directory_rows$version[flow_directory_rows$formatter == "yamark"],
+    big_ok_rows$version[big_ok_rows$formatter == "yamark"]
+  ))
+  stopifnot(
+    length(versions) == 1,
+    !is.na(versions),
+    startsWith(versions, "yamark ")
+  )
+  sprintf("`%s`", sub("^yamark ", "", versions))
+}
+
 benchmark_commit_inline <- function() {
   commits <- unique(c(flow_directory_rows$commit, big_ok_rows$commit))
   stopifnot(length(commits) == 1, nzchar(commits))
