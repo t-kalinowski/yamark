@@ -1,5 +1,6 @@
 ---
 title: Yamark
+body-classes: yamark-home
 toc: false
 ---
 
@@ -41,13 +42,13 @@ emit_before_after <- function(label, stdin_file_path = "example.md") {
 ![](assets/favicon.svg){.hero-mark}
 :::
 
-<h2 class="hero-thesis">Format Markdown and YAML wherever they live.</h2>
+<h1 class="hero-thesis">Format Markdown and YAML wherever they live.</h1>
 
 Yamark formats whole files and embedded content with the consistency we expect
 from code, keeping source readable and changes easy to review.
 
 ::: {.hero-proof}
-Fast, deterministic, and written in Rust.
+Fast and written in Rust.
 :::
 
 ::: {.hero-actions}
@@ -137,28 +138,6 @@ Yamark wraps and indents each region according to its own grammar.
 })();
 </script>
 ```
-
-::: {.feature-grid}
-::: {.feature}
-### Mixed documents
-
-Format YAML front matter and the Markdown body with one command.
-:::
-
-::: {.feature}
-### Rewrap after writing
-
-Edit Markdown prose, YAML descriptions, prompt bodies, and front matter without
-maintaining line breaks by hand.
-:::
-
-::: {.feature}
-### Nested content
-
-Format YAML and Markdown recursively, and send supported embedded code to its
-own formatter when configured.
-:::
-:::
 
 ## Performance
 

@@ -421,6 +421,7 @@ fn website_homepage_has_visual_landing_sections() {
     assert!(index.contains("hero-shell"));
     assert!(index.contains("hero-thesis"));
     assert!(index.contains("hero-command"));
+    assert!(index.contains("body-classes: yamark-home"));
     assert!(!index.contains("hero-coverage"));
     assert!(!index.contains("hero-specimen"));
     assert!(!index.contains("hero-diff"));
@@ -430,13 +431,16 @@ fn website_homepage_has_visual_landing_sections() {
     assert!(rendered.contains("Format Markdown and YAML wherever they live."));
     assert!(
         rendered.contains(
-            "<h2 class=\"hero-thesis\">Format Markdown and YAML wherever they live.</h2>"
+            "<h1 class=\"hero-thesis\">Format Markdown and YAML wherever they live.</h1>"
         )
     );
     assert!(!rendered.contains("class=\"level2 hero-thesis\""));
     assert!(!rendered.contains("hero-coverage"));
     assert!(!rendered.contains("hero-specimen"));
+    assert!(!rendered.contains("<h1 class=\"title\">Yamark</h1>"));
     assert!(!styles.contains(".status-chip"));
+    assert!(styles.contains(".yamark-home .quarto-title-block"));
+    assert!(styles.contains("display: none"));
     assert!(styles.contains("--yamark-ink"));
     assert!(styles.contains(".hero-shell"));
     assert!(styles.contains(".hero-thesis"));
@@ -524,14 +528,22 @@ fn website_includes_homepage_and_examples_content() {
     ));
     assert!(!index.contains("YAML and Markdown often share a file."));
     assert!(index.contains("**Recurse**"));
-    assert!(index.contains("### Nested content"));
+    assert!(!index.contains("feature-grid"));
+    assert!(!index.contains("### Nested content"));
     assert!(!index.contains("**Dispatch**"));
     assert!(!index.contains("### Nested formatters"));
     assert!(!index.contains("language models"));
     assert!(!index.contains("hero-coverage"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
-    assert!(index.contains("feature-grid"));
+    assert!(index.contains("title: Why YAML + Markdown?"));
+    assert!(index.contains(
+        "The front matter carries fields a program can inspect; the body carries prose that people can edit and review in a diff."
+    ));
+    assert!(
+        index
+            .contains("Prompts and agent instructions where metadata sits next to free-form text.")
+    );
     assert!(!index.contains("## The pitch"));
 
     assert!(examples.contains("### Markdown-valued YAML scalars"));

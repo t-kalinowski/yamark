@@ -100,6 +100,10 @@ a:hover {
   max-width: 42rem;
 }
 
+.yamark-home .quarto-title-block {
+  display: none;
+}
+
 body.quarto-dark .quarto-title-block .title,
 body.quarto-dark h1 {
   color: #ffffff;
@@ -266,50 +270,6 @@ h2 {
 h3 {
   color: var(--yamark-ink);
   letter-spacing: 0;
-}
-
-.feature-grid,
-.metric-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 1.2rem 0 2.7rem;
-}
-
-.feature,
-.metric {
-  background: var(--yamark-surface);
-  border: 1px solid var(--yamark-line);
-  border-radius: 8px;
-  padding: 1.05rem;
-}
-
-.feature:nth-child(1),
-.metric:nth-child(1) {
-  border-top: 4px solid var(--yamark-teal);
-}
-
-.feature:nth-child(2),
-.metric:nth-child(2) {
-  border-top: 4px solid var(--yamark-gold);
-}
-
-.feature:nth-child(3),
-.metric:nth-child(3) {
-  border-top: 4px solid var(--yamark-red);
-}
-
-.feature h3,
-.metric h3 {
-  font-size: 1.05rem;
-  font-weight: 800;
-  margin-top: 0;
-}
-
-.feature p,
-.metric p {
-  color: var(--yamark-muted);
-  margin-bottom: 0;
 }
 
 .code-copy-outer-scaffold,
@@ -845,11 +805,6 @@ table.benchmark-summary-table {
 @media (max-width: 720px) {
   .quarto-title-block .title {
     font-size: 2.5rem;
-  }
-
-  .feature-grid,
-  .metric-grid {
-    grid-template-columns: 1fr;
   }
 
   .before-after {
