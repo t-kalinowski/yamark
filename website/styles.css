@@ -634,7 +634,7 @@ table.benchmark-summary-table {
   }
 
   .benchmark-summary-table td:nth-child(4)::before {
-    content: "Peer / Yamark";
+    content: "Relative time";
   }
 
   .benchmark-summary-table td:nth-child(5)::before {

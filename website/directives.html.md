@@ -6,27 +6,19 @@ description: Tell Yamark what to format, skip, preserve, or configure from insid
 
 <!-- fmt: skip file -->
 
-Examples show what Yamark changes. This page shows how to tell it where to
-work.
-
 The source file is the primary interface. Put a small `fmt:` directive next to
-the text it describes, then let an editor, a Git hook, or a Git filter run
-Yamark automatically. You should not need to remember a command every time you
-save a file.
-
-Directives are comments, so they stay with the text they control. The comment
-marker depends on the file:
+the text it controls, then let an editor or repository integration run Yamark.
+Because directives are comments, the formatting choice stays with the text.
+The comment marker depends on the file:
 
 | File | Directive comment |
 | --- | --- |
 | Markdown and Quarto | `<!-- fmt: ... -->` |
 | YAML, Python, and R | `# fmt: ...` |
-| Quarto and hashpipe YAML options | `#| ...` |
 
-Start with [Examples](examples.qmd) to see the formatted result, then use the
-patterns below to add control to your own files.
+Quarto chunk options use `#|`; for example, `#| fmt: skip`.
 
-## Mark the next piece of text
+## Target the next value or block
 
 Most directives apply to the next supported target. In a YAML file, that target
 is usually a scalar node. In a Python or R file, it is usually a string literal
@@ -227,22 +219,18 @@ second: "This is ordinary YAML text."
 
 ## Arrange for Yamark to run automatically
 
-Once directives are in the files, configure one integration to run Yamark as
-part of the workflow:
+Once directives are in the files, configure Yamark to run as part of the
+workflow:
 
 - In an editor, enable format on save. The [Editors](editors.qmd) page shows
   the VS Code and Positron settings. This is the most direct way to see a
   directive take effect while editing.
-- In a pre-commit hook, run `yamark format --check` before a commit or in CI.
-  This keeps formatting policy visible without requiring every contributor to
-  remember a command.
-- With the experimental [Git Filter](git-filter.qmd), store Markdown
-  sentence-per-line in Git while keeping the working tree column-wrapped. The
-  filter applies only to paths selected by Git attributes.
+- In a pre-commit hook, run `yamark format`. In CI, use
+  `yamark format --check` to verify files without changing them.
 
-These integrations have different repository policies. Choose the one that
-fits the project; the important part is that the file and its directives remain
-the place where formatting intent is expressed.
+The experimental [Git Filter](git-filter.qmd) serves a narrower workflow: it
+stores selected Markdown files sentence-per-line while keeping the working tree
+column-wrapped.
 
 ## When a repository default is better
 
@@ -275,6 +263,4 @@ yamark format --check docs/
 ```
 
 Use [CLI Help](cli-help.qmd) for the accepted arguments and
-[Usage](usage.qmd) for installation and common commands. In normal editing,
-the directive in the source file and the automatic integration should do most
-of the work.
+[Usage](usage.qmd) for installation and common commands.

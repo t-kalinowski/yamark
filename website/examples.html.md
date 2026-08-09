@@ -2,15 +2,15 @@
 # fmt: skip file
 title: Examples
 description: >-
-  Generated before-and-after examples for supported files and directives.
+  Before-and-after examples of Yamark's YAML, Markdown, and embedded formatting.
 ---
 
 <!-- fmt: skip file -->
 
 
 
-These examples run the public Yamark command during the site build. Each one
-shows a focused input and the output Yamark writes.
+Each example shows a focused input and the output Yamark writes. The site build
+generates every result with the current Yamark binary.
 
 ## YAML and Markdown documents
 

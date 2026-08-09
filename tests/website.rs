@@ -77,7 +77,7 @@ fn public_repo_metadata_is_ready() {
     assert!(license.contains("Copyright (c) 2026 Tomasz Kalinowski"));
 
     for field in [
-        r#"description = "An extremely fast formatter for YAML and Markdown, written in Rust.""#,
+        r#"description = "A formatter for YAML and Markdown, written in Rust.""#,
         r#"repository = "https://github.com/t-kalinowski/yamark""#,
         r#"homepage = "https://t-kalinowski.github.io/yamark/""#,
         r#"readme = "README.md""#,
@@ -90,9 +90,9 @@ fn public_repo_metadata_is_ready() {
         !pyproject.contains("Add your description here"),
         "pyproject description should not be a template placeholder"
     );
-    assert!(pyproject.contains(
-        "description = \"An extremely fast formatter for YAML and Markdown, written in Rust.\""
-    ));
+    assert!(
+        pyproject.contains("description = \"A formatter for YAML and Markdown, written in Rust.\"")
+    );
     assert!(pyproject.contains("[build-system]"));
     assert!(pyproject.contains(r#"build-backend = "maturin""#));
     assert!(pyproject.contains("[tool.maturin]"));
@@ -273,7 +273,7 @@ fn website_social_images_exist() {
 
     let social_card = fs::read_to_string(root.join("assets/social-card.svg")).unwrap();
     assert!(social_card.contains(r#"viewBox="0 0 1200 630""#));
-    assert!(social_card.contains("Markdown and YAML are source files too."));
+    assert!(social_card.contains("Format Markdown and YAML wherever they live."));
 
     let mut expected = Vec::new();
     for line in config.lines() {
@@ -394,7 +394,7 @@ fn website_presents_benchmarks_with_data_driven_visuals() {
     assert!(rendered_index.contains(r#"data-benchmark-chart="overview""#));
     assert!(rendered.contains(r#"data-benchmark-chart="full-field""#));
     assert!(rendered.contains("Next-lowest elapsed"));
-    assert!(rendered.contains("Peer / Yamark"));
+    assert!(rendered.contains("Relative time"));
     assert!(rendered.contains("Output note"));
     assert!(rendered.contains("benchmark-summary-table"));
     assert!(rendered_index.contains("Exact values:"));
@@ -573,7 +573,7 @@ fn website_guides_users_through_directives_before_configuration() {
         "fmt: off",
         "format on save",
         "pre-commit",
-        "Git filter",
+        "Git Filter",
         "yamark.toml",
         "--wrap",
     ] {
@@ -603,7 +603,7 @@ fn public_docs_describe_formatting_boundaries_consistently() {
     let vscode = fs::read_to_string(root.join("editors/vscode/README.md")).unwrap();
     let vscode_prose = vscode.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    assert!(readme.contains("It rewrites supported regions and preserves unsupported input."));
+    assert!(readme.contains("Regions without a supported rewrite stay unchanged."));
     assert!(readme.contains("For supported embedded code, Yamark can also call"));
     for statement in [
         "Yamark formats `#|` hashpipe YAML comment blocks and explicitly marked targets",
@@ -740,8 +740,7 @@ fn website_documents_cli_help_on_dedicated_page() {
     let usage = fs::read_to_string(root.join("usage.qmd")).unwrap();
     let not_found = fs::read_to_string(root.join("404.qmd")).unwrap();
 
-    assert!(config.contains("cli-help.qmd"));
-    assert!(config.contains("text: CLI Help"));
+    assert!(!config.contains("text: CLI Help"));
     assert!(usage.contains("[CLI Help](cli-help.qmd)"));
     assert!(not_found.contains("[CLI Help](cli-help.qmd)"));
     assert!(cli_help.contains("title: CLI Help"));
@@ -772,7 +771,7 @@ fn website_documents_cli_help_on_dedicated_page() {
 
     for term in [
         "class=\"yamark-cli-help\"",
-        "An extremely fast formatter for YAML and Markdown",
+        "A formatter for YAML and Markdown",
         "Usage:",
         "Commands:",
         "yamark git-filter setup",
@@ -875,6 +874,7 @@ fn website_titles_have_dark_mode_contrast() {
 #[test]
 fn website_documents_editor_and_git_filter_integrations() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
     let editors = fs::read_to_string(root.join("editors.qmd")).unwrap();
     let git_filter = fs::read_to_string(root.join("git-filter.qmd")).unwrap();
     let rendered_editors = fs::read_to_string(root.join("editors.html.md")).unwrap();
@@ -882,7 +882,11 @@ fn website_documents_editor_and_git_filter_integrations() {
     let usage = fs::read_to_string(root.join("usage.qmd")).unwrap();
     let not_found = fs::read_to_string(root.join("404.qmd")).unwrap();
 
-    // Editors and Git Filter left the navbar but stay reachable from Usage.
+    assert!(config.contains("text: Editors"));
+    assert!(!config.contains("text: Home"));
+    assert!(!config.contains("text: Releases"));
+
+    // Git Filter stays out of the navbar but remains reachable from Usage.
     assert!(not_found.contains("[Editors](editors.qmd)"));
     assert!(not_found.contains("[Git Filter](git-filter.qmd)"));
     assert!(usage.contains("[Editors](editors.qmd)"));
@@ -918,11 +922,10 @@ fn website_documents_editor_and_git_filter_integrations() {
     assert!(!rendered_editors.contains("```jsonc"));
 
     for term in [
-        "## Experimental status",
-        "The Git filter is experimental",
+        "Yamark's experimental Git filter",
         "may change or be removed",
         "sentence-per-line Markdown in Git",
-        "tools therefore see the column-wrapped form",
+        "other tools see the",
         "yamark git-filter clean",
         "yamark git-filter smudge",
         "yamark git-filter adopt",

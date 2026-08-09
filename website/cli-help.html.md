@@ -1,5 +1,6 @@
 ---
 title: CLI Help
+description: Current command-line help for Yamark.
 execute:
   echo: false
   warning: false
@@ -9,16 +10,14 @@ execute:
 
 
 
-These captures come from the Yamark binary built from this repository. Start
-with [Usage](usage.qmd) for installation and common commands, then read
-[Directives](directives.qmd) for the file-based interface. Use
-[Reference](reference.qmd) for complete configuration, directive grammar, and
-supported syntax.
+These are Yamark's current help screens. See [Usage](usage.qmd) for common
+commands, [Directives](directives.qmd) for source-file controls, and
+[Reference](reference.qmd) for accepted options and syntax.
 
 ## `yamark`
 
 `````{=html}
-<pre class="yamark-cli-help"><code>An extremely fast formatter for YAML and Markdown, written in Rust.
+<pre class="yamark-cli-help"><code>A formatter for YAML and Markdown, written in Rust.
 
 Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 

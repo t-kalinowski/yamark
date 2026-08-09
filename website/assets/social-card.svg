@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
   <title id="title">Yamark</title>
-  <desc id="description">Markdown and YAML are source files too.</desc>
+  <desc id="description">Format Markdown and YAML wherever they live.</desc>
   <rect width="1200" height="630" fill="#f7faf9"/>
   <rect x="0" y="0" width="16" height="630" fill="#0f766e"/>
 
@@ -12,8 +12,8 @@
   <text x="196" y="141" fill="#181b20" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="58" font-weight="800" letter-spacing="-1">Yamark</text>
 
   <text x="88" y="322" fill="#181b20" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="70" font-weight="760" letter-spacing="-1.5">
-    <tspan x="88" dy="0">Markdown and YAML are</tspan>
-    <tspan x="88" dy="84">source files too.</tspan>
+    <tspan x="88" dy="0">Format Markdown and YAML</tspan>
+    <tspan x="88" dy="84">wherever they live.</tspan>
   </text>
 
   <g transform="translate(88 500)">
@@ -21,5 +21,5 @@
     <text x="24" y="41" fill="#a7f3d0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="25">$ uvx yamark format</text>
   </g>
 
-  <text x="1112" y="543" text-anchor="end" fill="#5b6670" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="25">Extremely fast. Written in Rust.</text>
+  <text x="1112" y="543" text-anchor="end" fill="#5b6670" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="25">Fast and written in Rust.</text>
 </svg>

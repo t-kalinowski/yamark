@@ -522,7 +522,7 @@ benchmark_summary_table <- function() {
     Workload = rows$workload,
     Yamark = rows$yamark_duration,
     `Next-lowest elapsed` = paste(rows$peer_formatter, rows$peer_duration, sep = " · "),
-    `Peer / Yamark` = sprintf("%.1f×", rows$peer_per_yamark),
+    `Relative time` = sprintf("%.1f×", rows$peer_per_yamark),
     `Output note` = rows$output_note,
     check.names = FALSE
   )

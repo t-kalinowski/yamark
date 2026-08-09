@@ -19,8 +19,9 @@ or adapters, so the roster differs by input kind.
 ## At a glance
 
 The next-lowest result is the lowest median wall time among the other CLIs for
-that workload. Peer / Yamark divides that result by Yamark's time. The output
-note keeps differences in default formatting behavior beside the timing.
+that workload. Relative time shows that result as a multiple of Yamark's time.
+The output note keeps differences in default formatting behavior beside the
+timing.
 
 ::: {.benchmark-summary-shell}
 ```{r}

@@ -67,20 +67,20 @@ yamark format --stdin-file-path config.yaml < config.yaml
 `--check` and `--diff` do not write files. Both exit `1` when any
 selected file would change.
 
-Use `--diagnostics` for preservation notes, or
-`--skip-embedded-formatters` when another formatter owns source-code
-chunks in the same save or CI chain.
+Use `--diagnostics` to explain preserved content. Use
+`--skip-embedded-formatters` when another tool formats the same embedded code.
 
 ## Integrations
 
-- [Directives](directives.qmd): a guided path for putting formatting intent in
-  Markdown, YAML, Python, and R files, then arranging for Yamark to run
-  automatically.
+- [Examples](examples.qmd): focused before-and-after output from the current
+  Yamark binary.
+- [Directives](directives.qmd): put formatting choices beside content in
+  Markdown, YAML, Python, and R files.
 - [Editors](editors.qmd): VS Code, Positron, and compatible forks -
   commands, settings, format-on-save, formatter chaining, and logs.
-- [Git Filter](git-filter.qmd): store Markdown sentence-per-line in Git
-  while keeping the working tree column-wrapped.
 - [Reference](reference.qmd): the full directive grammar, CLI option list,
   `yamark.toml` schema, and supported syntax coverage.
 - [CLI Help](cli-help.qmd): rendered `yamark --help`,
   `yamark format --help`, and `yamark git-filter --help` output.
+- [Git Filter](git-filter.qmd): an experimental workflow that stores Markdown
+  sentence-per-line while keeping the working tree column-wrapped.

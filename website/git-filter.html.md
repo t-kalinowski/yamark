@@ -3,22 +3,12 @@ title: Git Filter
 description: Store Markdown sentence-per-line while editing column-wrapped files.
 ---
 
-Column-wrapped Markdown is comfortable in an editor, but a one-sentence edit in
-the middle of a paragraph can rewrap the whole paragraph. Yamark's Git filter
-stores sentence-per-line Markdown in the index and writes column-wrapped
-Markdown into the working tree.
+Yamark's experimental Git filter stores sentence-per-line Markdown in Git while
+keeping the working tree column-wrapped. This can keep one-sentence edits
+focused, but every clone needs local setup and other tools see the
+column-wrapped files. The feature may change or be removed.
 
 The filter only applies to paths matched by Git attributes.
-
-## Experimental status
-
-The Git filter is experimental and may change or be removed. It stores
-sentence-per-line Markdown in Git while checking out column-wrapped files for
-editing.
-
-On checkout, Git applies the smudge filter before other tools read the working
-tree. Those tools therefore see the column-wrapped form, not the stored
-sentence-per-line form. Treat this feature as an experimental repository policy.
 
 ## Behavior
 
