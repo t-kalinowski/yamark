@@ -150,21 +150,21 @@ source("_benchmark-data.R")
 `r benchmark_headline()`
 
 ```{r}
-#| label: homepage-benchmark-overview
+#| label: homepage-benchmark-field
 #| echo: false
 #| results: asis
 
 write_benchmark_chart(
-  kind = "overview",
-  id = "homepage-benchmark-overview",
-  title = "Yamark and the next-lowest elapsed time",
+  id = "homepage-benchmark-field",
+  title = "Elapsed time across formatter CLIs",
   subtitle = paste(
-    "Median wall time for each generated workload.",
-    "Lower is better; the horizontal scale is logarithmic."
+    "Every formatter in the checked-in comparison.",
+    "Median wall time; lower is better.",
+    "All four panels share a logarithmic seconds scale."
   ),
-  rows = benchmark_summary_rows()
+  rows = benchmark_full_field_rows()
 )
 ```
 
-The [Benchmarks](benchmarks.qmd) page includes the complete comparisons,
-methodology, checked-in results, and reproduction commands.
+The [Benchmarks](benchmarks.qmd) page includes detailed tables, methodology,
+checked-in results, and reproduction commands.

@@ -391,8 +391,15 @@ fn website_presents_benchmarks_with_data_driven_visuals() {
     assert!(data.contains("benchmark_full_field_rows"));
     assert!(data.contains("write_benchmark_chart"));
 
-    assert!(rendered_index.contains(r#"data-benchmark-chart="overview""#));
+    assert!(rendered_index.contains(r#"data-benchmark-chart="full-field""#));
+    assert!(!rendered_index.contains(r#"data-benchmark-chart="overview""#));
     assert!(rendered.contains(r#"data-benchmark-chart="full-field""#));
+    assert!(rendered_index.contains("Every formatter in the checked-in comparison"));
+    for formatter in [
+        "Yamark", "Panache", "mdformat", "Prettier", "dprint", "Deno", "yamlfmt", "yamlfix",
+    ] {
+        assert!(rendered_index.contains(formatter));
+    }
     assert!(rendered.contains("Next-lowest elapsed"));
     assert!(rendered.contains("Relative time"));
     assert!(rendered.contains("Output note"));

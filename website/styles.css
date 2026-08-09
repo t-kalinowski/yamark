@@ -459,16 +459,10 @@ table.benchmark-summary-table {
   font-weight: 650;
 }
 
-.benchmark-chart-workload,
 .benchmark-chart-formatter {
   fill: var(--yamark-ink);
   font-size: 11.5px;
   font-weight: 650;
-}
-
-.benchmark-chart-workload-compact {
-  font-size: 12px;
-  font-weight: 750;
 }
 
 .benchmark-chart-formatter-yamark,
@@ -489,11 +483,6 @@ table.benchmark-summary-table {
   fill: var(--yamark-muted);
 }
 
-.benchmark-dumbbell-line {
-  stroke: color-mix(in srgb, var(--yamark-muted) 60%, transparent);
-  stroke-width: 2;
-}
-
 .benchmark-mark-yamark {
   fill: var(--yamark-teal);
   stroke: var(--yamark-surface);
@@ -504,10 +493,6 @@ table.benchmark-summary-table {
   fill: var(--yamark-surface);
   stroke: var(--yamark-muted);
   stroke-width: 2;
-}
-
-.benchmark-mark-peer-overview {
-  stroke: var(--yamark-gold);
 }
 
 .benchmark-chart-fallback {

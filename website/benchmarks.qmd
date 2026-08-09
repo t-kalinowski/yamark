@@ -44,7 +44,6 @@ write_table(
 #| results: asis
 
 write_benchmark_chart(
-  kind = "full-field",
   id = "benchmark-full-field",
   title = "Elapsed time by formatter",
   subtitle = paste(

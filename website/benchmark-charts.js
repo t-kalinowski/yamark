@@ -109,118 +109,6 @@
     }
   }
 
-  function overviewDescription(rows) {
-    return rows.map((row) => (
-      `${row.workload}: Yamark ${row.yamark_duration}; ` +
-      `${row.peer_formatter} ${row.peer_duration}. ${row.output_note}.`
-    )).join(" ");
-  }
-
-  function renderOverview(host, rows, width) {
-    const compact = width < 480;
-    const rowHeight = compact ? 84 : 68;
-    const top = compact ? 12 : 18;
-    const bottomSpace = 42;
-    const height = top + rows.length * rowHeight + bottomSpace;
-    const plotLeft = compact ? 10 : Math.min(206, width * 0.31);
-    const plotRight = width - (compact ? 10 : 18);
-    const plotTop = top;
-    const plotBottom = top + rows.length * rowHeight;
-    const values = rows.flatMap((row) => [
-      row.yamark_seconds,
-      row.peer_seconds,
-    ]);
-    const domain = logDomain(values);
-    const scale = logScale(domain, [plotLeft, plotRight]);
-    const ticks = tickValues(domain, compact);
-    const id = host.dataset.benchmarkSource.replace(/-data$/, "");
-    const svg = chartSvg(
-      width,
-      height,
-      `${id}-chart`,
-      "Yamark and the next-lowest elapsed time",
-      overviewDescription(rows),
-    );
-
-    axis(svg, scale, ticks, plotTop, plotBottom, plotLeft, plotRight);
-
-    rows.forEach((row, index) => {
-      const laneTop = top + index * rowHeight;
-      const y = compact ? laneTop + 34 : laneTop + rowHeight / 2;
-      const yamarkX = scale(row.yamark_seconds);
-      const peerX = scale(row.peer_seconds);
-      const peerAnchor = compact && peerX < plotLeft + 90 ? "start" : "end";
-
-      if (compact) {
-        svg.append(svgNode("text", {
-          x: plotLeft,
-          y: laneTop + 14,
-          class: "benchmark-chart-workload benchmark-chart-workload-compact",
-        }, row.short_workload));
-      } else {
-        svg.append(svgNode("text", {
-          x: plotLeft - 14,
-          y: y + 4,
-          class: "benchmark-chart-workload",
-          "text-anchor": "end",
-        }, row.short_workload));
-      }
-
-      svg.append(
-        svgNode("line", {
-          x1: yamarkX,
-          x2: peerX,
-          y1: y,
-          y2: y,
-          class: "benchmark-dumbbell-line",
-        }),
-        svgNode("circle", {
-          cx: yamarkX,
-          cy: y,
-          r: 5.5,
-          class: "benchmark-mark benchmark-mark-yamark",
-        }),
-        svgNode("circle", {
-          cx: peerX,
-          cy: y,
-          r: 5,
-          class: "benchmark-mark benchmark-mark-peer benchmark-mark-peer-overview",
-        }),
-        svgNode("text", {
-          x: yamarkX,
-          y: y - 10,
-          class: "benchmark-chart-value benchmark-chart-value-yamark",
-          "text-anchor": "start",
-        }, `Yamark · ${row.yamark_duration}`),
-        svgNode("text", {
-          x: peerX,
-          y: y + 19,
-          class: "benchmark-chart-value benchmark-chart-value-peer",
-          "text-anchor": peerAnchor,
-        }, `${row.peer_formatter} · ${row.peer_duration}`),
-      );
-
-      if (row.workload_id === "frontmatter") {
-        svg.append(svgNode("text", {
-          x: peerX,
-          y: y + 33,
-          class: "benchmark-chart-note",
-          "text-anchor": peerAnchor,
-        }, "front matter untouched"));
-      }
-    });
-
-    svg.append(svgNode("text", {
-      x: (plotLeft + plotRight) / 2,
-      y: height - 4,
-      class: "benchmark-chart-axis-title",
-      "text-anchor": "middle",
-    }, "Elapsed time (log scale)"));
-
-    host.replaceChildren(svg);
-    hideFallback(host);
-  }
-
   function rowsByWorkload(rows) {
     const groups = new Map();
     rows.forEach((row) => {
@@ -356,17 +244,14 @@
       throw new Error(`Missing benchmark source: ${host.dataset.benchmarkSource}`);
     }
     const rows = JSON.parse(source.textContent);
+    if (host.dataset.benchmarkChart !== "full-field") {
+      throw new Error(`Unknown benchmark chart: ${host.dataset.benchmarkChart}`);
+    }
     let frame = null;
 
     const render = () => {
       const width = Math.max(240, Math.floor(host.getBoundingClientRect().width));
-      if (host.dataset.benchmarkChart === "overview") {
-        renderOverview(host, rows, width);
-      } else if (host.dataset.benchmarkChart === "full-field") {
-        renderFullField(host, rows, width);
-      } else {
-        throw new Error(`Unknown benchmark chart: ${host.dataset.benchmarkChart}`);
-      }
+      renderFullField(host, rows, width);
     };
 
     const observer = new ResizeObserver(() => {

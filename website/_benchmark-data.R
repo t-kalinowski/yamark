@@ -412,8 +412,8 @@ benchmark_workload_rows <- function(
 }
 
 # Canonical long-form elapsed-time data for every benchmark presentation.
-# The overview and summary table are derived from these rows so the three
-# views cannot select different formatters or report different values.
+# The summary table is derived from these rows so the views cannot select
+# different formatters or report different values.
 benchmark_full_field_rows <- function() {
   markdown_rows <- big_target_rows(markdown_target)
   yaml_rows <- big_target_rows(yaml_target)
@@ -500,14 +500,9 @@ benchmark_summary_rows <- function() {
       stop("unknown workload: ", yamark$workload_id[[1]])
     )
     data.frame(
-      workload_id = yamark$workload_id,
       workload = yamark$workload,
-      short_workload = yamark$short_workload,
-      workload_order = yamark$workload_order,
-      yamark_seconds = yamark$seconds,
       yamark_duration = yamark$duration,
       peer_formatter = peer$formatter,
-      peer_seconds = peer$seconds,
       peer_duration = peer$duration,
       peer_per_yamark = peer$seconds / yamark$seconds,
       output_note = output_note,
@@ -528,32 +523,18 @@ benchmark_summary_table <- function() {
   )
 }
 
-write_benchmark_chart <- function(kind, id, title, subtitle, rows) {
+write_benchmark_chart <- function(id, title, subtitle, rows) {
   stopifnot(
-    kind %in% c("overview", "full-field"),
     grepl("^[a-z][a-z0-9-]+$", id),
     nrow(rows) > 0
   )
-  seconds <- if (identical(kind, "overview")) {
-    c(rows$yamark_seconds, rows$peer_seconds)
-  } else {
-    rows$seconds
-  }
-  stopifnot(all(is.finite(seconds)), all(seconds > 0))
+  stopifnot(all(is.finite(rows$seconds)), all(rows$seconds > 0))
 
   source_id <- paste0(id, "-data")
-  chart_columns <- if (identical(kind, "overview")) {
-    c(
-      "workload_id", "workload", "short_workload",
-      "yamark_seconds", "yamark_duration",
-      "peer_formatter", "peer_seconds", "peer_duration", "output_note"
-    )
-  } else {
-    c(
-      "workload_id", "short_workload", "workload_order",
-      "formatter", "seconds", "duration", "is_yamark", "outcome"
-    )
-  }
+  chart_columns <- c(
+    "workload_id", "short_workload", "workload_order",
+    "formatter", "seconds", "duration", "is_yamark", "outcome"
+  )
   chart_rows <- rows[, chart_columns, drop = FALSE]
   json <- jsonlite::toJSON(
     chart_rows,
@@ -564,52 +545,45 @@ write_benchmark_chart <- function(kind, id, title, subtitle, rows) {
   )
   json <- gsub("</", "<\\/", json, fixed = TRUE)
   escape <- htmltools::htmlEscape
-  fallback <- if (identical(kind, "overview")) {
-    items <- vapply(seq_len(nrow(rows)), function(index) {
-      row <- rows[index, , drop = FALSE]
-      sprintf(
-        paste0(
-          "<li><strong>%s:</strong> Yamark %s; %s %s. %s.</li>"
-        ),
-        escape(row$workload),
-        escape(row$yamark_duration),
-        escape(row$peer_formatter),
-        escape(row$peer_duration),
-        escape(row$output_note)
-      )
-    }, character(1))
-    paste0(
-      '<div class="benchmark-chart-fallback"><p>Exact values:</p><ul>',
-      paste(items, collapse = ""),
-      "</ul></div>"
+  items <- vapply(seq_len(nrow(rows)), function(index) {
+    row <- rows[index, , drop = FALSE]
+    outcome <- if (is.na(row$outcome[[1]])) {
+      ""
+    } else {
+      sprintf(" (%s)", escape(row$outcome[[1]]))
+    }
+    sprintf(
+      "<li><strong>%s - %s:</strong> %s%s</li>",
+      escape(row$short_workload[[1]]),
+      escape(row$formatter[[1]]),
+      escape(row$duration[[1]]),
+      outcome
     )
-  } else {
-    paste0(
-      '<p class="benchmark-chart-fallback">',
-      "Exact values are available in the detailed benchmark tables below.</p>"
-    )
-  }
+  }, character(1))
+  fallback <- paste0(
+    '<div class="benchmark-chart-fallback"><p>Exact values:</p><ul>',
+    paste(items, collapse = ""),
+    "</ul></div>"
+  )
 
   cat(sprintf(
     paste0(
-      '<figure class="benchmark-chart benchmark-%s-chart" ',
+      '<figure class="benchmark-chart benchmark-full-field-chart" ',
       'aria-labelledby="%s-caption">\n',
       '<figcaption id="%s-caption">\n',
       '<h3>%s</h3>\n',
       '<p>%s</p>\n',
       '</figcaption>\n',
-      '<div class="benchmark-chart-canvas" data-benchmark-chart="%s" ',
+      '<div class="benchmark-chart-canvas" data-benchmark-chart="full-field" ',
       'data-benchmark-source="%s"></div>\n',
       '%s\n',
       '<script type="application/json" id="%s">%s</script>\n',
       '</figure>\n'
     ),
-    escape(kind),
     escape(id),
     escape(id),
     escape(title),
     escape(subtitle),
-    escape(kind),
     escape(source_id),
     fallback,
     escape(source_id),
