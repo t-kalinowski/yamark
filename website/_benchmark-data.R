@@ -652,6 +652,12 @@ host_inline <- function() {
   sprintf("%s, %s %s", cpu, label, machine)
 }
 
+benchmark_commit_inline <- function() {
+  commits <- unique(c(flow_directory_rows$commit, big_ok_rows$commit))
+  stopifnot(length(commits) == 1, nzchar(commits))
+  sprintf("`%s`", commits)
+}
+
 # Inline tool-version list across both artifacts. Both tables must come from
 # the same tool versions; a version that differs between artifacts fails the
 # render instead of publishing one of the two numbers.

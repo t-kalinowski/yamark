@@ -158,8 +158,9 @@ configuration to plugin selection:
 Autofixing linters (`pymarkdown`, `markdownlint-cli2`) are outside this
 formatter-CLI comparison. The harness can still run them with `--tools`.
 
-Measured on a MacBook Pro (`r host_inline()`) with Yamark built in Cargo's
-release profile. `r tool_versions_block()`
+Measured on a MacBook Pro (`r host_inline()`) using Yamark development commit
+`r benchmark_commit_inline()`, built in Cargo's release profile.
+`r tool_versions_block()`
 
 The tables use the latest complete checked-in
 `r artifact_link(big_ok_rows, "single-file results")` and

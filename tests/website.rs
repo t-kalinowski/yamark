@@ -319,6 +319,8 @@ fn website_includes_benchmarks_page() {
     assert!(benchmarks.contains("tools/bench/big.py"));
     assert!(benchmarks.contains("--files 500 --items 540"));
     assert!(benchmarks.contains("MacBook Pro"));
+    assert!(benchmarks.contains("development commit"));
+    assert!(benchmarks.contains("benchmark_commit_inline()"));
     assert!(benchmarks.contains("total user CPU time"));
     assert!(!benchmarks.contains("single-core comparison"));
 
@@ -341,6 +343,7 @@ fn website_includes_benchmarks_page() {
     assert!(data.contains("target_roster <- function"));
     assert!(data.contains("big_requested_bytes <- 4000000"));
     assert!(data.contains("directory_files <- 500"));
+    assert!(data.contains("benchmark_commit_inline <- function"));
     for tool in [
         "yamlfmt",
         "yamlfix",
@@ -362,6 +365,22 @@ fn website_includes_benchmarks_page() {
     assert!(rendered.contains("big-with-frontmatter.md"));
     assert!(rendered.contains("docs/benchmarks/big"));
     assert!(rendered.contains("MacBook Pro"));
+    assert!(rendered.contains("using Yamark development commit"));
+    let commit = rendered
+        .split_once("using Yamark development commit\n`")
+        .unwrap()
+        .1
+        .split('`')
+        .next()
+        .unwrap();
+    assert_eq!(commit.len(), 12);
+    assert!(
+        commit
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    );
+    assert!(rendered.contains(&format!("docs/benchmarks/big/{commit}")));
+    assert!(rendered.contains(&format!("docs/benchmarks/yaml/{commit}")));
     assert!(rendered.contains("<th style=\"text-align:right;\"> Wall time </th>"));
     assert!(rendered.contains("<th style=\"text-align:right;\"> Peak RSS </th>"));
     assert!(rendered.contains("<th style=\"text-align:right;\"> User CPU time </th>"));
