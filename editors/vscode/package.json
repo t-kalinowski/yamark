@@ -33,7 +33,9 @@
     "onStartupFinished",
     "onCommand:yamark.formatDocument",
     "onCommand:yamark.formatSelectionAsMarkdown",
+    "onCommand:yamark.openFormattedPreview",
     "onCommand:yamark.openGitFilterDiff",
+    "onCommand:yamark.openJsonAsYaml",
     "onLanguage:markdown",
     "onLanguage:yaml",
     "onLanguage:quarto",
@@ -57,9 +59,41 @@
       {
         "command": "yamark.openGitFilterDiff",
         "title": "Yamark: Open Filtered Working Tree Diff"
+      },
+      {
+        "command": "yamark.openFormattedPreview",
+        "title": "Yamark: Open Formatted Preview"
+      },
+      {
+        "command": "yamark.openJsonAsYaml",
+        "title": "Yamark: View JSON as YAML"
       }
     ],
     "menus": {
+      "explorer/context": [
+        {
+          "command": "yamark.openFormattedPreview",
+          "when": "isFileSystemResource && resourceExtname =~ /\\.(md|qmd|rmd|yaml|yml|py|r)$/i && !explorerResourceIsFolder",
+          "group": "navigation@20"
+        },
+        {
+          "command": "yamark.openJsonAsYaml",
+          "when": "isFileSystemResource && resourceExtname =~ /\\.(json|jsonl|ndjson|jsonc|json5)$/i && !explorerResourceIsFolder",
+          "group": "navigation@20"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "yamark.openFormattedPreview",
+          "when": "isFileSystemResource && resourceExtname =~ /\\.(md|qmd|rmd|yaml|yml|py|r)$/i",
+          "group": "navigation@20"
+        },
+        {
+          "command": "yamark.openJsonAsYaml",
+          "when": "isFileSystemResource && resourceExtname =~ /\\.(json|jsonl|ndjson|jsonc|json5)$/i",
+          "group": "navigation@20"
+        }
+      ],
       "scm/resourceState/context": [
         {
           "command": "yamark.openGitFilterDiff",
@@ -100,7 +134,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Additional arguments passed after `yamark format` and before `--stdin-file-path`."
+          "description": "Additional arguments passed after `yamark format` or `yamark render` and before `--stdin-file-path`."
         },
         "yamark.runNextFormatter": {
           "type": "boolean",
