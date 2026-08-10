@@ -23,6 +23,7 @@ pub(crate) fn json5_to_yaml_source(input: &str) -> Result<String> {
     // whitespace/comment context unless the span is repaired first.
     let mut has_comments = false;
     let mut nesting: usize = 0;
+    let mut previous_token_was_unary = false;
     for span in &mut tokens.tok_spans {
         if span.1 == TokType::BlockComment
             && normalized.source.as_bytes().get(span.2) == Some(&b'/')
@@ -45,6 +46,17 @@ pub(crate) fn json5_to_yaml_source(input: &str) -> Result<String> {
             }
             TokType::LineComment | TokType::BlockComment => has_comments = true,
             _ => {}
+        }
+        if !is_trivia(&span.1) {
+            let is_unary = matches!(span.1, TokType::Plus | TokType::Minus);
+            if is_unary && previous_token_was_unary {
+                return Err(invalid_json5_at(
+                    input,
+                    normalized.original_offset(span.0),
+                    "Only one unary operator is allowed",
+                ));
+            }
+            previous_token_was_unary = is_unary;
         }
     }
 
@@ -710,7 +722,6 @@ fn decode_identifier(
     original: &str,
 ) -> Result<String> {
     let mut decoded = String::with_capacity(raw.len());
-    let mut positions = Vec::new();
     let mut offset = 0;
     while offset < raw.len() {
         let source_offset = offset;
@@ -748,17 +759,10 @@ fn decode_identifier(
             offset += character.len_utf8();
             character
         };
-        positions.push(source_offset);
-        decoded.push(value);
-    }
-
-    for (index, ((_, character), source_offset)) in
-        decoded.char_indices().zip(positions).enumerate()
-    {
-        let valid = if index == 0 {
-            is_identifier_start(character)
+        let valid = if decoded.is_empty() {
+            is_identifier_start(value)
         } else {
-            is_identifier_part(character)
+            is_identifier_part(value)
         };
         if !valid {
             return Err(decode_error(
@@ -768,6 +772,7 @@ fn decode_identifier(
                 "escaped character is not valid in a JSON5 IdentifierName",
             ));
         }
+        decoded.push(value);
     }
     Ok(decoded)
 }

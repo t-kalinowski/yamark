@@ -489,7 +489,7 @@ fn strict_json_projection_keeps_allocated_bytes_bounded() {
     assert!(rendered.output.contains("service-00399"));
     assert!(
         ALLOCATED_BYTES.load(Ordering::Relaxed) <= 6_000_000,
-        "strict JSON preview allocated {} bytes",
+        "strict JSON projection allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
 }
@@ -514,6 +514,54 @@ fn json5_raw_line_separator_offsets_stay_sparse() {
     assert!(
         ALLOCATED_BYTES.load(Ordering::Relaxed) <= 2_000_000,
         "JSON5 raw-separator projection allocated {} bytes",
+        ALLOCATED_BYTES.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
+fn json5_long_identifier_projection_keeps_allocated_bytes_bounded() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = format!("{{{}: 1}}\n", "a".repeat(200_000));
+    let path = Path::new("/tmp/yamark-performance/input.json5");
+    let options = FormatOptions::default();
+
+    let warmup = project_source_to_yaml(path, input.clone(), options, None).unwrap();
+    assert!(warmup.output.ends_with(": 1\n"));
+
+    ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let projected = project_source_to_yaml(path, input, options, None);
+    set_count_thread_allocations(false);
+
+    let projected = projected.unwrap();
+    assert!(projected.output.ends_with(": 1\n"));
+    assert!(
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 2_000_000,
+        "long JSON5 identifier projection allocated {} bytes",
+        ALLOCATED_BYTES.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
+fn dense_jsonc_comment_line_breaks_keep_allocated_bytes_bounded() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = format!("{{/*{}*/\"a\": 1}}\n", "\u{2028}".repeat(50_000));
+    let path = Path::new("/tmp/yamark-performance/input.jsonc");
+    let options = FormatOptions::default();
+
+    let warmup = project_source_to_yaml(path, input.clone(), options, None).unwrap();
+    assert!(warmup.output.ends_with("a: 1\n"));
+
+    ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let projected = project_source_to_yaml(path, input, options, None);
+    set_count_thread_allocations(false);
+
+    let projected = projected.unwrap();
+    assert!(projected.output.ends_with("a: 1\n"));
+    assert!(
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 11_500_000,
+        "dense JSONC comment projection allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
 }

@@ -6610,7 +6610,9 @@ fn to_yaml_rejects_native_source_types() {
         assert!(
             String::from_utf8(output.stderr)
                 .unwrap()
-                .contains("to-yaml requires a .json, .jsonc, .json5, .jsonl, or .ndjson"),
+                .contains(
+                    "JSON-to-YAML projection requires a .json, .jsonc, .json5, .jsonl, or .ndjson source path"
+                ),
             "{path} should not be projected"
         );
     }
@@ -6658,6 +6660,24 @@ fn to_yaml_json5_rejects_excessive_nesting_without_aborting() {
         String::from_utf8(output.stderr)
             .unwrap()
             .contains("invalid JSON5: nesting exceeds 256 levels")
+    );
+}
+
+#[test]
+fn to_yaml_json5_rejects_repeated_unary_operators_without_aborting() {
+    let input = format!("{}1", "+".repeat(10_000));
+    let output = yamark()
+        .args(["to-yaml", "--stdin-file-path", "input.json5"])
+        .write_stdin(input)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("invalid JSON5: Only one unary operator is allowed")
     );
 }
 

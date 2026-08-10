@@ -91,7 +91,7 @@ fn to_yaml_rejects_native_source_types() {
 
     assert_eq!(
         error.diagnostic.message,
-        "to-yaml requires a .json, .jsonc, .json5, .jsonl, or .ndjson --stdin-file-path"
+        "JSON-to-YAML projection requires a .json, .jsonc, .json5, .jsonl, or .ndjson source path"
     );
     assert_eq!(
         error.diagnostic.path.as_deref(),

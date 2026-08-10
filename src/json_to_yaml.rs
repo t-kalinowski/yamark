@@ -84,7 +84,8 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
     if memchr::memchr2(b'\r', 0xe2, input.as_bytes()).is_none() {
         return Cow::Borrowed(input);
     }
-    let mut replacements = Vec::new();
+    let mut normalized = None;
+    let mut copied_until = 0;
     let mut state = JsoncScanState::Outside;
     let mut offset = 0;
     while offset < input.len() {
@@ -140,12 +141,24 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
                 if character == '\r' {
                     state = JsoncScanState::Outside;
                     if !input[next_offset..].starts_with('\n') {
-                        replacements.push((offset, next_offset, "\n"));
+                        replace_jsonc_comment_line_break(
+                            &mut normalized,
+                            input,
+                            &mut copied_until,
+                            offset,
+                            next_offset,
+                        );
                     }
                 } else if character == '\n' {
                     state = JsoncScanState::Outside;
                 } else if matches!(character, '\u{2028}' | '\u{2029}') {
-                    replacements.push((offset, next_offset, "\n"));
+                    replace_jsonc_comment_line_break(
+                        &mut normalized,
+                        input,
+                        &mut copied_until,
+                        offset,
+                        next_offset,
+                    );
                     state = JsoncScanState::Outside;
                 }
                 offset = next_offset;
@@ -154,21 +167,37 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
                 if (character == '\r' && !input[next_offset..].starts_with('\n'))
                     || matches!(character, '\u{2028}' | '\u{2029}')
                 {
-                    replacements.push((offset, next_offset, "\n"));
+                    replace_jsonc_comment_line_break(
+                        &mut normalized,
+                        input,
+                        &mut copied_until,
+                        offset,
+                        next_offset,
+                    );
                 }
                 offset = next_offset;
             }
         }
     }
 
-    if replacements.is_empty() {
+    let Some(mut normalized) = normalized else {
         return Cow::Borrowed(input);
-    }
-    let mut normalized = input.to_owned();
-    for (start, end, replacement) in replacements.into_iter().rev() {
-        normalized.replace_range(start..end, replacement);
-    }
+    };
+    normalized.push_str(&input[copied_until..]);
     Cow::Owned(normalized)
+}
+
+fn replace_jsonc_comment_line_break(
+    normalized: &mut Option<String>,
+    input: &str,
+    copied_until: &mut usize,
+    start: usize,
+    end: usize,
+) {
+    let output = normalized.get_or_insert_with(|| String::with_capacity(input.len()));
+    output.push_str(&input[*copied_until..start]);
+    output.push('\n');
+    *copied_until = end;
 }
 
 fn render_json(input: &str) -> Result<String> {

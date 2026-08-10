@@ -140,7 +140,7 @@ pub fn project_source_to_yaml(
 ) -> Result<ProjectedSource> {
     let Some(json_kind) = JsonSourceKind::for_path(path) else {
         return Err(YamarkError::new(
-            "to-yaml requires a .json, .jsonc, .json5, .jsonl, or .ndjson --stdin-file-path",
+            "JSON-to-YAML projection requires a .json, .jsonc, .json5, .jsonl, or .ndjson source path",
         )
         .with_path(path));
     };
