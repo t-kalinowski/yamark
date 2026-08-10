@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::Path;
 
 use jsonc_parser::ast::{Comment, ObjectPropName, Value};
@@ -13,6 +14,7 @@ pub(crate) enum JsonSourceKind {
     Json,
     JsonLines,
     Jsonc,
+    Json5,
 }
 
 impl JsonSourceKind {
@@ -22,6 +24,7 @@ impl JsonSourceKind {
             "json" => Some(Self::Json),
             "jsonl" | "ndjson" => Some(Self::JsonLines),
             "jsonc" => Some(Self::Jsonc),
+            "json5" => Some(Self::Json5),
             _ => None,
         }
     }
@@ -32,18 +35,24 @@ pub(crate) fn json_to_yaml_source(input: &str, kind: JsonSourceKind) -> Result<S
         JsonSourceKind::Json => render_json(input),
         JsonSourceKind::JsonLines => render_json_lines(input),
         JsonSourceKind::Jsonc => render_jsonc(input),
+        JsonSourceKind::Json5 => crate::json5_render::json5_to_yaml_source(input),
     }
 }
 
 fn render_jsonc(input: &str) -> Result<String> {
-    let parsed =
-        parse_to_ast(input, &jsonc_collect_options(), &jsonc_parse_options()).map_err(|err| {
-            YamarkError::at(
-                format!("invalid JSONC: {}", err.kind()),
-                err.line_display(),
-                err.column_display(),
-            )
-        })?;
+    let normalized = normalize_jsonc_comment_line_breaks(input);
+    let parsed = parse_to_ast(
+        &normalized,
+        &jsonc_collect_options(),
+        &jsonc_parse_options(),
+    )
+    .map_err(|err| {
+        YamarkError::at(
+            format!("invalid JSONC: {}", err.kind()),
+            err.line_display(),
+            err.column_display(),
+        )
+    })?;
     let value = parsed
         .value
         .ok_or_else(|| YamarkError::new("invalid JSONC: expected a JSON value"))?;
@@ -61,6 +70,105 @@ fn render_jsonc(input: &str) -> Result<String> {
     emit_jsonc_block_value(&mut output, &value, 0, &mut comments);
     comments.emit_at(&mut output, value.range().end, 0);
     Ok(output)
+}
+
+#[derive(Clone, Copy)]
+enum JsoncScanState {
+    Outside,
+    String,
+    LineComment,
+    BlockComment,
+}
+
+fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
+    if memchr::memchr2(b'\r', 0xe2, input.as_bytes()).is_none() {
+        return Cow::Borrowed(input);
+    }
+    let mut replacements = Vec::new();
+    let mut state = JsoncScanState::Outside;
+    let mut offset = 0;
+    while offset < input.len() {
+        let rest = &input[offset..];
+        match state {
+            JsoncScanState::Outside if rest.starts_with("//") => {
+                offset += 2;
+                state = JsoncScanState::LineComment;
+                continue;
+            }
+            JsoncScanState::Outside if rest.starts_with("/*") => {
+                offset += 2;
+                state = JsoncScanState::BlockComment;
+                continue;
+            }
+            JsoncScanState::BlockComment if rest.starts_with("*/") => {
+                offset += 2;
+                state = JsoncScanState::Outside;
+                continue;
+            }
+            _ => {}
+        }
+
+        let character = rest.chars().next().expect("offset is before input end");
+        let next_offset = offset + character.len_utf8();
+        match state {
+            JsoncScanState::Outside => {
+                state = if character == '"' {
+                    JsoncScanState::String
+                } else {
+                    JsoncScanState::Outside
+                };
+                offset = next_offset;
+            }
+            JsoncScanState::String => {
+                if character == '\\' {
+                    offset = next_offset;
+                    if offset < input.len() {
+                        offset += input[offset..]
+                            .chars()
+                            .next()
+                            .expect("offset is before input end")
+                            .len_utf8();
+                    }
+                } else {
+                    offset = next_offset;
+                    if character == '"' {
+                        state = JsoncScanState::Outside;
+                    }
+                }
+            }
+            JsoncScanState::LineComment => {
+                if character == '\r' {
+                    state = JsoncScanState::Outside;
+                    if !input[next_offset..].starts_with('\n') {
+                        replacements.push((offset, next_offset, "\n"));
+                    }
+                } else if character == '\n' {
+                    state = JsoncScanState::Outside;
+                } else if matches!(character, '\u{2028}' | '\u{2029}') {
+                    replacements.push((offset, next_offset, "\n"));
+                    state = JsoncScanState::Outside;
+                }
+                offset = next_offset;
+            }
+            JsoncScanState::BlockComment => {
+                if (character == '\r' && !input[next_offset..].starts_with('\n'))
+                    || matches!(character, '\u{2028}' | '\u{2029}')
+                {
+                    replacements.push((offset, next_offset, "\n"));
+                }
+                offset = next_offset;
+            }
+        }
+    }
+
+    if replacements.is_empty() {
+        return Cow::Borrowed(input);
+    }
+    let mut normalized = input.to_owned();
+    for (start, end, replacement) in replacements.into_iter().rev() {
+        normalized.replace_range(start..end, replacement);
+    }
+    Cow::Owned(normalized)
 }
 
 fn render_json(input: &str) -> Result<String> {
@@ -198,6 +306,7 @@ fn emit_jsonc_block_value(
             for value in &array.elements {
                 let range = value.range();
                 comments.emit_at(output, range.start, indent);
+                comments.emit_empty_container_comments(output, value, indent);
                 push_yaml_indent(output, indent);
                 if json_value_is_inline(value) {
                     output.push_str("- ");
@@ -223,6 +332,7 @@ fn emit_jsonc_block_value(
                 comments.emit_at(output, key_range.start, indent);
                 comments.emit_at(output, key_range.end, indent);
                 comments.emit_at(output, value_range.start, indent);
+                comments.emit_empty_container_comments(output, &property.value, indent);
                 push_yaml_indent(output, indent);
                 let key = match &property.name {
                     ObjectPropName::String(value) => value.value.as_ref(),
@@ -311,37 +421,116 @@ impl<'map, 'input> JsoncCommentEmitter<'map, 'input> {
                 output.push('\n');
             }
             match comment {
-                Comment::Line(comment) => emit_yaml_comment_line(output, comment.text, indent),
+                Comment::Line(comment) => {
+                    emit_yaml_comment_line(output, comment.text, indent, "jsonc")
+                }
                 Comment::Block(comment) => {
-                    if comment.text.is_empty() {
-                        emit_yaml_comment_line(output, "", indent);
-                    } else {
-                        for line in comment.text.lines() {
-                            let line = line.trim().strip_prefix('*').unwrap_or(line.trim()).trim();
-                            emit_yaml_comment_line(output, line, indent);
-                        }
-                    }
+                    for_each_comment_line(comment.text, |line| {
+                        let line = trim_comment_line(line);
+                        emit_yaml_comment_line(output, line, indent, "jsonc");
+                    });
                 }
             }
         }
     }
+
+    fn emit_empty_container_comments(
+        &mut self,
+        output: &mut String,
+        value: &Value<'_>,
+        indent: usize,
+    ) {
+        let range = match value {
+            Value::Array(array) if array.elements.is_empty() => array.range,
+            Value::Object(object) if object.properties.is_empty() => object.range,
+            _ => return,
+        };
+        self.emit_at(output, range.start + 1, indent);
+        self.emit_at(output, range.end.saturating_sub(1), indent);
+    }
 }
 
-fn emit_yaml_comment_line(output: &mut String, text: &str, indent: usize) {
-    let text = text.trim();
+pub(crate) fn emit_yaml_comment_line(
+    output: &mut String,
+    text: &str,
+    indent: usize,
+    dialect: &str,
+) {
+    let text = text.trim_matches([' ', '\t']);
     push_yaml_indent(output, indent);
     output.push('#');
     if !text.is_empty() {
         output.push(' ');
         if text.starts_with("fmt:") {
-            output.push_str("[jsonc] ");
+            output.push('[');
+            output.push_str(dialect);
+            output.push_str("] ");
         }
-        output.push_str(text);
+        for character in text.chars() {
+            if yaml_comment_character_is_safe(character) {
+                output.push(character);
+            } else {
+                use std::fmt::Write;
+                let value = character as u32;
+                if value <= 0xff {
+                    write!(output, "\\x{value:02X}").expect("writing to a String cannot fail");
+                } else if value <= 0xffff {
+                    write!(output, "\\u{value:04X}").expect("writing to a String cannot fail");
+                } else {
+                    write!(output, "\\U{value:08X}").expect("writing to a String cannot fail");
+                }
+            }
+        }
     }
     output.push('\n');
 }
 
-fn emit_yaml_double_quoted(output: &mut String, value: &str) {
+pub(crate) fn for_each_comment_line(text: &str, mut emit: impl FnMut(&str)) {
+    if text.is_empty() {
+        emit("");
+        return;
+    }
+
+    let mut start = 0;
+    let mut characters = text.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if !matches!(
+            character,
+            '\n' | '\r' | '\u{0085}' | '\u{2028}' | '\u{2029}'
+        ) {
+            continue;
+        }
+        emit(&text[start..offset]);
+        start = offset + character.len_utf8();
+        if character == '\r'
+            && characters
+                .peek()
+                .is_some_and(|(_, character)| *character == '\n')
+        {
+            let (offset, character) = characters.next().expect("peeked at a line feed");
+            start = offset + character.len_utf8();
+        }
+    }
+    if start < text.len() {
+        emit(&text[start..]);
+    }
+}
+
+fn trim_comment_line(text: &str) -> &str {
+    let text = text.trim_matches([' ', '\t']);
+    text.strip_prefix('*')
+        .unwrap_or(text)
+        .trim_matches([' ', '\t'])
+}
+
+fn yaml_comment_character_is_safe(character: char) -> bool {
+    let value = character as u32;
+    (character == '\t' || value >= 0x20)
+        && !(0x7f..=0x9f).contains(&value)
+        && !matches!(character, '\u{2028}' | '\u{2029}' | '\u{fffe}' | '\u{ffff}')
+}
+
+pub(crate) fn emit_yaml_double_quoted(output: &mut String, value: &str) {
     output.push('"');
     for character in value.chars() {
         match character {
@@ -360,6 +549,16 @@ fn emit_yaml_double_quoted(output: &mut String, value: &str) {
             '\u{00a0}' => output.push_str("\\_"),
             '\u{2028}' => output.push_str("\\L"),
             '\u{2029}' => output.push_str("\\P"),
+            character if ('\u{007f}'..='\u{009f}').contains(&character) => {
+                use std::fmt::Write;
+                write!(output, "\\x{:02X}", character as u32)
+                    .expect("writing to a String cannot fail");
+            }
+            '\u{fffe}' | '\u{ffff}' => {
+                use std::fmt::Write;
+                write!(output, "\\u{:04X}", character as u32)
+                    .expect("writing to a String cannot fail");
+            }
             character if character <= '\u{001f}' => {
                 use std::fmt::Write;
                 write!(output, "\\u{:04X}", character as u32)

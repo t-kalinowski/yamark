@@ -6550,26 +6550,33 @@ fn format_skips_cmd_files() {
 }
 
 #[test]
-fn format_skips_json_files_without_rewriting_them() {
+fn format_skips_json_family_files_without_rewriting_them() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("input.json");
-    let input = "{\"unformatted\":[1,2]}\n";
-    fs::write(&path, input).unwrap();
+    for (extension, input) in [
+        ("json", "{\"unformatted\":[1,2]}\n"),
+        ("jsonc", "{// comment\n\"unformatted\":[1,2,],}\n"),
+        ("json5", "{unformatted:[1,2,],}\n"),
+        ("jsonl", "{\"unformatted\":[1,2]}\n"),
+        ("ndjson", "{\"unformatted\":[1,2]}\n"),
+    ] {
+        let path = dir.path().join(format!("input.{extension}"));
+        fs::write(&path, input).unwrap();
 
-    let output = yamark()
-        .args(["format", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8(output.stdout).unwrap(),
-        "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
-    );
-    assert_eq!(fs::read_to_string(path).unwrap(), input);
+        let output = yamark()
+            .args(["format", path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), input);
+    }
 }
 
 #[test]
@@ -6586,6 +6593,24 @@ fn render_accepts_stdin_only() {
         String::from_utf8(output.stderr)
             .unwrap()
             .contains("unexpected argument 'other.json'")
+    );
+}
+
+#[test]
+fn render_json5_rejects_excessive_nesting_without_aborting() {
+    let input = format!("{}/* comment */0{}", "[".repeat(900), "]".repeat(900));
+    let output = yamark()
+        .args(["render", "--stdin-file-path", "input.json5"])
+        .write_stdin(input)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("invalid JSON5: nesting exceeds 256 levels")
     );
 }
 

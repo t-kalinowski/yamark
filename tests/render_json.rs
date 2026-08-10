@@ -242,3 +242,327 @@ fn jsonc_comments_cannot_become_yamark_format_directives() {
 
     assert_eq!(rendered.output, "# [jsonc] fmt: skip file\na: 1\n");
 }
+
+#[test]
+fn json5_normalizes_its_strings_identifiers_and_numbers() {
+    let input = "{\n\
+  // JSON5 values\n\
+  foo:1,\n\
+  single: 'don\\'t',\n\
+  apostrophe: \"don\\'t\",\n\
+  letter: \"\\a\",\n\
+  underscore: \"\\_\",\n\
+  emoji: \"\\uD83D\\uDE00\",\n\
+  hex: 0X2A,\n\
+  infinity: Infinity,\n\
+  negativeInfinity: -Infinity,\n\
+  nan: NaN,\n\
+  escaped: {\\u0061: \"\\x41\"},\n\
+  leading: .5,\n\
+  trailing: 5.,\n\
+  positive: +1,\n\
+  continued: 'one \\\nline',\n\
+}\n";
+
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        input.to_owned(),
+        FormatOptions {
+            line_width: 40,
+            ..FormatOptions::default()
+        },
+        None,
+    )
+    .unwrap();
+
+    for expected in [
+        "# JSON5 values",
+        "foo: 1",
+        "single: don't",
+        "apostrophe: don't",
+        "letter: a",
+        "underscore: _",
+        "emoji: 😀",
+        "hex: 0x2A",
+        "infinity: .inf",
+        "negativeInfinity: -.inf",
+        "nan: .nan",
+        "a: A",
+        "leading: 0.5",
+        "trailing: 5.0",
+        "positive: 1",
+        "continued: one line",
+    ] {
+        assert!(rendered.output.contains(expected), "missing {expected:?}");
+    }
+}
+
+#[test]
+fn json5_supports_reserved_and_unicode_identifier_names() {
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        "{true: 1, null: 2, Infinity: 3, NaN: 4, café: 5, \\u0061: 6}\n".to_owned(),
+        FormatOptions {
+            line_width: 30,
+            ..FormatOptions::default()
+        },
+        None,
+    )
+    .unwrap();
+
+    for expected in [
+        "\"true\": 1",
+        "\"null\": 2",
+        "Infinity: 3",
+        "NaN: 4",
+        "café: 5",
+        "a: 6",
+    ] {
+        assert!(rendered.output.contains(expected), "missing {expected:?}");
+    }
+}
+
+#[test]
+fn json5_supports_raw_json5_line_separators_inside_strings() {
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        "{paragraph: 'a\u{2028}b', line: 'c\u{2029}d'}\n".to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap();
+
+    assert!(rendered.output.contains("a\\Lb"));
+    assert!(rendered.output.contains("c\\Pd"));
+}
+
+#[test]
+fn json5_normalized_separators_keep_original_diagnostic_positions() {
+    let error = render_source_for_path(
+        Path::new("input.json5"),
+        "{first:'a\u{2028}b',second:'c\u{2029}d',broken:}\n".to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.diagnostic.line, 3);
+    assert_eq!(error.diagnostic.column, 11);
+}
+
+#[test]
+fn json5_rejects_nonstandard_numeric_escapes_and_invalid_identifiers() {
+    for input in [
+        "{value: '\\1'}",
+        "{value: '\\01'}",
+        "{a\\u002D: 1}",
+        "{value: '\\uD83D'}",
+        "{value:\u{0085}1}",
+    ] {
+        let error = render_source_for_path(
+            Path::new("input.json5"),
+            input.to_owned(),
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.diagnostic.path.as_deref(),
+            Some(Path::new("input.json5"))
+        );
+        assert!(error.diagnostic.message.starts_with("invalid JSON5:"));
+    }
+}
+
+#[test]
+fn json5_preserves_duplicate_keys_and_raw_number_spelling() {
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        "{a: -0, a: 1.20e+3, huge: 0x123456789ABCDEF, negativeHex: -0X2A, negativeHuge: -0x123456789ABCDEF123456789ABCDEF}\n"
+            .to_owned(),
+        FormatOptions {
+            line_width: 200,
+            ..FormatOptions::default()
+        },
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(
+        rendered.output,
+        "{a: -0, a: 1.20e+3, huge: 0x123456789ABCDEF, negativeHex: -42, negativeHuge: -94522879700260683142460330790866415}\n"
+    );
+}
+
+#[test]
+fn json5_handles_each_previously_ambiguous_comment_position() {
+    for (input, expected_comment) in [
+        ("{a:1 // note\n}\n", "# note"),
+        ("{a:1, // trailing\n}\n", "# trailing"),
+        ("{a:1 // note: hi\n}\n", "# note: hi"),
+        ("{a:1 /* block note */}\n", "# block note"),
+        ("{a /* key note */:1}\n", "# key note"),
+        ("{a: /* value note */ 1}\n", "# value note"),
+    ] {
+        let rendered = render_source_for_path(
+            Path::new("input.json5"),
+            input.to_owned(),
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            rendered.output.contains(expected_comment),
+            "input {input:?} rendered as {:?}",
+            rendered.output
+        );
+        assert!(rendered.output.contains("a: 1"));
+    }
+}
+
+#[test]
+fn json5_comments_cannot_become_yamark_format_directives() {
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        "{// fmt: skip file\na: 1}\n".to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(rendered.output, "# [json5] fmt: skip file\na: 1\n");
+}
+
+#[test]
+fn json5_supports_each_string_line_continuation() {
+    let input = "{lf:'a\\\nb',cr:'a\\\rb',crlf:'a\\\r\nb',ls:'a\\\u{2028}b',ps:'a\\\u{2029}b'}\n";
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        input.to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(
+        rendered.output,
+        "{lf: ab, cr: ab, crlf: ab, ls: ab, ps: ab}\n"
+    );
+}
+
+#[test]
+fn json5_line_comments_accept_each_json5_line_terminator() {
+    let rendered = render_source_for_path(
+        Path::new("input.json5"),
+        "{// before ls\u{2028}a:1,// before ps\u{2029}b:2}\n".to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(rendered.output, "# before ls\na: 1\n# before ps\nb: 2\n");
+}
+
+#[test]
+fn jsonc_comments_accept_cr_and_unicode_line_breaks() {
+    let rendered = render_source_for_path(
+        Path::new("input.jsonc"),
+        "{// line comment\r\"a\":1,/* cr\rafter cr\u{2028}after ls\u{2029}after ps */\"b\":2}\n"
+            .to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap();
+
+    for line in [
+        "# line comment",
+        "# cr",
+        "# after cr",
+        "# after ls",
+        "# after ps",
+    ] {
+        assert!(rendered.output.contains(line), "missing {line:?}");
+    }
+    assert!(rendered.output.contains("a: 1"));
+    assert!(rendered.output.contains("b: 2"));
+}
+
+#[test]
+fn jsonc_unicode_comment_breaks_keep_source_diagnostic_columns() {
+    for (input, column) in [
+        ("{// comment\u{2028}\"a\":}\n", 5),
+        ("{/* before\u{2029}after */\"a\":}\n", 13),
+    ] {
+        let error = render_source_for_path(
+            Path::new("input.jsonc"),
+            input.to_owned(),
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.diagnostic.line, 2);
+        assert_eq!(error.diagnostic.column, column);
+    }
+}
+
+#[test]
+fn json_family_comments_escape_yaml_unsafe_characters() {
+    let unsafe_characters = "\u{007f}\u{0080}\u{0085}\u{009f}\u{fffe}\u{ffff}";
+    for extension in ["jsonc", "json5"] {
+        let input = format!("{{// before{unsafe_characters}after\n\"a\":1}}\n");
+        let rendered = render_source_for_path(
+            Path::new(&format!("input.{extension}")),
+            input,
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered.output,
+            "# before\\x7F\\x80\\x85\\x9F\\uFFFE\\uFFFFafter\na: 1\n"
+        );
+    }
+}
+
+#[test]
+fn json_family_strings_escape_yaml_forbidden_characters() {
+    for extension in ["json", "jsonc", "json5"] {
+        let rendered = render_source_for_path(
+            Path::new(&format!("input.{extension}")),
+            "{\"v\":\"\\u0085\\u007F\\u0080\\u009F\\uFFFE\\uFFFF\"}\n".to_owned(),
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered.output,
+            "{v: \"\\N\\x7F\\x80\\x9F\\uFFFE\\uFFFF\"}\n"
+        );
+    }
+}
+
+#[test]
+fn json_family_preserves_comments_inside_empty_containers() {
+    for extension in ["jsonc", "json5"] {
+        let input = if extension == "jsonc" {
+            "{\"a\": {/* empty object */}, \"b\": [/* empty array */]}\n"
+        } else {
+            "{a: {/* empty object */}, b: [/* empty array */]}\n"
+        };
+        let rendered = render_source_for_path(
+            Path::new(&format!("input.{extension}")),
+            input.to_owned(),
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            rendered.output,
+            "# empty object\na: {}\n# empty array\nb: []\n"
+        );
+    }
+}

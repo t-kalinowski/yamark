@@ -495,6 +495,30 @@ fn strict_json_preview_keeps_allocated_bytes_bounded() {
 }
 
 #[test]
+fn json5_raw_line_separator_offsets_stay_sparse() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = format!("{{value:'{}\u{2028}tail'}}\n", "a".repeat(200_000));
+    let path = Path::new("/tmp/yamark-performance/input.json5");
+    let options = FormatOptions::default();
+
+    let warmup = render_source_for_path(path, input.clone(), options, None).unwrap();
+    assert!(warmup.output.contains("\\Ltail"));
+
+    ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let rendered = render_source_for_path(path, input, options, None);
+    set_count_thread_allocations(false);
+
+    let rendered = rendered.unwrap();
+    assert!(rendered.output.contains("\\Ltail"));
+    assert!(
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 2_000_000,
+        "JSON5 raw-separator preview allocated {} bytes",
+        ALLOCATED_BYTES.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
 fn yaml_block_plain_scalar_formatting_keeps_allocation_count_bounded() {
     let _lock = ALLOCATION_LOCK.lock().unwrap();
     let input = block_plain_scalar_input(400);
