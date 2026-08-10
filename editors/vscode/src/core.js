@@ -211,11 +211,7 @@ function createYamarkExtension(vscode, runtime = {}) {
       if (refresh) {
         formattedPreviewDocumentChanged.fire(previewUri);
       }
-      let previewDocument = await vscode.workspace.openTextDocument(previewUri);
-      previewDocument = await vscode.languages.setTextDocumentLanguage(
-        previewDocument,
-        formattedPreviewLanguage(sourcePath),
-      );
+      const previewDocument = await vscode.workspace.openTextDocument(previewUri);
       await vscode.window.showTextDocument(previewDocument, { preview: true });
       op.end(`done output.bytes=${Buffer.byteLength(output, "utf8")}`);
     } catch (err) {
@@ -431,23 +427,6 @@ function formattedPreviewUri(sourceUri, sourcePath) {
     path: `${sourceUri.path}.formatted${extension}`,
     query: `source=${encodeURIComponent(sourceUri.toString())}`,
   });
-}
-
-function formattedPreviewLanguage(sourcePath) {
-  const extension = path.extname(sourcePath).toLowerCase();
-  if (JSON_PREVIEW_EXTENSIONS.has(extension) || extension === ".yaml" || extension === ".yml") {
-    return "yaml";
-  }
-  if (extension === ".qmd") {
-    return "quarto";
-  }
-  if (extension === ".py") {
-    return "python";
-  }
-  if (extension === ".r") {
-    return "r";
-  }
-  return "markdown";
 }
 
 function isFormattedPreviewDocument(document) {

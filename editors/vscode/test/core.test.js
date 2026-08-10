@@ -219,6 +219,7 @@ test("formatted preview uses dirty text and refreshes one stable virtual documen
   ]);
   assert.equal(secondPreview.toString(), firstPreview.toString());
   assert.deepEqual(changedUris, [secondPreview]);
+  assert.deepEqual(vscode.languages.changedDocumentLanguages, []);
   assert.equal(await provider.provideTextDocumentContent(secondPreview), "version: 2\n");
 });
 
@@ -1551,6 +1552,7 @@ function fakeVscode(options = {}) {
         };
       },
       setTextDocumentLanguage: async (document, languageId) => {
+        didCloseTextDocument.fire(document);
         document.languageId = languageId;
         changedDocumentLanguages.push({ document, languageId });
         return document;
@@ -1617,7 +1619,11 @@ function fakeVscode(options = {}) {
         }
         const provider = textDocumentContentProviders.get(target.scheme);
         const text = await provider.provideTextDocumentContent(target);
-        const document = fakeDocument(target.fsPath, text, "plaintext");
+        const document = fakeDocument(
+          target.fsPath,
+          text,
+          inferredLanguageId(target.fsPath),
+        );
         document.uri = target;
         documents.push(document);
         return document;
@@ -1641,6 +1647,25 @@ function fakeVscode(options = {}) {
       registeredTextDocumentContentProviders: textDocumentContentProviders,
     },
   };
+}
+
+function inferredLanguageId(fileName) {
+  switch (path.extname(fileName).toLowerCase()) {
+    case ".md":
+    case ".rmd":
+      return "markdown";
+    case ".qmd":
+      return "quarto";
+    case ".yaml":
+    case ".yml":
+      return "yaml";
+    case ".py":
+      return "python";
+    case ".r":
+      return "r";
+    default:
+      return "plaintext";
+  }
 }
 
 async function executeFormatDocumentProvider(formattingProviders, documents, target, options) {
