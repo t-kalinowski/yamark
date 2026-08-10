@@ -545,6 +545,7 @@ fn website_includes_homepage_and_examples_content() {
     let index = fs::read_to_string(root.join("index.qmd")).unwrap();
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let styles = fs::read_to_string(root.join("styles.css")).unwrap();
+    let examples_prose = examples.split_whitespace().collect::<Vec<_>>().join(" ");
 
     let index_prose = index
         .replace("&nbsp;", " ")
@@ -580,7 +581,17 @@ fn website_includes_homepage_and_examples_content() {
     );
     assert!(!index.contains("## The pitch"));
 
-    assert!(examples.contains("### Markdown-valued YAML scalars"));
+    assert!(examples.contains("### Markdown in YAML {#markdown-valued-yaml-scalars}"));
+    assert!(examples.contains("Yamark can format Markdown stored in YAML in three ways"));
+    assert!(examples.contains("use `!md` as a shorter alias"));
+    assert!(examples.contains("instructions: !markdown"));
+    assert!(examples.contains("# fmt: markdown\n    instructions: |"));
+    assert!(examples.contains("### Source code in YAML"));
+    assert!(
+        examples_prose.contains(
+            "Use `# fmt: python`, `# fmt: r`, or the name of another configured formatter"
+        )
+    );
     assert!(examples.contains("### Hashpipe YAML in source files"));
     assert!(examples.contains("#| name: demo"));
     assert!(examples.contains("REVIEW_PROMPT"));
@@ -594,6 +605,18 @@ fn website_includes_homepage_and_examples_content() {
         .find("\n## Markdown in source files\n")
         .expect("source-file examples should have a top-level section");
     assert!(markdown_documents < markdown_in_source);
+
+    let markdown_in_yaml = examples
+        .find("\n### Markdown in YAML")
+        .expect("Markdown-in-YAML example should be present");
+    let source_code_in_yaml = examples
+        .find("\n### Source code in YAML\n")
+        .expect("source-code-in-YAML example should be present");
+    let yaml_scalar_presentation = examples
+        .find("\n### YAML scalar presentation\n")
+        .expect("general YAML scalar example should be present");
+    assert!(markdown_in_yaml < source_code_in_yaml);
+    assert!(source_code_in_yaml < yaml_scalar_presentation);
 
     assert!(styles.contains(".before-after"));
     assert!(styles.contains(".showcase-before-after"));

@@ -60,11 +60,15 @@ Read the diff and flag anything that violates the style guide, has obvious corre
 )
 ```
 
-### Markdown-valued YAML scalars
+### Markdown in YAML {#markdown-valued-yaml-scalars}
 
-A `prompts.yaml` or `agents.yaml` file can store Markdown in selected scalar
-values. Tag a value `!markdown` or `!md` (or add `# fmt: markdown`) and Yamark
-wraps it as Markdown, choosing folded or literal block style from the content.
+Yamark can format Markdown stored in YAML in three ways: tag the value with
+`!markdown`, use `!md` as a shorter alias, or put `# fmt: markdown` on the line
+before the value. The example below shows the full tag and comment forms.
+
+A `prompts.yaml` or `agents.yaml` file can use any of these forms. Yamark wraps
+the selected value as Markdown, choosing folded or literal block style from the
+content.
 
 ```{r}
 #| label: showcase-markdown-yaml-scalars
@@ -75,7 +79,8 @@ showcase_before_after(
   reviewer:
     instructions: !markdown "Focus on correctness and tests. Flag any change that lacks a regression test. Prefer concrete suggestions: name the function, name the case."
   summarizer:
-    instructions: !markdown |
+    # fmt: markdown
+    instructions: |
       You write release notes.
 
       - One bullet per user-visible change.
@@ -86,8 +91,30 @@ showcase_before_after(
 )
 ```
 
-The prose-only value is rewrapped as Markdown. The list keeps a literal
-block (`|`) because folding would destroy the line breaks Markdown depends on.
+The tagged value contains only prose, so Yamark rewraps it as a folded block.
+The comment-marked value contains a list, so Yamark keeps literal block style
+(`|`) because folding would destroy the line breaks Markdown depends on.
+
+### Source code in YAML
+
+YAML values can also contain source code. Use `# fmt: python`, `# fmt: r`, or
+the name of another configured formatter before a literal block. When the
+formatter is available, Yamark formats the block and restores its indentation
+in the YAML file.
+
+```{r}
+#| label: showcase-yaml-python-scalar
+#| echo: false
+#| results: asis
+showcase_before_after(
+  before = r"---(# fmt: python
+preflight: |
+  def check(items):return all(x>0 for x in items)
+)---",
+  lang = "yaml",
+  stdin_file_path = "embedded-python.yaml"
+)
+```
 
 ### YAML scalar presentation
 
@@ -454,30 +481,6 @@ function format(input:string):string{return input.trim()}
 A missing `prettier` leaves the fence unchanged. Override or disable a
 language with `[embedded.<language>]` in `yamark.toml`, or skip them all with
 `--skip-embedded-formatters`.
-
-### Embedded source in YAML literal blocks
-
-Configure an embedded formatter for a language in `yamark.toml`
-(`[embedded.r]`, `[embedded.python]`, custom), then mark a literal
-block scalar with `# fmt: r` or `# fmt: python` to format the embedded
-code through the external formatter:
-
-```{r}
-#| label: showcase-yaml-python-scalar
-#| echo: false
-#| results: asis
-showcase_before_after(
-  before = r"---(# fmt: python
-preflight: |
-  def check(items):return all(x>0 for x in items)
-)---",
-  lang = "yaml",
-  stdin_file_path = "embedded-python.yaml"
-)
-```
-
-Yamark sends the scalar to the configured formatter and re-indents the result in
-the YAML block.
 
 ---
 
