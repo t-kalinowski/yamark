@@ -87,6 +87,7 @@ The syntax surface Yamark formats, preserves, or rejects.
 | --- | --- |
 | Block mappings and sequences | Normalized indentation and spacing; keys are not reordered. |
 | Flow expansion | Flow mappings and sequences normalize spacing; multiline or over-width flow collections expand to block style when safe. |
+| JSON Lines object streams | In a `.yaml` or `.yml` file, two or more JSON objects, one per physical line, become a multi-document YAML stream. Yamark inserts the `---` document-start marker before each record after the first; normal `--line-width` rules still control flow or block layout. |
 | Compact collections | `--compact`, `[format].compact`, or `fmt: compact` can collapse eligible block collections to flow style. |
 | Scalar folding | Long safe prose scalars can become folded block scalars and wrap to `--prose-width`. Existing folded prose can be rewrapped. |
 | Literal scalars | Preserved unless explicitly marked as Markdown or an embedded formatter target. |

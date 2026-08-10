@@ -598,6 +598,117 @@ fn website_includes_homepage_and_examples_content() {
 }
 
 #[test]
+fn website_documents_json_lines_as_yaml_streams() {
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = project_root.join("website");
+    let reference = fs::read_to_string(root.join("reference.qmd")).unwrap();
+    let rendered_reference = fs::read_to_string(root.join("reference.html.md")).unwrap();
+    let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
+    let rendered_examples = fs::read_to_string(root.join("examples.html.md")).unwrap();
+
+    for contents in [&reference, &rendered_reference] {
+        let prose = contents.split_whitespace().collect::<Vec<_>>().join(" ");
+        for term in [
+            "JSON Lines object streams",
+            "two or more JSON objects",
+            "one per physical line",
+            "document-start marker",
+            "before each record after the first",
+            "--line-width",
+        ] {
+            assert!(
+                prose.contains(term),
+                "YAML reference should document {term:?}"
+            );
+        }
+    }
+
+    assert!(examples.contains(r#"stdin_file_path = "records.yaml""#));
+    for contents in [&examples, &rendered_examples] {
+        let prose = contents.split_whitespace().collect::<Vec<_>>().join(" ");
+        for term in [
+            "### JSON Lines as a YAML stream",
+            "`.yaml` or `.yml`",
+            "two or more object records",
+            "document-start marker",
+            "no leading `---`",
+            "records from agent runs",
+            "as compact as the width allows",
+            "The first record stays in flow style",
+            "the second expands only its root mapping",
+            "the third also expands `profile` and `events`",
+            "Smaller mappings and sequences remain in flow style",
+            "not arbitrary JSON values",
+        ] {
+            assert!(
+                prose.contains(term),
+                "JSON Lines example should include {term:?}"
+            );
+        }
+    }
+
+    let input = concat!(
+        "{\"id\":1,\"profile\":{\"name\":\"planner\",\"active\":true}}\n",
+        "{\"id\":2,\"profile\":{\"name\":\"researcher\",\"active\":true},",
+        "\"usage\":{\"input_tokens\":640,\"output_tokens\":128}}\n",
+        "{\"id\":3,\"profile\":{\"name\":\"reviewer\",\"active\":true,",
+        "\"model\":\"gpt-5\",\"region\":\"us\",\"tools\":[\"search\",\"python\"]},",
+        "\"events\":[{\"type\":\"tool_call\",",
+        "\"tools\":[\"search\",\"open\",\"python\",\"write\"]},",
+        "{\"type\":\"usage\",\"tokens\":{\"input\":900,\"output\":240}},",
+        "{\"type\":\"completion\",\"status\":\"ok\"}]}\n",
+    );
+    let expected = ["records.yaml", "records.yml"].map(|stdin_file_path| {
+        let output = Command::cargo_bin("yamark")
+            .unwrap()
+            .args([
+                "format",
+                "--wrap",
+                "72",
+                "--stdin-file-path",
+                stdin_file_path,
+                "--line-width",
+                "80",
+            ])
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "JSON Lines example should format through {stdin_file_path}"
+        );
+        String::from_utf8(output.stdout).unwrap()
+    });
+    assert_eq!(expected[0], expected[1]);
+    assert_eq!(expected[0].matches("\n---\n").count(), 2);
+    assert!(expected[0].starts_with("{id: 1, profile: {name: planner, active: true}}\n"));
+    let root_expanded = concat!(
+        "id: 2\n",
+        "profile: {name: researcher, active: true}\n",
+        "usage: {input_tokens: 640, output_tokens: 128}\n",
+    );
+    assert!(expected[0].contains(&format!("\n---\n{root_expanded}---\n")));
+    let children_expanded = concat!(
+        "id: 3\n",
+        "profile:\n",
+        "  name: reviewer\n",
+        "  active: true\n",
+        "  model: gpt-5\n",
+        "  region: us\n",
+        "  tools: [search, python]\n",
+        "events:\n",
+        "  - {type: tool_call, tools: [search, open, python, write]}\n",
+        "  - {type: usage, tokens: {input: 900, output: 240}}\n",
+        "  - {type: completion, status: ok}\n",
+    );
+    assert!(expected[0].ends_with(children_expanded));
+    assert!(
+        rendered_examples.contains(expected[0].trim_end()),
+        "rendered example should contain current Yamark JSON Lines output"
+    );
+}
+
+#[test]
 fn website_guides_users_through_directives_before_configuration() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();

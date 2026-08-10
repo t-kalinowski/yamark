@@ -291,6 +291,52 @@ first match wins, so put the most specific filter first.
 
 ## YAML layout
 
+### JSON Lines as a YAML stream
+
+Give a JSON Lines file containing two or more object records a `.yaml` or
+`.yml` extension, with one record per line, then format it normally. Yamark
+inserts the `---` document-start marker before each record after the first,
+producing a valid YAML multi-document stream. There is no leading `---` on the
+first document. The example below uses records from agent runs.
+
+:::: {.showcase-before-after}
+**Before**
+
+```yaml
+{"id":1,"profile":{"name":"planner","active":true}}
+{"id":2,"profile":{"name":"researcher","active":true},"usage":{"input_tokens":640,"output_tokens":128}}
+{"id":3,"profile":{"name":"reviewer","active":true,"model":"gpt-5","region":"us","tools":["search","python"]},"events":[{"type":"tool_call","tools":["search","open","python","write"]},{"type":"usage","tokens":{"input":900,"output":240}},{"type":"completion","status":"ok"}]}
+```
+
+**After**
+
+```yaml
+{id: 1, profile: {name: planner, active: true}}
+---
+id: 2
+profile: {name: researcher, active: true}
+usage: {input_tokens: 640, output_tokens: 128}
+---
+id: 3
+profile:
+  name: reviewer
+  active: true
+  model: gpt-5
+  region: us
+  tools: [search, python]
+events:
+  - {type: tool_call, tools: [search, open, python, write]}
+  - {type: usage, tokens: {input: 900, output: 240}}
+  - {type: completion, status: ok}
+```
+::::
+
+Yamark keeps each document as compact as the width allows. The first record
+stays in flow style; the second expands only its root mapping; the third also
+expands `profile` and `events`. Smaller mappings and sequences remain in flow
+style whenever they still fit within `--line-width`. This conversion is for
+object records, not arbitrary JSON values.
+
 ### Aligned flow-mapping tables
 
 A sequence of similar flow mappings can be easier to scan as a table. Mark it
