@@ -62,7 +62,7 @@
       },
       {
         "command": "yamark.openFormattedPreview",
-        "title": "Yamark: Open Formatted Preview"
+        "title": "Yamark: Preview Format Document"
       },
       {
         "command": "yamark.openJsonAsYaml",
@@ -134,7 +134,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Additional arguments passed after `yamark format` or `yamark render` and before `--stdin-file-path`."
+          "description": "Additional arguments passed after `yamark format` and before `--stdin-file-path`."
         },
         "yamark.runNextFormatter": {
           "type": "boolean",
