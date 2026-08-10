@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::path::Path;
 
 use jsonc_parser::ast::{Comment, ObjectPropName, Value};
@@ -284,14 +283,14 @@ fn push_yaml_indent(output: &mut String, indent: usize) {
 
 struct JsoncCommentEmitter<'map, 'input> {
     comments: &'map CommentMap<'input>,
-    emitted: BTreeSet<(usize, usize)>,
+    emitted_through: usize,
 }
 
 impl<'map, 'input> JsoncCommentEmitter<'map, 'input> {
     fn new(comments: &'map CommentMap<'input>) -> Self {
         Self {
             comments,
-            emitted: BTreeSet::new(),
+            emitted_through: 0,
         }
     }
 
@@ -304,9 +303,10 @@ impl<'map, 'input> JsoncCommentEmitter<'map, 'input> {
         };
         for comment in comments.iter() {
             let range = comment.range();
-            if !self.emitted.insert((range.start, range.end)) {
+            if range.end <= self.emitted_through {
                 continue;
             }
+            self.emitted_through = range.end;
             if !output.is_empty() && !output.ends_with('\n') {
                 output.push('\n');
             }
