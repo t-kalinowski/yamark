@@ -10,8 +10,8 @@ use crate::config::{Config, discover_config_path};
 use crate::core::document::{FileKind, FormatOptions, MarkdownWrap};
 use crate::core::parser::format_source_report_with_policy;
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
+use crate::json_to_yaml::{JsonSourceKind, json_to_yaml_source};
 use crate::plugins::PluginRegistry;
-use crate::render::{JsonSourceKind, json_to_yaml_source};
 
 #[derive(Debug, Clone)]
 pub struct FormattedSource {
@@ -21,7 +21,7 @@ pub struct FormattedSource {
 }
 
 #[derive(Debug, Clone)]
-pub struct RenderedSource {
+pub struct ProjectedSource {
     pub output: String,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -132,55 +132,32 @@ pub fn format_source_for_path_with_trace(
     )
 }
 
-pub fn render_source_for_path(
+pub fn project_source_to_yaml(
     path: &Path,
     input: String,
     options: FormatOptions,
     config_path: Option<&Path>,
-) -> Result<RenderedSource> {
-    render_source_for_path_with_overrides(path, input, options, config_path, None)
-}
-
-pub(crate) fn render_source_for_path_with_overrides(
-    path: &Path,
-    input: String,
-    options: FormatOptions,
-    config_path: Option<&Path>,
-    markdown_wrap_override: Option<MarkdownWrap>,
-) -> Result<RenderedSource> {
-    let config = load_config_for_formatted_path(path, config_path)?;
-    let kind = FileKind::for_path(path);
-    let formatted = if kind.is_supported() {
-        format_source_with_config_as(
-            path,
-            input,
-            kind,
-            options,
-            &config,
-            FormatExecutionOptions {
-                markdown_wrap_override,
-                ..FormatExecutionOptions::default()
-            },
-        )?
-    } else if let Some(json_kind) = JsonSourceKind::for_path(path) {
-        let yaml_input =
-            json_to_yaml_source(&input, json_kind).map_err(|err| err.with_path(path))?;
-        drop(input);
-        format_source_with_config_as(
-            path,
-            yaml_input,
-            FileKind::Yaml,
-            options,
-            &config,
-            FormatExecutionOptions {
-                markdown_wrap_override,
-                ..FormatExecutionOptions::default()
-            },
-        )?
-    } else {
-        return Err(YamarkError::new("unsupported file type").with_path(path));
+) -> Result<ProjectedSource> {
+    let Some(json_kind) = JsonSourceKind::for_path(path) else {
+        return Err(YamarkError::new(
+            "to-yaml requires a .json, .jsonc, .json5, .jsonl, or .ndjson --stdin-file-path",
+        )
+        .with_path(path));
     };
-    Ok(RenderedSource {
+    let config = load_config_for_formatted_path(path, config_path)?;
+    let yaml_input = json_to_yaml_source(&input, json_kind).map_err(|err| err.with_path(path))?;
+    drop(input);
+    let mut options = options;
+    options.skip_embedded_formatters = true;
+    let formatted = format_source_with_config_as(
+        path,
+        yaml_input,
+        FileKind::Yaml,
+        options,
+        &config,
+        FormatExecutionOptions::default(),
+    )?;
+    Ok(ProjectedSource {
         output: formatted.output,
         diagnostics: formatted.diagnostics,
     })

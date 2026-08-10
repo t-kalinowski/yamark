@@ -35,7 +35,7 @@ pub(crate) fn json_to_yaml_source(input: &str, kind: JsonSourceKind) -> Result<S
         JsonSourceKind::Json => render_json(input),
         JsonSourceKind::JsonLines => render_json_lines(input),
         JsonSourceKind::Jsonc => render_jsonc(input),
-        JsonSourceKind::Json5 => crate::json5_render::json5_to_yaml_source(input),
+        JsonSourceKind::Json5 => crate::json5_to_yaml::json5_to_yaml_source(input),
     }
 }
 

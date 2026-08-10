@@ -1,5 +1,5 @@
 -- args
-render --stdin-file-path input.jsonc
+to-yaml --stdin-file-path input.jsonc
 -- stdin
 {"a": 1 /* unterminated}
 -- stdout

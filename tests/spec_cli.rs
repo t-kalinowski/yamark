@@ -6580,9 +6580,9 @@ fn format_skips_json_family_files_without_rewriting_them() {
 }
 
 #[test]
-fn render_accepts_stdin_only() {
+fn to_yaml_accepts_stdin_only() {
     let output = yamark()
-        .args(["render", "--stdin-file-path", "input.json", "other.json"])
+        .args(["to-yaml", "--stdin-file-path", "input.json", "other.json"])
         .write_stdin("{}\n")
         .output()
         .unwrap();
@@ -6597,10 +6597,57 @@ fn render_accepts_stdin_only() {
 }
 
 #[test]
-fn render_json5_rejects_excessive_nesting_without_aborting() {
+fn to_yaml_rejects_native_source_types() {
+    for path in ["input.md", "input.yaml", "input.py", "input.r"] {
+        let output = yamark()
+            .args(["to-yaml", "--stdin-file-path", path])
+            .write_stdin("{}\n")
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("to-yaml requires a .json, .jsonc, .json5, .jsonl, or .ndjson"),
+            "{path} should not be projected"
+        );
+    }
+}
+
+#[test]
+fn command_help_exposes_to_yaml_without_render() {
+    let output = yamark().arg("--help").output().unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("to-yaml"));
+    assert!(
+        !stdout
+            .lines()
+            .any(|line| line.trim_start().starts_with("render "))
+    );
+}
+
+#[test]
+fn render_is_not_a_hidden_compatibility_alias() {
+    let output = yamark().arg("render").output().unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("unrecognized subcommand 'render'")
+    );
+}
+
+#[test]
+fn to_yaml_json5_rejects_excessive_nesting_without_aborting() {
     let input = format!("{}/* comment */0{}", "[".repeat(900), "]".repeat(900));
     let output = yamark()
-        .args(["render", "--stdin-file-path", "input.json5"])
+        .args(["to-yaml", "--stdin-file-path", "input.json5"])
         .write_stdin(input)
         .output()
         .unwrap();

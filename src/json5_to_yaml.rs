@@ -6,7 +6,7 @@ use num_bigint::BigUint;
 use unicode_general_category::{GeneralCategory, get_general_category};
 
 use crate::diagnostic::{Result, YamarkError};
-use crate::render::{emit_yaml_comment_line, emit_yaml_double_quoted, for_each_comment_line};
+use crate::json_to_yaml::{emit_yaml_comment_line, emit_yaml_double_quoted, for_each_comment_line};
 
 pub(crate) fn json5_to_yaml_source(input: &str) -> Result<String> {
     let normalized = normalize_line_separators(input)?;

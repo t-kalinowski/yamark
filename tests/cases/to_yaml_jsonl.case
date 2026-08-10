@@ -1,5 +1,5 @@
 -- args
-render --stdin-file-path records.ndjson
+to-yaml --stdin-file-path records.ndjson
 -- stdin
 {"a":1}
 [2,3]

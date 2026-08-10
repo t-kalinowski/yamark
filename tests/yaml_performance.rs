@@ -12,7 +12,7 @@ use yamark::core::parser::format_source_report;
 use yamark::core::source::{Line, SourceSpan, Span};
 use yamark::core::yaml_model::YamlAstNode;
 use yamark::plugins::PluginRegistry;
-use yamark::workspace::render_source_for_path;
+use yamark::workspace::project_source_to_yaml;
 
 struct CountingAllocator;
 
@@ -471,18 +471,18 @@ fn yaml_json_lines_formatting_keeps_allocation_count_bounded() {
 }
 
 #[test]
-fn strict_json_preview_keeps_allocated_bytes_bounded() {
+fn strict_json_projection_keeps_allocated_bytes_bounded() {
     let _lock = ALLOCATION_LOCK.lock().unwrap();
     let input = json_like_flow_scalar_input(400);
     let path = Path::new("/tmp/yamark-performance/input.json");
     let options = FormatOptions::default();
 
-    let warmup = render_source_for_path(path, input.clone(), options, None).unwrap();
+    let warmup = project_source_to_yaml(path, input.clone(), options, None).unwrap();
     assert!(warmup.output.contains("service-00000"));
 
     ALLOCATED_BYTES.store(0, Ordering::Relaxed);
     set_count_thread_allocations(true);
-    let rendered = render_source_for_path(path, input, options, None);
+    let rendered = project_source_to_yaml(path, input, options, None);
     set_count_thread_allocations(false);
 
     let rendered = rendered.unwrap();
@@ -501,19 +501,19 @@ fn json5_raw_line_separator_offsets_stay_sparse() {
     let path = Path::new("/tmp/yamark-performance/input.json5");
     let options = FormatOptions::default();
 
-    let warmup = render_source_for_path(path, input.clone(), options, None).unwrap();
+    let warmup = project_source_to_yaml(path, input.clone(), options, None).unwrap();
     assert!(warmup.output.contains("\\Ltail"));
 
     ALLOCATED_BYTES.store(0, Ordering::Relaxed);
     set_count_thread_allocations(true);
-    let rendered = render_source_for_path(path, input, options, None);
+    let rendered = project_source_to_yaml(path, input, options, None);
     set_count_thread_allocations(false);
 
     let rendered = rendered.unwrap();
     assert!(rendered.output.contains("\\Ltail"));
     assert!(
         ALLOCATED_BYTES.load(Ordering::Relaxed) <= 2_000_000,
-        "JSON5 raw-separator preview allocated {} bytes",
+        "JSON5 raw-separator projection allocated {} bytes",
         ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
 }

@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use yamark::core::FormatOptions;
-use yamark::workspace::{format_source_for_path, render_source_for_path};
+use yamark::workspace::{format_source_for_path, project_source_to_yaml};
 
 #[test]
-fn strict_json_renders_ordered_duplicate_members_and_decoded_strings() {
+fn strict_json_projects_ordered_duplicate_members_and_decoded_strings() {
     let input = r#"{"first":1,"emoji":"\uD83D\uDE00","slash":"a\/b","a":-0,"a":1e+02,"big":123456789012345678901234567890}"#;
     let options = FormatOptions {
         line_width: 40,
@@ -12,7 +12,7 @@ fn strict_json_renders_ordered_duplicate_members_and_decoded_strings() {
     };
 
     let rendered =
-        render_source_for_path(Path::new("input.json"), input.to_owned(), options, None).unwrap();
+        project_source_to_yaml(Path::new("input.json"), input.to_owned(), options, None).unwrap();
 
     assert_eq!(
         rendered.output,
@@ -30,8 +30,8 @@ fn strict_json_renders_ordered_duplicate_members_and_decoded_strings() {
 }
 
 #[test]
-fn json_lines_renders_each_physical_record_as_a_yaml_document() {
-    let rendered = render_source_for_path(
+fn json_lines_projects_each_physical_record_as_a_yaml_document() {
+    let rendered = project_source_to_yaml(
         Path::new("records.jsonl"),
         "{\"a\":1}\n[2,3]\n4\n".to_owned(),
         FormatOptions::default(),
@@ -44,7 +44,7 @@ fn json_lines_renders_each_physical_record_as_a_yaml_document() {
 
 #[test]
 fn json_lines_rejects_blank_records_at_their_physical_line() {
-    let error = render_source_for_path(
+    let error = project_source_to_yaml(
         Path::new("records.ndjson"),
         "{\"a\":1}\n\n[2]\n".to_owned(),
         FormatOptions::default(),
@@ -66,7 +66,7 @@ fn json_lines_rejects_blank_records_at_their_physical_line() {
 
 #[test]
 fn strict_json_reports_invalid_surrogate_escapes_at_the_source_path() {
-    let error = render_source_for_path(
+    let error = project_source_to_yaml(
         Path::new("input.json"),
         r#"{"value":"\uD83D"}"#.to_owned(),
         FormatOptions::default(),
@@ -84,19 +84,23 @@ fn strict_json_reports_invalid_surrogate_escapes_at_the_source_path() {
 }
 
 #[test]
-fn native_rendering_matches_the_existing_formatter() {
+fn to_yaml_rejects_native_source_types() {
     let input = "#   Title ##\n\nText that stays short.\n".to_owned();
     let options = FormatOptions::default();
-    let formatted =
-        format_source_for_path(Path::new("input.md"), input.clone(), options, None).unwrap();
-    let rendered = render_source_for_path(Path::new("input.md"), input, options, None).unwrap();
+    let error = project_source_to_yaml(Path::new("input.md"), input, options, None).unwrap_err();
 
-    assert_eq!(rendered.output, formatted.output);
-    assert_eq!(rendered.diagnostics, formatted.diagnostics);
+    assert_eq!(
+        error.diagnostic.message,
+        "to-yaml requires a .json, .jsonc, .json5, .jsonl, or .ndjson --stdin-file-path"
+    );
+    assert_eq!(
+        error.diagnostic.path.as_deref(),
+        Some(Path::new("input.md"))
+    );
 }
 
 #[test]
-fn jsonc_preserves_comments_without_reinterpreting_string_contents() {
+fn jsonc_projection_preserves_comments_without_reinterpreting_string_contents() {
     let input = r#"{
   // before a
   "a": 1, // after a
@@ -111,7 +115,7 @@ fn jsonc_preserves_comments_without_reinterpreting_string_contents() {
     };
 
     let rendered =
-        render_source_for_path(Path::new("input.jsonc"), input.to_owned(), options, None).unwrap();
+        project_source_to_yaml(Path::new("input.jsonc"), input.to_owned(), options, None).unwrap();
 
     for comment in [
         "# before a",
@@ -141,7 +145,7 @@ fn jsonc_handles_each_previously_ambiguous_comment_position() {
         ("{\"a\" /* key note */:1}\n", "# key note"),
         ("{\"a\": /* value note */ 1}\n", "# value note"),
     ] {
-        let rendered = render_source_for_path(
+        let rendered = project_source_to_yaml(
             Path::new("input.jsonc"),
             input.to_owned(),
             FormatOptions::default(),
@@ -159,7 +163,7 @@ fn jsonc_handles_each_previously_ambiguous_comment_position() {
 
 #[test]
 fn jsonc_accepts_trailing_commas_without_other_json5_extensions() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.jsonc"),
         "{\"a\": [1, 2,],}\n".to_owned(),
         FormatOptions::default(),
@@ -179,7 +183,7 @@ fn jsonc_rejects_json5_only_extensions() {
         "{\"a\": +1}",
         "{\"a\": 1 \"b\": 2}",
     ] {
-        let error = render_source_for_path(
+        let error = project_source_to_yaml(
             Path::new("input.jsonc"),
             input.to_owned(),
             FormatOptions::default(),
@@ -195,7 +199,7 @@ fn jsonc_rejects_json5_only_extensions() {
 }
 
 #[test]
-fn jsonc_preserves_document_array_and_empty_container_comments() {
+fn jsonc_projection_preserves_document_array_and_empty_container_comments() {
     let input = r#"// document
 [
   /* first item */ {"x": 1},
@@ -206,7 +210,7 @@ fn jsonc_preserves_document_array_and_empty_container_comments() {
 // end
 "#;
 
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.jsonc"),
         input.to_owned(),
         FormatOptions::default(),
@@ -232,7 +236,7 @@ fn jsonc_preserves_document_array_and_empty_container_comments() {
 
 #[test]
 fn jsonc_comments_cannot_become_yamark_format_directives() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.jsonc"),
         "{\n  // fmt: skip file\n  \"a\": 1\n}\n".to_owned(),
         FormatOptions::default(),
@@ -264,7 +268,7 @@ fn json5_normalizes_its_strings_identifiers_and_numbers() {
   continued: 'one \\\nline',\n\
 }\n";
 
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         input.to_owned(),
         FormatOptions {
@@ -299,7 +303,7 @@ fn json5_normalizes_its_strings_identifiers_and_numbers() {
 
 #[test]
 fn json5_supports_reserved_and_unicode_identifier_names() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         "{true: 1, null: 2, Infinity: 3, NaN: 4, café: 5, \\u0061: 6}\n".to_owned(),
         FormatOptions {
@@ -324,7 +328,7 @@ fn json5_supports_reserved_and_unicode_identifier_names() {
 
 #[test]
 fn json5_supports_raw_json5_line_separators_inside_strings() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         "{paragraph: 'a\u{2028}b', line: 'c\u{2029}d'}\n".to_owned(),
         FormatOptions::default(),
@@ -338,7 +342,7 @@ fn json5_supports_raw_json5_line_separators_inside_strings() {
 
 #[test]
 fn json5_normalized_separators_keep_original_diagnostic_positions() {
-    let error = render_source_for_path(
+    let error = project_source_to_yaml(
         Path::new("input.json5"),
         "{first:'a\u{2028}b',second:'c\u{2029}d',broken:}\n".to_owned(),
         FormatOptions::default(),
@@ -359,7 +363,7 @@ fn json5_rejects_nonstandard_numeric_escapes_and_invalid_identifiers() {
         "{value: '\\uD83D'}",
         "{value:\u{0085}1}",
     ] {
-        let error = render_source_for_path(
+        let error = project_source_to_yaml(
             Path::new("input.json5"),
             input.to_owned(),
             FormatOptions::default(),
@@ -376,7 +380,7 @@ fn json5_rejects_nonstandard_numeric_escapes_and_invalid_identifiers() {
 
 #[test]
 fn json5_preserves_duplicate_keys_and_raw_number_spelling() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         "{a: -0, a: 1.20e+3, huge: 0x123456789ABCDEF, negativeHex: -0X2A, negativeHuge: -0x123456789ABCDEF123456789ABCDEF}\n"
             .to_owned(),
@@ -404,7 +408,7 @@ fn json5_handles_each_previously_ambiguous_comment_position() {
         ("{a /* key note */:1}\n", "# key note"),
         ("{a: /* value note */ 1}\n", "# value note"),
     ] {
-        let rendered = render_source_for_path(
+        let rendered = project_source_to_yaml(
             Path::new("input.json5"),
             input.to_owned(),
             FormatOptions::default(),
@@ -422,7 +426,7 @@ fn json5_handles_each_previously_ambiguous_comment_position() {
 
 #[test]
 fn json5_comments_cannot_become_yamark_format_directives() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         "{// fmt: skip file\na: 1}\n".to_owned(),
         FormatOptions::default(),
@@ -436,7 +440,7 @@ fn json5_comments_cannot_become_yamark_format_directives() {
 #[test]
 fn json5_supports_each_string_line_continuation() {
     let input = "{lf:'a\\\nb',cr:'a\\\rb',crlf:'a\\\r\nb',ls:'a\\\u{2028}b',ps:'a\\\u{2029}b'}\n";
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         input.to_owned(),
         FormatOptions::default(),
@@ -452,7 +456,7 @@ fn json5_supports_each_string_line_continuation() {
 
 #[test]
 fn json5_line_comments_accept_each_json5_line_terminator() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.json5"),
         "{// before ls\u{2028}a:1,// before ps\u{2029}b:2}\n".to_owned(),
         FormatOptions::default(),
@@ -465,7 +469,7 @@ fn json5_line_comments_accept_each_json5_line_terminator() {
 
 #[test]
 fn jsonc_comments_accept_cr_and_unicode_line_breaks() {
-    let rendered = render_source_for_path(
+    let rendered = project_source_to_yaml(
         Path::new("input.jsonc"),
         "{// line comment\r\"a\":1,/* cr\rafter cr\u{2028}after ls\u{2029}after ps */\"b\":2}\n"
             .to_owned(),
@@ -493,7 +497,7 @@ fn jsonc_unicode_comment_breaks_keep_source_diagnostic_columns() {
         ("{// comment\u{2028}\"a\":}\n", 5),
         ("{/* before\u{2029}after */\"a\":}\n", 13),
     ] {
-        let error = render_source_for_path(
+        let error = project_source_to_yaml(
             Path::new("input.jsonc"),
             input.to_owned(),
             FormatOptions::default(),
@@ -511,7 +515,7 @@ fn json_family_comments_escape_yaml_unsafe_characters() {
     let unsafe_characters = "\u{007f}\u{0080}\u{0085}\u{009f}\u{fffe}\u{ffff}";
     for extension in ["jsonc", "json5"] {
         let input = format!("{{// before{unsafe_characters}after\n\"a\":1}}\n");
-        let rendered = render_source_for_path(
+        let rendered = project_source_to_yaml(
             Path::new(&format!("input.{extension}")),
             input,
             FormatOptions::default(),
@@ -529,7 +533,7 @@ fn json_family_comments_escape_yaml_unsafe_characters() {
 #[test]
 fn json_family_strings_escape_yaml_forbidden_characters() {
     for extension in ["json", "jsonc", "json5"] {
-        let rendered = render_source_for_path(
+        let rendered = project_source_to_yaml(
             Path::new(&format!("input.{extension}")),
             "{\"v\":\"\\u0085\\u007F\\u0080\\u009F\\uFFFE\\uFFFF\"}\n".to_owned(),
             FormatOptions::default(),
@@ -552,7 +556,7 @@ fn json_family_preserves_comments_inside_empty_containers() {
         } else {
             "{a: {/* empty object */}, b: [/* empty array */]}\n"
         };
-        let rendered = render_source_for_path(
+        let rendered = project_source_to_yaml(
             Path::new(&format!("input.{extension}")),
             input.to_owned(),
             FormatOptions::default(),

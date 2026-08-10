@@ -1,5 +1,5 @@
 -- args
-render --stdin-file-path input.json5 --line-width 40
+to-yaml --stdin-file-path input.json5 --line-width 40
 -- stdin
 {
   // JSON5 values
