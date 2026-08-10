@@ -1,7 +1,11 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
-use jsonc_parser::ast::{ObjectPropName, Value};
-use jsonc_parser::{CollectOptions, CommentCollectionStrategy, ParseOptions, parse_to_ast};
+use jsonc_parser::ast::{Comment, ObjectPropName, Value};
+use jsonc_parser::common::Ranged;
+use jsonc_parser::{
+    CollectOptions, CommentCollectionStrategy, CommentMap, ParseOptions, parse_to_ast,
+};
 
 use crate::diagnostic::{Result, YamarkError};
 
@@ -9,6 +13,7 @@ use crate::diagnostic::{Result, YamarkError};
 pub(crate) enum JsonSourceKind {
     Json,
     JsonLines,
+    Jsonc,
 }
 
 impl JsonSourceKind {
@@ -17,6 +22,7 @@ impl JsonSourceKind {
         match extension.as_str() {
             "json" => Some(Self::Json),
             "jsonl" | "ndjson" => Some(Self::JsonLines),
+            "jsonc" => Some(Self::Jsonc),
             _ => None,
         }
     }
@@ -26,13 +32,43 @@ pub(crate) fn json_to_yaml_source(input: &str, kind: JsonSourceKind) -> Result<S
     match kind {
         JsonSourceKind::Json => render_json(input),
         JsonSourceKind::JsonLines => render_json_lines(input),
+        JsonSourceKind::Jsonc => render_jsonc(input),
     }
+}
+
+fn render_jsonc(input: &str) -> Result<String> {
+    let parsed =
+        parse_to_ast(input, &jsonc_collect_options(), &jsonc_parse_options()).map_err(|err| {
+            YamarkError::at(
+                format!("invalid JSONC: {}", err.kind()),
+                err.line_display(),
+                err.column_display(),
+            )
+        })?;
+    let value = parsed
+        .value
+        .ok_or_else(|| YamarkError::new("invalid JSONC: expected a JSON value"))?;
+    let comments = parsed
+        .comments
+        .expect("JSONC parsing requested separate comments");
+    let mut output = String::with_capacity(input.len().saturating_add(1));
+    if comments.is_empty() {
+        emit_json_value(&mut output, &value);
+        output.push('\n');
+        return Ok(output);
+    }
+    let mut comments = JsoncCommentEmitter::new(&comments);
+    comments.emit_at(&mut output, value.range().start, 0);
+    emit_jsonc_block_value(&mut output, &value, 0, &mut comments);
+    comments.emit_at(&mut output, value.range().end, 0);
+    Ok(output)
 }
 
 fn render_json(input: &str) -> Result<String> {
     let value = parse_json_value(input, 0)?;
-    let mut output = String::with_capacity(input.len());
+    let mut output = String::with_capacity(input.len().saturating_add(1));
     emit_json_value(&mut output, &value);
+    output.push('\n');
     Ok(output)
 }
 
@@ -81,11 +117,30 @@ fn strict_collect_options() -> CollectOptions {
     }
 }
 
+fn jsonc_collect_options() -> CollectOptions {
+    CollectOptions {
+        comments: CommentCollectionStrategy::Separate,
+        tokens: false,
+    }
+}
+
 fn strict_parse_options() -> ParseOptions {
     ParseOptions {
         allow_comments: false,
         allow_loose_object_property_names: false,
         allow_trailing_commas: false,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+    }
+}
+
+fn jsonc_parse_options() -> ParseOptions {
+    ParseOptions {
+        allow_comments: true,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: true,
         allow_missing_commas: false,
         allow_single_quoted_strings: false,
         allow_hexadecimal_numbers: false,
@@ -126,6 +181,164 @@ fn emit_json_value(output: &mut String, value: &Value<'_>) {
             output.push('}');
         }
     }
+}
+
+fn emit_jsonc_block_value(
+    output: &mut String,
+    value: &Value<'_>,
+    indent: usize,
+    comments: &mut JsoncCommentEmitter<'_, '_>,
+) {
+    match value {
+        Value::Array(array) => {
+            comments.emit_at(output, array.range.start + 1, indent);
+            if array.elements.is_empty() {
+                push_yaml_indent(output, indent);
+                output.push_str("[]\n");
+            }
+            for value in &array.elements {
+                let range = value.range();
+                comments.emit_at(output, range.start, indent);
+                push_yaml_indent(output, indent);
+                if json_value_is_inline(value) {
+                    output.push_str("- ");
+                    emit_json_value(output, value);
+                    output.push('\n');
+                } else {
+                    output.push_str("-\n");
+                    emit_jsonc_block_value(output, value, indent + 2, comments);
+                }
+                comments.emit_at(output, range.end, indent);
+            }
+            comments.emit_at(output, array.range.end - 1, indent);
+        }
+        Value::Object(object) => {
+            comments.emit_at(output, object.range.start + 1, indent);
+            if object.properties.is_empty() {
+                push_yaml_indent(output, indent);
+                output.push_str("{}\n");
+            }
+            for property in &object.properties {
+                let key_range = property.name.range();
+                let value_range = property.value.range();
+                comments.emit_at(output, key_range.start, indent);
+                comments.emit_at(output, key_range.end, indent);
+                comments.emit_at(output, value_range.start, indent);
+                push_yaml_indent(output, indent);
+                let key = match &property.name {
+                    ObjectPropName::String(value) => value.value.as_ref(),
+                    ObjectPropName::Word(value) => value.value,
+                };
+                emit_yaml_mapping_key(output, key);
+                if json_value_is_inline(&property.value) {
+                    output.push_str(": ");
+                    emit_json_value(output, &property.value);
+                    output.push('\n');
+                } else {
+                    output.push_str(":\n");
+                    emit_jsonc_block_value(output, &property.value, indent + 2, comments);
+                }
+                comments.emit_at(output, value_range.end, indent);
+            }
+            comments.emit_at(output, object.range.end - 1, indent);
+        }
+        _ => {
+            push_yaml_indent(output, indent);
+            emit_json_value(output, value);
+            output.push('\n');
+        }
+    }
+}
+
+fn emit_yaml_mapping_key(output: &mut String, value: &str) {
+    let mut characters = value.chars();
+    let starts_plain = characters
+        .next()
+        .is_some_and(|character| character.is_ascii_alphabetic() || character == '_');
+    let continues_plain = characters
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
+    let reserved = value.eq_ignore_ascii_case("null")
+        || value.eq_ignore_ascii_case("true")
+        || value.eq_ignore_ascii_case("false");
+    if starts_plain && continues_plain && !reserved {
+        output.push_str(value);
+    } else {
+        emit_yaml_double_quoted(output, value);
+    }
+}
+
+fn json_value_is_inline(value: &Value<'_>) -> bool {
+    match value {
+        Value::Array(array) => array.elements.is_empty(),
+        Value::Object(object) => object.properties.is_empty(),
+        Value::StringLit(_)
+        | Value::NumberLit(_)
+        | Value::BooleanLit(_)
+        | Value::NullKeyword(_) => true,
+    }
+}
+
+fn push_yaml_indent(output: &mut String, indent: usize) {
+    output.extend(std::iter::repeat_n(' ', indent));
+}
+
+struct JsoncCommentEmitter<'map, 'input> {
+    comments: &'map CommentMap<'input>,
+    emitted: BTreeSet<(usize, usize)>,
+}
+
+impl<'map, 'input> JsoncCommentEmitter<'map, 'input> {
+    fn new(comments: &'map CommentMap<'input>) -> Self {
+        Self {
+            comments,
+            emitted: BTreeSet::new(),
+        }
+    }
+
+    fn emit_at(&mut self, output: &mut String, position: usize, indent: usize) {
+        if self.comments.is_empty() {
+            return;
+        }
+        let Some(comments) = self.comments.get(&position) else {
+            return;
+        };
+        for comment in comments.iter() {
+            let range = comment.range();
+            if !self.emitted.insert((range.start, range.end)) {
+                continue;
+            }
+            if !output.is_empty() && !output.ends_with('\n') {
+                output.push('\n');
+            }
+            match comment {
+                Comment::Line(comment) => emit_yaml_comment_line(output, comment.text, indent),
+                Comment::Block(comment) => {
+                    if comment.text.is_empty() {
+                        emit_yaml_comment_line(output, "", indent);
+                    } else {
+                        for line in comment.text.lines() {
+                            let line = line.trim().strip_prefix('*').unwrap_or(line.trim()).trim();
+                            emit_yaml_comment_line(output, line, indent);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn emit_yaml_comment_line(output: &mut String, text: &str, indent: usize) {
+    let text = text.trim();
+    push_yaml_indent(output, indent);
+    output.push('#');
+    if !text.is_empty() {
+        output.push(' ');
+        if text.starts_with("fmt:") {
+            output.push_str("[jsonc] ");
+        }
+        output.push_str(text);
+    }
+    output.push('\n');
 }
 
 fn emit_yaml_double_quoted(output: &mut String, value: &str) {
