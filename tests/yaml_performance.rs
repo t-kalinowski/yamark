@@ -12,6 +12,7 @@ use yamark::core::parser::format_source_report;
 use yamark::core::source::{Line, SourceSpan, Span};
 use yamark::core::yaml_model::YamlAstNode;
 use yamark::plugins::PluginRegistry;
+use yamark::workspace::render_source_for_path;
 
 struct CountingAllocator;
 
@@ -466,6 +467,30 @@ fn yaml_json_lines_formatting_keeps_allocation_count_bounded() {
         ALLOCATIONS.load(Ordering::Relaxed) <= 7_000,
         "JSON Lines formatting allocated {} times",
         ALLOCATIONS.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
+fn strict_json_preview_keeps_allocated_bytes_bounded() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = json_like_flow_scalar_input(400);
+    let path = Path::new("/tmp/yamark-performance/input.json");
+    let options = FormatOptions::default();
+
+    let warmup = render_source_for_path(path, input.clone(), options, None).unwrap();
+    assert!(warmup.output.contains("service-00000"));
+
+    ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let rendered = render_source_for_path(path, input, options, None);
+    set_count_thread_allocations(false);
+
+    let rendered = rendered.unwrap();
+    assert!(rendered.output.contains("service-00399"));
+    assert!(
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 6_000_000,
+        "strict JSON preview allocated {} bytes",
+        ALLOCATED_BYTES.load(Ordering::Relaxed)
     );
 }
 
