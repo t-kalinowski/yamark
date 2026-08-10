@@ -17,7 +17,7 @@ commands, [Directives](directives.qmd) for source-file controls, and
 ## `yamark`
 
 `````{=html}
-<pre class="yamark-cli-help"><code>A formatter for YAML and Markdown, written in Rust.
+<pre class="yamark-cli-help"><code>A fast formatter for YAML and Markdown.
 
 Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 

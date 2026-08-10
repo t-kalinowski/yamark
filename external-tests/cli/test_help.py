@@ -18,11 +18,13 @@ def test_debug_format_help_shows_verify_and_omits_compat_flag() -> None:
 def test_short_and_long_root_help_are_distinct() -> None:
     short = run_cli_case("yamark -h", stderr="")
     short_stdout = decode_output(short.stdout)
+    assert short_stdout.startswith("A fast formatter for YAML and Markdown.\n")
     assert "Usage:" in short_stdout
     assert "Run `yamark <COMMAND> --help` for command-level help." not in short_stdout
 
     long = run_cli_case("yamark --help", stderr="")
     long_stdout = decode_output(long.stdout)
+    assert long_stdout.startswith("A fast formatter for YAML and Markdown.\n")
     assert "Run `yamark <COMMAND> --help` for command-level help." in long_stdout
 
 

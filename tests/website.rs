@@ -77,7 +77,7 @@ fn public_repo_metadata_is_ready() {
     assert!(license.contains("Copyright (c) 2026 Tomasz Kalinowski"));
 
     for field in [
-        r#"description = "A formatter for YAML and Markdown, written in Rust.""#,
+        r#"description = "A fast formatter for YAML and Markdown.""#,
         r#"repository = "https://github.com/t-kalinowski/yamark""#,
         r#"homepage = "https://t-kalinowski.github.io/yamark/""#,
         r#"readme = "README.md""#,
@@ -90,9 +90,7 @@ fn public_repo_metadata_is_ready() {
         !pyproject.contains("Add your description here"),
         "pyproject description should not be a template placeholder"
     );
-    assert!(
-        pyproject.contains("description = \"A formatter for YAML and Markdown, written in Rust.\"")
-    );
+    assert!(pyproject.contains("description = \"A fast formatter for YAML and Markdown.\""));
     assert!(pyproject.contains("[build-system]"));
     assert!(pyproject.contains(r#"build-backend = "maturin""#));
     assert!(pyproject.contains("[tool.maturin]"));
@@ -107,6 +105,8 @@ fn public_repo_metadata_is_ready() {
     );
 
     assert!(readme.starts_with("# Yamark\n"));
+    assert!(readme.contains("Yamark is a fast formatter for YAML and Markdown."));
+    assert!(!readme.contains("written in Rust"));
     assert!(!readme.contains("Yamark Next"));
     for section in ["## Install", "## Usage", "## Development"] {
         assert!(
@@ -273,7 +273,9 @@ fn website_social_images_exist() {
 
     let social_card = fs::read_to_string(root.join("assets/social-card.svg")).unwrap();
     assert!(social_card.contains(r#"viewBox="0 0 1200 630""#));
-    assert!(social_card.contains("Format Markdown and YAML wherever they live."));
+    assert!(social_card.contains("A fast formatter for YAML and Markdown."));
+    assert!(!social_card.contains("written in Rust"));
+    assert!(!social_card.contains("wherever they live"));
 
     let mut expected = Vec::new();
     for line in config.lines() {
@@ -460,12 +462,12 @@ fn website_homepage_has_visual_landing_sections() {
     assert!(!index.contains("terminal-window"));
     assert!(index.contains("workflow-strip"));
     assert!(!index.contains("[Beta]{.status-chip}"));
-    assert!(rendered.contains("Format Markdown and YAML wherever they live."));
+    assert!(rendered.contains("A fast formatter for YAML and Markdown."));
     assert!(
-        rendered.contains(
-            "<h1 class=\"hero-thesis\">Format Markdown and YAML wherever they live.</h1>"
-        )
+        rendered.contains("<h1 class=\"hero-thesis\">A fast formatter for YAML and Markdown.</h1>")
     );
+    assert!(!rendered.contains("written in Rust"));
+    assert!(!rendered.contains("wherever they live"));
     assert!(!rendered.contains("class=\"level2 hero-thesis\""));
     assert!(!rendered.contains("hero-coverage"));
     assert!(!rendered.contains("hero-specimen"));
@@ -499,7 +501,7 @@ fn website_homepage_leads_with_purpose_and_scope() {
     let rendered_prose = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
 
     for text in [
-        "Format Markdown and YAML wherever they live.",
+        "A fast formatter for YAML and Markdown.",
         "uvx yamark format",
     ] {
         assert!(rendered.contains(text), "homepage should include {text:?}");
@@ -549,7 +551,7 @@ fn website_includes_homepage_and_examples_content() {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    assert!(index.contains("Format Markdown and YAML wherever they live."));
+    assert!(index.contains("A fast formatter for YAML and Markdown."));
     assert!(index_prose.contains(
         "Yamark formats whole files and embedded content with the consistency we expect from code, keeping source readable and changes easy to review."
     ));
@@ -815,7 +817,7 @@ fn website_documents_cli_help_on_dedicated_page() {
 
     for term in [
         "class=\"yamark-cli-help\"",
-        "A formatter for YAML and Markdown",
+        "A fast formatter for YAML and Markdown.",
         "Usage:",
         "Commands:",
         "yamark git-filter setup",
@@ -826,6 +828,7 @@ fn website_documents_cli_help_on_dedicated_page() {
             "{term} should render into generated CLI help"
         );
     }
+    assert!(!rendered_cli_help.contains("written in Rust"));
     assert!(
         !rendered_cli_help.contains("\u{1b}["),
         "rendered CLI help should be converted to HTML spans, not raw ANSI escapes"

@@ -153,17 +153,6 @@ body.quarto-dark h1 {
   width: 2.25rem;
 }
 
-.hero-proof {
-  color: var(--yamark-muted);
-  font-size: 0.9rem;
-  font-weight: 700;
-  margin-top: 0.85rem;
-}
-
-.hero-proof p {
-  margin: 0;
-}
-
 .hero-actions {
   display: flex;
   flex-wrap: wrap;

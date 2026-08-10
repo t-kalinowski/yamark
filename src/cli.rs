@@ -25,9 +25,12 @@ const HIDE_VERIFY_FROM_HELP: bool = !cfg!(debug_assertions);
 
 #[derive(Debug, Parser)]
 #[command(name = "yamark")]
-#[command(about = "A formatter for YAML and Markdown, written in Rust")]
+#[command(about)]
 #[command(
-    long_about = "A formatter for YAML and Markdown, written in Rust.\n\nRun `yamark <COMMAND> --help` for command-level help."
+    long_about = concat!(
+        env!("CARGO_PKG_DESCRIPTION"),
+        "\n\nRun `yamark <COMMAND> --help` for command-level help."
+    )
 )]
 #[command(styles = HELP_STYLES)]
 struct Args {

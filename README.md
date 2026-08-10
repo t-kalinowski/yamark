@@ -1,8 +1,8 @@
 # Yamark
 
-Yamark is a formatter for YAML and Markdown, written in Rust. It formats
-whole files and embedded content, keeping source readable and changes easy
-to review. Regions without a supported rewrite stay unchanged.
+Yamark is a fast formatter for YAML and Markdown. It formats whole files
+and embedded content, keeping source readable and changes easy to review.
+Regions without a supported rewrite stay unchanged.
 
 For supported embedded code, Yamark can also call Ruff, Air, Prettier,
 or another configured formatter.

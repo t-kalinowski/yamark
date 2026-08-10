@@ -12,14 +12,10 @@ toc: false
 ![](assets/favicon.svg){.hero-mark}
 :::
 
-<h1 class="hero-thesis">Format Markdown and YAML wherever they live.</h1>
+<h1 class="hero-thesis">A fast formatter for YAML and Markdown.</h1>
 
 Yamark formats whole files and embedded content with the consistency we expect
 from code, keeping source readable and changes easy to review.
-
-::: {.hero-proof}
-Fast and written in Rust.
-:::
 
 ::: {.hero-actions}
 [Install](usage.qmd#install){.hero-button .primary}

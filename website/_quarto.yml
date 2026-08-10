@@ -8,7 +8,7 @@ project:
 
 website:
   title: Yamark
-  description: A formatter for YAML and Markdown, written in Rust.
+  description: A fast formatter for YAML and Markdown.
   site-url: https://t-kalinowski.github.io/yamark/
   favicon: assets/favicon.svg
   repo-url: https://github.com/t-kalinowski/yamark
