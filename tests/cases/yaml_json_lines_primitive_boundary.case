@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.yaml --line-width 80 --verify
+-- stdin
+1
+2
+-- stdout
+1
+2
+-- stderr
+-- status
+0

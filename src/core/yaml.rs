@@ -4748,7 +4748,12 @@ pub fn emit_yaml_document_with_stats(
         options,
         plugins,
     };
-    for root in &ast.roots {
+    let insert_document_markers = yaml_is_unmarked_flow_mapping_stream(source, ast);
+    for (index, root) in ast.roots.iter().enumerate() {
+        if insert_document_markers && index > 0 {
+            out.push_str("---");
+            out.push_str(options.default_line_ending);
+        }
         if let Some(node) = root.node {
             emit_yaml_node(&mut out, context, node, None, &mut stats)?;
         }
@@ -4756,6 +4761,22 @@ pub fn emit_yaml_document_with_stats(
     emit_trivia(&mut out, source, &ast.trailing_trivia);
     restore_yaml_bom(source, document, &mut out);
     Ok((out, stats))
+}
+
+fn yaml_is_unmarked_flow_mapping_stream(source: &SourceBuffer, ast: &YamlDocumentAst<'_>) -> bool {
+    // Use the AST produced by the normal parse rather than scanning the source
+    // again. Multiple one-line flow mappings need document markers, while the
+    // mapping shape excludes valid YAML multiline scalars. The line count also
+    // excludes multiline roots and intervening trivia.
+    ast.roots.len() >= 2
+        && ast.roots.len() == source.lines.len()
+        && ast.roots.iter().all(|root| {
+            root.start_marker.is_none()
+                && root.end_marker.is_none()
+                && root
+                    .node
+                    .is_some_and(|node| matches!(&ast.node(node).kind, YamlAstKind::FlowMapping(_)))
+        })
 }
 
 fn restore_yaml_bom(source: &SourceBuffer, document: &Document, out: &mut String) {

@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.yaml --line-width 80 --verify
+-- stdin
+{"id":1,"profile":{"name":"Lin","active":true}}
+{"id":2,"profile":{"name":"Sam","active":false}}
+-- stdout
+{id: 1, profile: {name: Lin, active: true}}
+---
+{id: 2, profile: {name: Sam, active: false}}
+-- stderr
+-- status
+0

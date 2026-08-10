@@ -435,6 +435,33 @@ fn yaml_json_like_flow_scalar_formatting_keeps_allocation_count_bounded() {
 }
 
 #[test]
+fn yaml_json_lines_formatting_keeps_allocation_count_bounded() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = json_lines_object_input(400);
+    let config = Config::default();
+    let plugins = PluginRegistry::default();
+    let options = FormatOptions::default();
+
+    let warmup =
+        format_source_report(FileKind::Yaml, input.clone(), options, &config, &plugins).unwrap();
+    assert!(warmup.changed);
+
+    ALLOCATIONS.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let formatted = format_source_report(FileKind::Yaml, input, options, &config, &plugins);
+    set_count_thread_allocations(false);
+
+    let formatted = formatted.unwrap();
+    assert!(formatted.changed);
+    assert_eq!(formatted.output.matches("\n---\n").count(), 399);
+    assert!(
+        ALLOCATIONS.load(Ordering::Relaxed) <= 7_000,
+        "JSON Lines formatting allocated {} times",
+        ALLOCATIONS.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
 fn yaml_block_plain_scalar_formatting_keeps_allocation_count_bounded() {
     let _lock = ALLOCATION_LOCK.lock().unwrap();
     let input = block_plain_scalar_input(400);
@@ -607,6 +634,16 @@ fn json_like_flow_scalar_input(rows: usize) -> String {
         ));
     }
     input.push_str("]\n");
+    input
+}
+
+fn json_lines_object_input(rows: usize) -> String {
+    let mut input = String::new();
+    for index in 0..rows {
+        input.push_str(&format!(
+            "{{\"id\":{index},\"enabled\":true,\"count\":123,\"ratio\":0.125,\"nested\":{{\"owner\":\"team-{index:03}\"}}}}\n"
+        ));
+    }
     input
 }
 

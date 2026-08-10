@@ -1,0 +1,32 @@
+-- args
+format --stdin-file-path input.yaml --line-width 80 --verify
+-- stdin
+{"id":1,"profile":{"alpha":1,"beta":2,"gamma":3,"delta":4,"epsilon":5,"zeta":6,"eta":7,"theta":8,"iota":9}}
+{"id":2,"profile":{"alpha":1,"beta":2,"gamma":3,"delta":4,"epsilon":5,"zeta":6,"eta":7,"theta":8,"iota":9}}
+-- stdout
+id: 1
+profile:
+  alpha: 1
+  beta: 2
+  gamma: 3
+  delta: 4
+  epsilon: 5
+  zeta: 6
+  eta: 7
+  theta: 8
+  iota: 9
+---
+id: 2
+profile:
+  alpha: 1
+  beta: 2
+  gamma: 3
+  delta: 4
+  epsilon: 5
+  zeta: 6
+  eta: 7
+  theta: 8
+  iota: 9
+-- stderr
+-- status
+0
