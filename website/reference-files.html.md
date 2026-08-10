@@ -14,7 +14,7 @@ the output.
 | `.yaml` and `.yml` | The whole YAML stream. | Automatic for path-aware formatting. |
 | `.md`, `.qmd`, `.Rmd`, and `.rmd` | Markdown, YAML front matter, and recognized fenced content. | Automatic, except constructs described as preserved below. |
 | `.py`, `.R`, and `.r` | `#|` hashpipe YAML blocks, marked Markdown comments or strings, and marked external-formatter targets. | Hashpipe blocks are automatic; other targets require a `fmt:` directive. Surrounding source code is unchanged. |
-| `.json`, `.jsonc`, `.json5`, `.jsonl`, and `.ndjson` | A formatted YAML representation. | Read-only through `yamark render` or an editor preview command. Normal formatting does not select these files. |
+| `.json`, `.jsonc`, `.json5`, `.jsonl`, and `.ndjson` | A YAML projection of the whole JSON-family input. | Explicit through `yamark to-yaml` or `Yamark: View JSON as YAML`. Normal formatting does not select these files. |
 | Markdown fences named `yaml`, `yml`, `markdown`, or `md` | YAML, or recursively formatted Markdown. | Automatic unless the fence is locally skipped. |
 | Markdown source fences | Python, R, JSON, GraphQL, CSS, HTML, JavaScript, TypeScript, and related aliases. | Delegated when a matching embedded formatter is available. |
 | YAML scalars tagged `!markdown` or `!md` | The scalar value as Markdown. | Explicit tag. |
@@ -28,13 +28,17 @@ extensions are counted as skipped and do not make the run fail. An unsupported
 Directory traversal skips hidden paths and respects `.gitignore`, `.ignore`,
 and global Git ignore files. Passing a hidden path explicitly selects it.
 
-## Read-only JSON rendering
+## JSON-to-YAML projection
 
-Use `yamark render --stdin-file-path` to convert a JSON-family input from stdin
+Formatting preserves the source language and produces output that can replace
+the input. JSON-to-YAML projection has a different contract: it parses a
+JSON-family input and emits formatted YAML for inspection or conversion.
+
+Use `yamark to-yaml --stdin-file-path` to project JSON-family input from stdin
 to formatted YAML on stdout:
 
 ```sh
-yamark render --stdin-file-path data.json < data.json
+yamark to-yaml --stdin-file-path data.json < data.json
 ```
 
 The command does not read or write the path. It uses the extension to select
@@ -66,8 +70,13 @@ characters, U+0085 as whitespace, and input nested more than 256 levels deep.
 Characters that YAML cannot carry inside a comment are shown as visible
 hexadecimal escapes.
 
+Projection does not scan JSON strings or comments for embedded Markdown or
+formatter directives, and it does not dispatch to Prettier or another embedded
+formatter.
+
 `yamark format` continues to skip JSON-family paths and never rewrites them.
-The VS Code and Positron preview commands use the same render path.
+`Yamark: View JSON as YAML` in VS Code and Positron uses the same JSON-to-YAML
+projection.
 
 ## Markdown
 

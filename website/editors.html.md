@@ -5,7 +5,8 @@ description: Use Yamark from VS Code, Positron, and compatible forks.
 
 The repository includes a Yamark extension for VS Code, Positron, and compatible
 forks. It runs `yamark format --stdin-file-path <file>` for document formatting
-and `yamark render --stdin-file-path <file>` for read-only previews.
+and native formatted previews. It runs
+`yamark to-yaml --stdin-file-path <file>` for JSON-to-YAML views.
 
 ## Install
 
@@ -29,8 +30,8 @@ The extension contributes:
 | --- | --- |
 | `Yamark: Format Document` | Run the Yamark document formatter for the active file. |
 | `Yamark: Format Selection as Markdown` | Format the active non-empty selection as Markdown only. |
-| `Yamark: Open Formatted Preview` | Open a formatted read-only snapshot of a Markdown, R Markdown, Quarto, YAML, Python, or R file. |
-| `Yamark: View JSON as YAML` | Open JSON, JSONC, JSON5, JSONL, or NDJSON as formatted YAML. |
+| `Yamark: Preview Format Document` | Run the same formatting stages as Format Document and open the result as a read-only snapshot. Supports Markdown, R Markdown, Quarto, YAML, Python, and R. |
+| `Yamark: View JSON as YAML` | Project JSON, JSONC, JSON5, JSONL, or NDJSON to formatted YAML in a read-only view. |
 | `Yamark: Open Filtered Working Tree Diff` | Compare an unstaged file with its smudged Git index baseline. |
 | `Yamark: Show Log` | Open the Yamark output channel. |
 
@@ -41,21 +42,24 @@ broader source file.
 ## Read-only previews
 
 Right-click a supported file in the Explorer or its editor tab. Use
-`Yamark: Open Formatted Preview` for Yamark's native file types, or
+`Yamark: Preview Format Document` for Yamark's native file types, or
 `Yamark: View JSON as YAML` for JSON, JSONC, JSON5, JSONL, and NDJSON.
 
-The command sends the current editor buffer to `yamark render` and opens the
-result as a read-only snapshot. It does not change the source file or create a
-temporary file. Unsaved source edits are included. Run the command again to
-refresh the same preview; source edits do not refresh it automatically.
+`Yamark: Preview Format Document` runs the same formatting stages as Format
+Document, including the configured next formatter, but opens the final text
+instead of applying an edit. `Yamark: View JSON as YAML` sends the current
+editor buffer to `yamark to-yaml` and opens the resulting YAML. Both commands
+include unsaved source edits, do not change the source or create a temporary
+file, and refresh only when run again.
 
 JSON-family previews use YAML syntax highlighting. JSONC and JSON5 comments
 become YAML comments. Each JSONL or NDJSON record becomes one document in a
 YAML stream.
 
-Preview commands do not use `yamark.enabledFileExtensions` and do not run
-`yamark.nextFormatterExecutable`. JSON-family files remain excluded from
-Format Document and format-on-save.
+Preview commands do not use `yamark.enabledFileExtensions`. The JSON-to-YAML
+projection does not run the configured next formatter, apply
+`yamark.extraArguments`, or interpret embedded formatter directives.
+JSON-family files remain excluded from Format Document and format-on-save.
 
 ## Git filter diffs
 
@@ -155,8 +159,9 @@ Pass CLI formatter options through `yamark.extraArguments`:
 }
 ```
 
-Arguments are inserted after `yamark format` or `yamark render` and before
-`--stdin-file-path <file>`.
+Arguments are inserted after `yamark format` and before
+`--stdin-file-path <file>`. They also apply to Preview Format Document because
+that command uses the same formatting pipeline.
 
 ## Formatter chaining
 
@@ -220,6 +225,7 @@ formatter second and returning one final save-time edit.
 
 ## Logs
 
-Open `View -> Output -> Yamark`, or run `Yamark: Show Log`. The log records the
-file path, language id, Yamark invocation, optional follow-up formatter
-invocation, edit counts, and byte counts before and after formatting.
+Open `View -> Output -> Yamark`, or run `Yamark: Show Log`. Formatting and
+Preview Format Document logs record the file, Yamark invocation, optional
+follow-up formatter, changes, and errors. View JSON as YAML logs record the
+source, `to-yaml` invocation, output size, and errors.

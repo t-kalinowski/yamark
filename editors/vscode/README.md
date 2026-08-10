@@ -6,10 +6,10 @@ This extension formats files by running:
 yamark format --stdin-file-path <file>
 ```
 
-It opens read-only formatted previews by running:
+It projects JSON-family buffers to read-only YAML views by running:
 
 ```sh
-yamark render --stdin-file-path <file>
+yamark to-yaml --stdin-file-path <file>
 ```
 
 It uses the public VS Code extension API, so it also works in Positron
@@ -163,22 +163,26 @@ only; configured native formatter chains are not run for this command.
 ## Read-only formatted previews
 
 Right-click a supported file in the Explorer or its editor tab. Use
-`Yamark: Open Formatted Preview` for Markdown, R Markdown, Quarto, YAML,
+`Yamark: Preview Format Document` for Markdown, R Markdown, Quarto, YAML,
 Python, and R.
 Use `Yamark: View JSON as YAML` for JSON, JSONC, JSON5, JSONL, and NDJSON.
 
-The command sends the current editor buffer to Yamark and opens the result as a
-read-only snapshot. It does not change the source or create a temporary file.
-Unsaved edits are included. Run the command again to refresh the same preview;
-source edits do not refresh it automatically.
+`Yamark: Preview Format Document` runs the same formatting stages as Format
+Document, including the configured next formatter, and opens the final text
+instead of applying it. `Yamark: View JSON as YAML` runs `yamark to-yaml` only.
+Both commands use the current editor buffer and open a read-only snapshot
+without changing the source or creating a temporary file. Unsaved edits are
+included. Run the command again to refresh the same preview; source edits do
+not refresh it automatically.
 
 JSON-family previews use YAML syntax highlighting. JSONC and JSON5 comments
 become YAML comments. Each JSONL or NDJSON record becomes one YAML stream
 document.
 
-Preview commands do not use `yamark.enabledFileExtensions` or run
-`yamark.nextFormatterExecutable`. JSON-family files remain excluded from
-Format Document and format-on-save.
+Preview commands do not use `yamark.enabledFileExtensions`. JSON-to-YAML views
+do not run `yamark.nextFormatterExecutable`, apply `yamark.extraArguments`, or
+interpret embedded formatter directives. JSON-family files remain excluded
+from Format Document and format-on-save.
 
 ## Git filter diffs
 
@@ -410,10 +414,10 @@ Yamark writes a structured trace of each format-on-save run to its own
 output channel. Open it with `View → Output → Yamark`, or run
 `Yamark: Show Log` from the command palette.
 
-Each format or preview operation has one correlation id. Format logs record the
-active document, Yamark arguments, optional follow-up formatter, whether text
-changed, and any error. Preview logs record the source document, render
-arguments, output size, and any error.
+Each format or preview operation has one correlation id. Formatting and Preview
+Format Document logs record the active document, Yamark arguments, optional
+follow-up formatter, whether text changed, and any error. View JSON as YAML logs
+record the source document, `to-yaml` arguments, output size, and any error.
 
 For manual verification, install the development VSIX and check
 format-on-save plus `Yamark: Format Document` on `.py`, `.r`, `.R`,
@@ -429,5 +433,5 @@ Pass formatter options through `yamark.extraArguments`:
 }
 ```
 
-The extension inserts these arguments after `yamark format` or `yamark render`
-and before `--stdin-file-path <file>`.
+The extension inserts these arguments after `yamark format` and before
+`--stdin-file-path <file>`. They also apply to Preview Format Document.

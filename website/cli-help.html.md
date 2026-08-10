@@ -23,7 +23,7 @@ generated from the current Yamark binary.
 | `yamark format --check PATHS` | Does not write. | - | Summary, failures, and requested diagnostics. |
 | `yamark format --diff PATHS` | Does not write. | Unified diffs. | Summary, failures, and requested diagnostics. |
 | `yamark format --stdin-file-path PATH` | Does not read or write `PATH`; uses it to select file-aware behavior for stdin. | Formatted content only. | Failures and requested diagnostics. |
-| `yamark render --stdin-file-path PATH` | Does not read or write `PATH`; renders stdin using its native or JSON-family file type. | Read-only formatted content only. | Failures. |
+| `yamark to-yaml --stdin-file-path PATH` | Does not read or write `PATH`; uses its JSON-family suffix to parse stdin. | Formatted YAML only. | Failures. |
 
 `--check` and `--diff` exit `1` when any selected file would change. Every mode
 exits `1` when formatting fails and `0` on success otherwise. Invalid command
@@ -35,8 +35,9 @@ failing. An unsupported `--stdin-file-path` is an error because stdin mode
 requires a supported file type.
 
 Format stdin mode rejects additional paths and cannot be combined with
-`--check` or `--diff`. `yamark render` always reads stdin, requires
-`--stdin-file-path`, and never writes a file.
+`--check` or `--diff`. `yamark to-yaml` always reads stdin, requires a `.json`,
+`.jsonc`, `.json5`, `.jsonl`, or `.ndjson` path hint, and never reads or writes
+that path.
 
 ## Generated help
 
@@ -51,7 +52,7 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 
 <span style='color: #5555FF; font-weight: bold;'>Commands:</span>
   <span style='color: #00BBBB; font-weight: bold;'>format</span>
-  <span style='color: #00BBBB; font-weight: bold;'>render</span>      Render a read-only formatted view from stdin
+  <span style='color: #00BBBB; font-weight: bold;'>to-yaml</span>     Convert JSON-family input from stdin to formatted YAML
   <span style='color: #00BBBB; font-weight: bold;'>git-filter</span>  Git clean/smudge filter helpers for Markdown files
   <span style='color: #00BBBB; font-weight: bold;'>help</span>        Print this message or the help of the given subcommand(s)
 
@@ -88,24 +89,20 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 
 `````
 
-### `yamark render`
+### `yamark to-yaml`
 
 `````{=html}
-<pre class="yamark-cli-help"><code>Render a read-only formatted view from stdin
+<pre class="yamark-cli-help"><code>Convert JSON-family input from stdin to formatted YAML
 
-<span style='color: #5555FF; font-weight: bold;'>Usage:</span> <span style='color: #00BBBB; font-weight: bold;'>yamark render</span> <span style='color: #555555;'>[OPTIONS]</span> <span style='color: #00BBBB; font-weight: bold;'>--stdin-file-path</span><span style='color: #555555;'> &lt;PATH&gt;</span>
+<span style='color: #5555FF; font-weight: bold;'>Usage:</span> <span style='color: #00BBBB; font-weight: bold;'>yamark to-yaml</span> <span style='color: #555555;'>[OPTIONS]</span> <span style='color: #00BBBB; font-weight: bold;'>--stdin-file-path</span><span style='color: #555555;'> &lt;PATH&gt;</span>
 
 <span style='color: #5555FF; font-weight: bold;'>Options:</span>
       <span style='color: #00BBBB; font-weight: bold;'>--stdin-file-path</span><span style='color: #555555;'> &lt;PATH&gt;</span>
       <span style='color: #00BBBB; font-weight: bold;'>--config</span><span style='color: #555555;'> &lt;PATH&gt;</span>
-      <span style='color: #00BBBB; font-weight: bold;'>--wrap</span><span style='color: #555555;'> &lt;WRAP&gt;</span>                  [default: 72]
-      <span style='color: #00BBBB; font-weight: bold;'>--canonical</span>
-      <span style='color: #00BBBB; font-weight: bold;'>--preserve-footnotes</span>
       <span style='color: #00BBBB; font-weight: bold;'>--line-width</span><span style='color: #555555;'> &lt;LINE_WIDTH&gt;</span>      [default: 80]
       <span style='color: #00BBBB; font-weight: bold;'>--prose-width</span><span style='color: #555555;'> &lt;PROSE_WIDTH&gt;</span>    [default: 72]
       <span style='color: #00BBBB; font-weight: bold;'>--indent-width</span><span style='color: #555555;'> &lt;INDENT_WIDTH&gt;</span>  [default: 2]
       <span style='color: #00BBBB; font-weight: bold;'>--compact</span>
-      <span style='color: #00BBBB; font-weight: bold;'>--skip-embedded-formatters</span>
   <span style='color: #00BBBB; font-weight: bold;'>-h</span>, <span style='color: #00BBBB; font-weight: bold;'>--help</span>                         Print help</code></pre>
 
 `````
