@@ -4749,8 +4749,8 @@ pub fn emit_yaml_document_with_stats(
         plugins,
     };
     let insert_document_markers = yaml_is_unmarked_flow_mapping_stream(source, ast);
-    for (index, root) in ast.roots.iter().enumerate() {
-        if insert_document_markers && index > 0 {
+    for root in &ast.roots {
+        if insert_document_markers {
             out.push_str("---");
             out.push_str(options.default_line_ending);
         }

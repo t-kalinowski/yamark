@@ -3746,6 +3746,23 @@ tags: [docs, frontmatter]
 }
 
 #[test]
+fn yaml_json_lines_inserts_initial_markers_and_preserves_crlf() {
+    let input = "{\"id\":1}\r\n{\"id\":2}\r\n";
+    let expected = "---\r\n{id: 1}\r\n---\r\n{id: 2}\r\n";
+    let args = ["format", "--stdin-file-path", "input.yaml"];
+
+    let (status, stdout, stderr) = run_stdin(&args, input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+
+    let (status, stdout, stderr) = run_stdin(&args, &stdout);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_markdown_template_flow_and_table_directives() {
     let input = "\
 # fmt: markdown wrap=none

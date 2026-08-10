@@ -359,9 +359,9 @@ first match wins, so put the most specific filter first.
 
 Give a JSON Lines file containing two or more object records a `.yaml` or
 `.yml` extension, with one record per line, then format it normally. Yamark
-inserts the `---` document-start marker before each record after the first,
-producing a valid YAML multi-document stream. There is no leading `---` on the
-first document. The example below uses records from agent runs.
+inserts a leading `---` document-start marker before every record, including
+the first, producing a valid YAML multi-document stream. The example below uses
+records from agent runs.
 
 :::: {.showcase-before-after}
 **Before**
@@ -375,6 +375,7 @@ first document. The example below uses records from agent runs.
 **After**
 
 ```yaml
+---
 {id: 1, profile: {name: planner, active: true}}
 ---
 id: 2

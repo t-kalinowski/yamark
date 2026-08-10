@@ -639,7 +639,7 @@ fn website_documents_json_lines_as_yaml_streams() {
             "one per physical line",
             "not restricted to strict JSON objects",
             "document-start marker",
-            "before each record after the first",
+            "before every record, including the first",
             "--line-width",
         ] {
             assert!(
@@ -657,7 +657,8 @@ fn website_documents_json_lines_as_yaml_streams() {
             "`.yaml` or `.yml`",
             "two or more object records",
             "document-start marker",
-            "no leading `---`",
+            "leading `---` document-start marker",
+            "before every record, including the first",
             "records from agent runs",
             "as compact as the width allows",
             "The first record stays in flow style",
@@ -706,8 +707,8 @@ fn website_documents_json_lines_as_yaml_streams() {
         String::from_utf8(output.stdout).unwrap()
     });
     assert_eq!(expected[0], expected[1]);
-    assert_eq!(expected[0].matches("\n---\n").count(), 2);
-    assert!(expected[0].starts_with("{id: 1, profile: {name: planner, active: true}}\n"));
+    assert_eq!(expected[0].lines().filter(|line| *line == "---").count(), 3);
+    assert!(expected[0].starts_with("---\n{id: 1, profile: {name: planner, active: true}}\n"));
     let root_expanded = concat!(
         "id: 2\n",
         "profile: {name: researcher, active: true}\n",

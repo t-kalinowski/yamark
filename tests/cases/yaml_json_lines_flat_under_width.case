@@ -4,6 +4,7 @@ format --stdin-file-path input.yaml --line-width 80 --verify
 {"id":1,"name":"Ada","active":true}
 {"id":2,"name":"Grace","active":false}
 -- stdout
+---
 {id: 1, name: Ada, active: true}
 ---
 {id: 2, name: Grace, active: false}

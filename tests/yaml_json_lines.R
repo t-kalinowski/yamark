@@ -119,6 +119,13 @@ for (name in names(cases)) {
   }
 
   formatted <- readChar(path, file.info(path)$size, useBytes = TRUE)
+  formatted_lines <- strsplit(formatted, "\n", fixed = TRUE)[[1L]]
+  if (!startsWith(formatted, "---\n")) {
+    stop(sprintf("JSON Lines output has no initial marker for %s", name), call. = FALSE)
+  }
+  if (sum(formatted_lines == "---") != length(cases[[name]])) {
+    stop(sprintf("JSON Lines marker count differs for %s", name), call. = FALSE)
+  }
   run_yamark(path)
   reformatted <- readChar(path, file.info(path)$size, useBytes = TRUE)
   if (!identical(formatted, reformatted)) {

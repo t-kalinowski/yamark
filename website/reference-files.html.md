@@ -81,8 +81,8 @@ languages Yamark preserves safely: `bash`, `sh`, `shell`, `zsh`, `ojs`, `text`,
 
 Path-aware formatting recognizes a `.yaml` or `.yml` stream made of two or more
 unmarked, one-line YAML flow-mapping roots, one per physical line with no
-separate trivia lines. It inserts the `---` document-start marker before each
-record after the first. The first record has no leading marker.
+separate trivia lines. It inserts the `---` document-start marker before every
+record, including the first.
 
 JSON objects are the common case, but the trigger is based on YAML shape and is
 not restricted to strict JSON objects.

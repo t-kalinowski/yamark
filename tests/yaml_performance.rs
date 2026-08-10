@@ -453,7 +453,15 @@ fn yaml_json_lines_formatting_keeps_allocation_count_bounded() {
 
     let formatted = formatted.unwrap();
     assert!(formatted.changed);
-    assert_eq!(formatted.output.matches("\n---\n").count(), 399);
+    assert!(formatted.output.starts_with("---\n"));
+    assert_eq!(
+        formatted
+            .output
+            .lines()
+            .filter(|line| *line == "---")
+            .count(),
+        400
+    );
     assert!(
         ALLOCATIONS.load(Ordering::Relaxed) <= 7_000,
         "JSON Lines formatting allocated {} times",
