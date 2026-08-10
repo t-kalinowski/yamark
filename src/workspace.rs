@@ -151,9 +151,10 @@ pub(crate) fn render_source_for_path_with_overrides(
     let config = load_config_for_formatted_path(path, config_path)?;
     let kind = FileKind::for_path(path);
     let formatted = if kind.is_supported() {
-        format_source_with_config(
+        format_source_with_config_as(
             path,
             input,
+            kind,
             options,
             &config,
             FormatExecutionOptions {
@@ -162,15 +163,16 @@ pub(crate) fn render_source_for_path_with_overrides(
             },
         )?
     } else if let Some(json_kind) = JsonSourceKind::for_path(path) {
-        let input = json_to_yaml_source(&input, json_kind).map_err(|err| err.with_path(path))?;
+        let yaml_input =
+            json_to_yaml_source(&input, json_kind).map_err(|err| err.with_path(path))?;
+        drop(input);
         format_source_with_config_as(
             path,
-            input,
+            yaml_input,
             FileKind::Yaml,
             options,
             &config,
             FormatExecutionOptions {
-                verify_output: true,
                 markdown_wrap_override,
                 ..FormatExecutionOptions::default()
             },
