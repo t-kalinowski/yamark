@@ -6550,6 +6550,46 @@ fn format_skips_cmd_files() {
 }
 
 #[test]
+fn format_skips_json_files_without_rewriting_them() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("input.json");
+    let input = "{\"unformatted\":[1,2]}\n";
+    fs::write(&path, input).unwrap();
+
+    let output = yamark()
+        .args(["format", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+    );
+    assert_eq!(fs::read_to_string(path).unwrap(), input);
+}
+
+#[test]
+fn render_accepts_stdin_only() {
+    let output = yamark()
+        .args(["render", "--stdin-file-path", "input.json", "other.json"])
+        .write_stdin("{}\n")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("unexpected argument 'other.json'")
+    );
+}
+
+#[test]
 fn diff_mode_prints_contextual_unified_hunks() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("input.yaml");

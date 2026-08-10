@@ -13,7 +13,7 @@ use clap::{
 use crate::core::document::{FormatOptions, MarkdownWrap};
 use crate::workspace::{
     FormatExecutionOptions, FormatMode, format_paths_with_trace_and_overrides,
-    format_source_for_path_with_overrides,
+    format_source_for_path_with_overrides, render_source_for_path_with_overrides,
 };
 
 const HELP_STYLES: Styles = Styles::styled()
@@ -75,6 +75,29 @@ enum Command {
         skip_embedded_formatters: bool,
         #[arg(value_name = "PATHS")]
         paths: Vec<PathBuf>,
+    },
+    #[command(about = "Render a read-only formatted view from stdin")]
+    Render {
+        #[arg(long, value_name = "PATH")]
+        stdin_file_path: PathBuf,
+        #[arg(long, value_name = "PATH")]
+        config: Option<PathBuf>,
+        #[arg(long, default_value = "72", value_parser = parse_wrap)]
+        wrap: MarkdownWrap,
+        #[arg(long)]
+        canonical: bool,
+        #[arg(long)]
+        preserve_footnotes: bool,
+        #[arg(long, default_value_t = 80, value_parser = parse_positive_usize)]
+        line_width: usize,
+        #[arg(long, default_value_t = 72, value_parser = parse_positive_usize)]
+        prose_width: usize,
+        #[arg(long, default_value_t = 2, value_parser = parse_positive_usize)]
+        indent_width: usize,
+        #[arg(long)]
+        compact: bool,
+        #[arg(long)]
+        skip_embedded_formatters: bool,
     },
     #[command(
         about = "Git clean/smudge filter helpers for Markdown files",
@@ -290,6 +313,7 @@ where
     };
     let wrap_from_cli = matches
         .subcommand_matches("format")
+        .or_else(|| matches.subcommand_matches("render"))
         .is_some_and(|matches| matches.value_source("wrap") == Some(ValueSource::CommandLine));
     let args = match Args::from_arg_matches(&matches) {
         Ok(args) => args,
@@ -333,6 +357,30 @@ where
             compact,
             skip_embedded_formatters,
             paths,
+        ),
+        Command::Render {
+            stdin_file_path,
+            config,
+            wrap,
+            canonical,
+            preserve_footnotes,
+            line_width,
+            prose_width,
+            indent_width,
+            compact,
+            skip_embedded_formatters,
+        } => run_render(
+            stdin_file_path,
+            config,
+            wrap,
+            wrap_from_cli,
+            canonical,
+            preserve_footnotes,
+            line_width,
+            prose_width,
+            indent_width,
+            compact,
+            skip_embedded_formatters,
         ),
         Command::GitFilter { command } => match command {
             GitFilterCommand::Clean { stdin_filename } => {
@@ -532,6 +580,65 @@ fn run_stdin(
             }
             let mut stdout = io::stdout().lock();
             if let Err(err) = stdout.write_all(formatted.output.as_bytes()) {
+                eprintln!(
+                    "{}:1:1: error: failed to write stdout: {err}",
+                    path.display()
+                );
+                return ExitCode::from(1);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{}", err.diagnostic.render());
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_render(
+    path: PathBuf,
+    config: Option<PathBuf>,
+    wrap: MarkdownWrap,
+    wrap_from_cli: bool,
+    canonical: bool,
+    preserve_footnotes: bool,
+    line_width: usize,
+    prose_width: usize,
+    indent_width: usize,
+    compact: bool,
+    skip_embedded_formatters: bool,
+) -> ExitCode {
+    let input = match read_stdin_utf8() {
+        Ok(input) => input,
+        Err(message) => {
+            eprintln!("{}:1:1: error: {message}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+    let options = FormatOptions {
+        line_width,
+        prose_width,
+        indent_width,
+        yaml_compact: compact,
+        markdown_wrap: wrap,
+        markdown_canonical: canonical,
+        markdown_format_footnotes: !preserve_footnotes,
+        markdown_preserve_footnotes: preserve_footnotes,
+        skip_embedded_formatters,
+        ..FormatOptions::default()
+    };
+    let markdown_wrap_override = wrap_from_cli.then_some(wrap);
+    match render_source_for_path_with_overrides(
+        &path,
+        input,
+        options,
+        config.as_deref(),
+        markdown_wrap_override,
+    ) {
+        Ok(rendered) => {
+            let mut stdout = io::stdout().lock();
+            if let Err(err) = stdout.write_all(rendered.output.as_bytes()) {
                 eprintln!(
                     "{}:1:1: error: failed to write stdout: {err}",
                     path.display()
