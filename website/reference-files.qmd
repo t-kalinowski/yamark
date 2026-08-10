@@ -14,6 +14,7 @@ the output.
 | `.yaml` and `.yml` | The whole YAML stream. | Automatic for path-aware formatting. |
 | `.md`, `.qmd`, `.Rmd`, and `.rmd` | Markdown, YAML front matter, and recognized fenced content. | Automatic, except constructs described as preserved below. |
 | `.py`, `.R`, and `.r` | `#|` hashpipe YAML blocks, marked Markdown comments or strings, and marked external-formatter targets. | Hashpipe blocks are automatic; other targets require a `fmt:` directive. Surrounding source code is unchanged. |
+| `.json`, `.jsonc`, `.json5`, `.jsonl`, and `.ndjson` | A formatted YAML representation. | Read-only through `yamark render` or an editor preview command. Normal formatting does not select these files. |
 | Markdown fences named `yaml`, `yml`, `markdown`, or `md` | YAML, or recursively formatted Markdown. | Automatic unless the fence is locally skipped. |
 | Markdown source fences | Python, R, JSON, GraphQL, CSS, HTML, JavaScript, TypeScript, and related aliases. | Delegated when a matching embedded formatter is available. |
 | YAML scalars tagged `!markdown` or `!md` | The scalar value as Markdown. | Explicit tag. |
@@ -26,6 +27,47 @@ extensions are counted as skipped and do not make the run fail. An unsupported
 
 Directory traversal skips hidden paths and respects `.gitignore`, `.ignore`,
 and global Git ignore files. Passing a hidden path explicitly selects it.
+
+## Read-only JSON rendering
+
+Use `yamark render --stdin-file-path` to convert a JSON-family input from stdin
+to formatted YAML on stdout:
+
+```sh
+yamark render --stdin-file-path data.json < data.json
+```
+
+The command does not read or write the path. It uses the extension to select
+one exact input grammar:
+
+| Extension | Accepted input |
+| --- | --- |
+| `.json` | Strict JSON. |
+| `.jsonc` | JSON with line comments, block comments, and trailing commas. Other JSON5 syntax is rejected. |
+| `.json5` | JSON5 strings, identifiers, numbers, comments, and trailing commas. |
+| `.jsonl` and `.ndjson` | One strict JSON value per physical line. Blank records are rejected. |
+
+Object member order and duplicate names are preserved. JSON and JSONC keep the
+source spelling of numbers. JSON5 spellings that YAML would interpret
+differently are normalized, including `0X` hexadecimal prefixes, leading or
+trailing decimal points, unary plus, `Infinity`, and `NaN`. Negative
+hexadecimal integers are emitted in decimal because YAML would otherwise treat
+them as strings.
+
+JSONC and JSON5 comments become YAML comments. JSONL and NDJSON output a YAML
+document-start marker before every record. A record may be an object, array, or
+scalar; this does not change how ordinary YAML such as `1\n2` is interpreted by
+`yamark format`.
+
+String escapes are decoded before YAML emission. Lone UTF-16 surrogate escapes
+are rejected because they do not represent Unicode scalar values. JSON5 also
+rejects legacy numeric escapes such as `\1`, invalid escaped identifier
+characters, U+0085 as whitespace, and input nested more than 256 levels deep.
+Characters that YAML cannot carry inside a comment are shown as visible
+hexadecimal escapes.
+
+`yamark format` continues to skip JSON-family paths and never rewrites them.
+The VS Code and Positron preview commands use the same render path.
 
 ## Markdown
 

@@ -4,8 +4,8 @@ description: Use Yamark from VS Code, Positron, and compatible forks.
 ---
 
 The repository includes a Yamark extension for VS Code, Positron, and compatible
-forks. It runs `yamark format --stdin-file-path <file>` through the public VS
-Code formatter API.
+forks. It runs `yamark format --stdin-file-path <file>` for document formatting
+and `yamark render --stdin-file-path <file>` for read-only previews.
 
 ## Install
 
@@ -29,12 +29,33 @@ The extension contributes:
 | --- | --- |
 | `Yamark: Format Document` | Run the Yamark document formatter for the active file. |
 | `Yamark: Format Selection as Markdown` | Format the active non-empty selection as Markdown only. |
+| `Yamark: Open Formatted Preview` | Open a formatted read-only snapshot of a Markdown, R Markdown, Quarto, YAML, Python, or R file. |
+| `Yamark: View JSON as YAML` | Open JSON, JSONC, JSON5, JSONL, or NDJSON as formatted YAML. |
 | `Yamark: Open Filtered Working Tree Diff` | Compare an unstaged file with its smudged Git index baseline. |
 | `Yamark: Show Log` | Open the Yamark output channel. |
 
 `Yamark: Format Selection as Markdown` does not run configured native formatter
 chains. It is for prompt text, comments, or Markdown-like prose inside a
 broader source file.
+
+## Read-only previews
+
+Right-click a supported file in the Explorer or its editor tab. Use
+`Yamark: Open Formatted Preview` for Yamark's native file types, or
+`Yamark: View JSON as YAML` for JSON, JSONC, JSON5, JSONL, and NDJSON.
+
+The command sends the current editor buffer to `yamark render` and opens the
+result as a read-only snapshot. It does not change the source file or create a
+temporary file. Unsaved source edits are included. Run the command again to
+refresh the same preview; source edits do not refresh it automatically.
+
+JSON-family previews use YAML syntax highlighting. JSONC and JSON5 comments
+become YAML comments. Each JSONL or NDJSON record becomes one document in a
+YAML stream.
+
+Preview commands do not use `yamark.enabledFileExtensions` and do not run
+`yamark.nextFormatterExecutable`. JSON-family files remain excluded from
+Format Document and format-on-save.
 
 ## Git filter diffs
 
@@ -134,7 +155,7 @@ Pass CLI formatter options through `yamark.extraArguments`:
 }
 ```
 
-Arguments are inserted after `yamark format` and before
+Arguments are inserted after `yamark format` or `yamark render` and before
 `--stdin-file-path <file>`.
 
 ## Formatter chaining

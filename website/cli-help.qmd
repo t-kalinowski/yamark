@@ -56,18 +56,20 @@ generated from the current Yamark binary.
 | `yamark format --check PATHS` | Does not write. | - | Summary, failures, and requested diagnostics. |
 | `yamark format --diff PATHS` | Does not write. | Unified diffs. | Summary, failures, and requested diagnostics. |
 | `yamark format --stdin-file-path PATH` | Does not read or write `PATH`; uses it to select file-aware behavior for stdin. | Formatted content only. | Failures and requested diagnostics. |
+| `yamark render --stdin-file-path PATH` | Does not read or write `PATH`; renders stdin using its native or JSON-family file type. | Read-only formatted content only. | Failures. |
 
 `--check` and `--diff` exit `1` when any selected file would change. Every mode
 exits `1` when formatting fails and `0` on success otherwise. Invalid command
 syntax exits `2`.
 
-When `PATHS` is omitted, Yamark uses the current directory (`.`). Path mode
-counts unsupported extensions as skipped without failing. An unsupported
-`--stdin-file-path` is an error because stdin mode requires a supported file
-type.
+When `PATHS` is omitted from `yamark format`, Yamark uses the current directory
+(`.`). Format path mode counts unsupported extensions as skipped without
+failing. An unsupported `--stdin-file-path` is an error because stdin mode
+requires a supported file type.
 
-Stdin mode rejects additional paths and cannot be combined with `--check` or
-`--diff`.
+Format stdin mode rejects additional paths and cannot be combined with
+`--check` or `--diff`. `yamark render` always reads stdin, requires
+`--stdin-file-path`, and never writes a file.
 
 ## Generated help
 
@@ -85,6 +87,14 @@ yamark_help()
 #| label: help-yamark-format
 #| results: asis
 yamark_help("format")
+```
+
+### `yamark render`
+
+```{r}
+#| label: help-yamark-render
+#| results: asis
+yamark_help("render")
 ```
 
 ### `yamark git-filter`
