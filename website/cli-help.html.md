@@ -1,6 +1,6 @@
 ---
-title: CLI Help
-description: Current command-line help for Yamark.
+title: Command line
+description: Modes, output, exit status, and generated command-line help.
 execute:
   echo: false
   warning: false
@@ -10,11 +10,35 @@ execute:
 
 
 
-These are Yamark's current help screens. See [Usage](usage.qmd) for common
-commands, [Directives](directives.qmd) for source-file controls, and
-[Reference](reference.qmd) for accepted options and syntax.
+Use [Usage](usage.qmd) for common commands and
+[Formatting settings](reference-options.qmd) to find a control by the output it
+changes. This command-line interface (CLI) reference includes help screens
+generated from the current Yamark binary.
 
-## `yamark`
+## Modes, output, and status
+
+| Mode | Files | stdout | stderr |
+| --- | --- | --- | --- |
+| `yamark format PATHS` | Writes changed files. | Summary. | Failures and requested diagnostics. |
+| `yamark format --check PATHS` | Does not write. | - | Summary, failures, and requested diagnostics. |
+| `yamark format --diff PATHS` | Does not write. | Unified diffs. | Summary, failures, and requested diagnostics. |
+| `yamark format --stdin-file-path PATH` | Does not read or write `PATH`; uses it to select file-aware behavior for stdin. | Formatted content only. | Failures and requested diagnostics. |
+
+`--check` and `--diff` exit `1` when any selected file would change. Every mode
+exits `1` when formatting fails and `0` on success otherwise. Invalid command
+syntax exits `2`.
+
+When `PATHS` is omitted, Yamark uses the current directory (`.`). Path mode
+counts unsupported extensions as skipped without failing. An unsupported
+`--stdin-file-path` is an error because stdin mode requires a supported file
+type.
+
+Stdin mode rejects additional paths and cannot be combined with `--check` or
+`--diff`.
+
+## Generated help
+
+### `yamark`
 
 `````{=html}
 <pre class="yamark-cli-help"><code>A fast formatter for YAML and Markdown.
@@ -35,7 +59,7 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 
 `````
 
-## `yamark format`
+### `yamark format`
 
 `````{=html}
 <pre class="yamark-cli-help"><code><span style='color: #5555FF; font-weight: bold;'>Usage:</span> <span style='color: #00BBBB; font-weight: bold;'>yamark format</span> <span style='color: #555555;'>[OPTIONS]</span> <span style='color: #555555;'>[PATHS]...</span>
@@ -61,7 +85,7 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
 
 `````
 
-## `yamark git-filter`
+### `yamark git-filter`
 
 `````{=html}
 <pre class="yamark-cli-help"><code>Git clean/smudge filter helpers for Markdown files.

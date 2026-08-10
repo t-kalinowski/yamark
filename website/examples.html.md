@@ -182,6 +182,37 @@ always use compact pipe-table output.
 
 ## Markdown in source files
 
+### Hashpipe YAML in source files
+
+Consecutive own-line `#|` comments in Python and R are a YAML block. Yamark
+formats the comment body as YAML, restores the hashpipe prefix, and leaves the
+surrounding source code unchanged. This recognition is automatic; it does not
+need a `fmt:` directive.
+
+:::: {.showcase-before-after}
+**Before**
+
+```r
+#| name: demo
+#| launcher:
+#|  vanilla: true
+#|  default-packages: [base,utils]
+
+main <- function() NULL
+```
+
+**After**
+
+```r
+#| name: demo
+#| launcher:
+#|   vanilla: true
+#|   default-packages: [base, utils]
+
+main <- function() NULL
+```
+::::
+
 ### Embedded Markdown in Python
 
 When a prompt lives next to the code that uses it, Yamark can format the prose
@@ -457,8 +488,8 @@ the collection to block style.
 ```
 ::::
 
-See [Reference -> Layout repair](reference.qmd#layout-repair) for the
-acceptance rules.
+See [Supported files and syntax -> Layout repair](reference-files.qmd#layout-repair)
+for the acceptance rules.
 
 ## Fenced and nested content
 
@@ -580,5 +611,5 @@ the YAML block.
 
 Once an example has shown you the behavior, see [Directives](directives.qmd)
 for how to place those instructions in Markdown, YAML, Python, and R files.
-The [Reference](reference.qmd) page has the complete directive grammar,
-options, and safety model.
+Use [Reference](reference.qmd) to look up exact directive grammar, formatting
+settings, supported syntax, and failure behavior.

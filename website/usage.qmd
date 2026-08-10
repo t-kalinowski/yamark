@@ -78,9 +78,9 @@ Use `--diagnostics` to explain preserved content. Use
   Markdown, YAML, Python, and R files.
 - [Editors](editors.qmd): VS Code, Positron, and compatible forks -
   commands, settings, format-on-save, formatter chaining, and logs.
-- [Reference](reference.qmd): the full directive grammar, CLI option list,
-  `yamark.toml` schema, and supported syntax coverage.
-- [CLI Help](cli-help.qmd): rendered `yamark --help`,
-  `yamark format --help`, and `yamark git-filter --help` output.
+- [Reference](reference.qmd): look up supported files and syntax, formatting
+  settings, `yamark.toml`, directive grammar, and command behavior.
+- [Command line](cli-help.qmd): modes, output, exit status, and generated
+  `--help` for Yamark, `format`, and the `git-filter` command group.
 - [Git Filter](git-filter.qmd): an experimental workflow that stores Markdown
   sentence-per-line while keeping the working tree column-wrapped.

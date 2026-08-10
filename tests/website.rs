@@ -581,6 +581,8 @@ fn website_includes_homepage_and_examples_content() {
     assert!(!index.contains("## The pitch"));
 
     assert!(examples.contains("### Markdown-valued YAML scalars"));
+    assert!(examples.contains("### Hashpipe YAML in source files"));
+    assert!(examples.contains("#| name: demo"));
     assert!(examples.contains("REVIEW_PROMPT"));
     assert!(examples.contains("agents:"));
     assert!(examples.contains("### Collapse to flow by typing a bracket"));
@@ -601,17 +603,18 @@ fn website_includes_homepage_and_examples_content() {
 fn website_documents_json_lines_as_yaml_streams() {
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let root = project_root.join("website");
-    let reference = fs::read_to_string(root.join("reference.qmd")).unwrap();
-    let rendered_reference = fs::read_to_string(root.join("reference.html.md")).unwrap();
+    let reference = fs::read_to_string(root.join("reference-files.qmd")).unwrap();
+    let rendered_reference = fs::read_to_string(root.join("reference-files.html.md")).unwrap();
     let examples = fs::read_to_string(root.join("examples.qmd")).unwrap();
     let rendered_examples = fs::read_to_string(root.join("examples.html.md")).unwrap();
 
     for contents in [&reference, &rendered_reference] {
         let prose = contents.split_whitespace().collect::<Vec<_>>().join(" ");
         for term in [
-            "JSON Lines object streams",
-            "two or more JSON objects",
+            "JSON Lines (JSONL) as YAML streams",
+            "two or more unmarked, one-line YAML flow-mapping roots",
             "one per physical line",
+            "not restricted to strict JSON objects",
             "document-start marker",
             "before each record after the first",
             "--line-width",
@@ -720,6 +723,22 @@ fn website_guides_users_through_directives_before_configuration() {
     assert!(config.contains("text: Directives"));
     assert!(usage.contains("[Directives](directives.qmd)"));
     assert!(not_found.contains("[Directives](directives.qmd)"));
+    assert!(directives.contains("[Directive syntax reference](reference-directives.qmd)"));
+
+    for contents in [&directives, &rendered] {
+        let whole_file_skip = contents
+            .split_once("Skip a whole file by putting the file directive at the top.")
+            .expect("directives page should explain whole-file skips")
+            .1
+            .split_once("## Set file-specific Markdown options")
+            .expect("whole-file skip section should end before Markdown options")
+            .0;
+        assert_eq!(
+            whole_file_skip.matches("# fmt: skip file").count(),
+            1,
+            "the shared YAML, Python, and R form should appear once"
+        );
+    }
 
     for term in [
         "The source file is the primary interface",
@@ -776,34 +795,190 @@ fn public_docs_describe_formatting_boundaries_consistently() {
 }
 
 #[test]
+fn website_organizes_reference_by_lookup_task() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
+    let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
+    let overview = fs::read_to_string(root.join("reference.qmd")).unwrap();
+    let styles = fs::read_to_string(root.join("styles.css")).unwrap();
+
+    let pages = [
+        ("reference.qmd", "Reference"),
+        ("reference-files.qmd", "Supported files and syntax"),
+        ("reference-options.qmd", "Formatting settings"),
+        ("reference-config.qmd", "Configuration"),
+        ("reference-directives.qmd", "Directive syntax"),
+        ("cli-help.qmd", "Command line"),
+    ];
+
+    assert!(config.contains("search: true"));
+    assert!(config.contains("text: Reference\n        menu:"));
+    assert!(styles.contains(".reference-index"));
+    assert!(styles.contains(".reference-index {\n    grid-template-columns: 1fr;\n  }"));
+
+    let reference_menu = config
+        .split_once("      - text: Reference\n")
+        .expect("navbar should contain the Reference menu")
+        .1
+        .split_once("      - text: Benchmarks\n")
+        .expect("Reference menu should end before Benchmarks")
+        .0;
+
+    let mut previous = 0;
+    for (path, title) in pages {
+        let menu_entry = format!("href: {path}");
+        let position = reference_menu
+            .find(&menu_entry)
+            .unwrap_or_else(|| panic!("Reference menu should link to {path}"));
+        assert!(
+            position >= previous,
+            "Reference pages should have a stable order"
+        );
+        previous = position;
+
+        let source = fs::read_to_string(root.join(path)).unwrap();
+        assert!(
+            source.contains(&format!("title: {title}")),
+            "{path} should have the title {title:?}"
+        );
+
+        let rendered = path.replace(".qmd", ".html.md");
+        assert!(
+            root.join(&rendered).is_file(),
+            "{rendered} should be checked in"
+        );
+
+        if path != "reference.qmd" {
+            assert!(
+                overview.contains(&format!("]({path})")),
+                "Reference should direct readers to {path}"
+            );
+        }
+    }
+
+    for old_catch_all_section in [
+        "## What's supported",
+        "## CLI options",
+        "## Configuration",
+        "## Document Markdown options",
+        "## Directives",
+        "## Layout repair",
+        "## Safety",
+    ] {
+        assert!(
+            !overview.contains(old_catch_all_section),
+            "Reference overview should direct readers instead of containing {old_catch_all_section:?}"
+        );
+    }
+}
+
+#[test]
 fn website_documents_user_facing_references() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
-    let reference = fs::read_to_string(root.join("reference.qmd")).unwrap();
-    let rendered_reference = fs::read_to_string(root.join("reference.html.md")).unwrap();
+    let overview = fs::read_to_string(root.join("reference.qmd")).unwrap();
+    let rendered_overview = fs::read_to_string(root.join("reference.html.md")).unwrap();
+    let files = fs::read_to_string(root.join("reference-files.qmd")).unwrap();
+    let rendered_files = fs::read_to_string(root.join("reference-files.html.md")).unwrap();
+    let options = fs::read_to_string(root.join("reference-options.qmd")).unwrap();
+    let rendered_options = fs::read_to_string(root.join("reference-options.html.md")).unwrap();
+    let config_reference = fs::read_to_string(root.join("reference-config.qmd")).unwrap();
+    let rendered_config = fs::read_to_string(root.join("reference-config.html.md")).unwrap();
+    let directives = fs::read_to_string(root.join("reference-directives.qmd")).unwrap();
+    let rendered_directives =
+        fs::read_to_string(root.join("reference-directives.html.md")).unwrap();
     let not_found = fs::read_to_string(root.join("404.qmd")).unwrap();
 
     assert!(config.contains("reference.qmd"));
     assert!(not_found.contains("[Reference](reference.qmd)"));
+    assert!(overview.contains("#configuration"));
+    assert!(rendered_overview.contains("#configuration"));
+    for legacy_anchor in [
+        "file-types",
+        "whats-supported",
+        "markdown",
+        "yaml",
+        "source-files",
+        "external-formatters",
+        "command-modes",
+        "cli-options",
+        "format",
+        "template",
+        "embedded",
+        "paths",
+        "document-markdown-options",
+        "directives",
+        "layout-repair",
+        "collapse-to-flow-with-or",
+        "expand-to-block-with-a-newline",
+        "rejection-rules",
+        "safety",
+    ] {
+        let anchor = format!("id=\"{legacy_anchor}\"");
+        assert!(
+            overview.contains(&anchor),
+            "Reference should preserve the old #{legacy_anchor} link"
+        );
+        assert!(
+            rendered_overview.contains(&anchor),
+            "rendered Reference should preserve the old #{legacy_anchor} link"
+        );
+    }
+    assert!(directives.starts_with("---\n# fmt: skip file\n"));
+    assert!(directives.contains("<!-- fmt: skip file -->"));
 
-    // The support matrix is documented in the reference page.
-    assert!(reference.contains("## What's supported"));
     assert!(
-        !reference.contains("lowercase extension ends in `md`"),
+        !files.contains("lowercase extension ends in `md`"),
         "reference should not imply .cmd and other non-Markdown extensions are supported"
     );
     assert!(
-        reference.contains("`.md`, `.qmd`, `.Rmd`, and `.rmd`"),
+        files.contains("`.md`, `.qmd`, `.Rmd`, and `.rmd`"),
         "reference should document the exact Markdown-like extensions"
     );
+
+    let files_prose = files.split_whitespace().collect::<Vec<_>>().join(" ");
+    let rendered_files_prose = rendered_files
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(
-        reference.contains("starts with `ruff`, `air`, `mdformat`, or `prettier`"),
-        "reference should document optional configured formatter commands consistently"
+        files_prose.contains("first argv item is exactly `ruff`, `air`, `mdformat`, or `prettier`"),
+        "reference should document optional configured formatter commands precisely"
     );
-    for command in ["`ruff`", "`air`", "`mdformat`", "`prettier`"] {
+    for term in [
+        "## Files and regions",
+        "## Markdown",
+        "## YAML",
+        "## Python and R source files",
+        "## Embedded formatter dispatch",
+        "## Layout repair",
+        "## Failure behavior",
+        "Pandoc citations",
+        "Quarto divs",
+        "Reference links",
+        "Nested image links",
+        "Footnote blocks",
+        "Pandoc tables",
+        "Definition lists",
+        "Scalar folding",
+        "Core booleans and nulls",
+        "Tags and anchors",
+        "UTF-8 BOM and line endings",
+        "Tab indentation",
+        "hashpipe YAML blocks",
+        "Long Quarto fence openings",
+        "`graphql`, `gql`, `graphqls`, `prettier-graphql`",
+        "`postcss`, `pcss`, `prettier-postcss`",
+        "`js`, `javascript`, `prettier-js`",
+        "`ts`, `typescript`, `prettier-ts`",
+        "`bash`, `sh`, `shell`, `zsh`",
+        "`powershell`, and `cmd`",
+        "supported multiline string literals",
+        "same comment prefix",
+    ] {
+        assert!(files.contains(term), "{term} should be documented");
         assert!(
-            reference.contains(command),
-            "reference should document optional configured command {command}"
+            rendered_files.contains(term),
+            "{term} should render into reference-files.html.md"
         );
     }
 
@@ -819,18 +994,12 @@ fn website_documents_user_facing_references() {
         "--compact",
         "--skip-embedded-formatters",
     ] {
-        assert!(reference.contains(option), "{option} should be documented");
+        assert!(options.contains(option), "{option} should be documented");
         assert!(
-            rendered_reference.contains(option),
-            "{option} should render into reference.html.md"
+            rendered_options.contains(option),
+            "{option} should render into reference-options.html.md"
         );
     }
-
-    assert!(!reference.contains("yamark_help <- function(...)"));
-    assert!(!reference.contains("yamark_help()"));
-    assert!(!reference.contains("## CLI help"));
-    assert!(!rendered_reference.contains("class=\"yamark-cli-help\""));
-    assert!(!rendered_reference.contains("## CLI help"));
 
     for term in [
         "yamark.toml",
@@ -838,13 +1007,30 @@ fn website_documents_user_facing_references() {
         "[template]",
         "[embedded]",
         "[paths]",
-        "editor_options",
+        "replace_delimiters",
+        "add_delimiters",
+        "path_suffix",
+        "argv array",
+        "accepts exactly one key: the required `formatter` key",
+        "requires both `command` and `path_suffix`",
+        "At least one complete argv item must be `{path}`",
+        "after `replace_delimiters` if both keys are present",
+    ] {
+        assert!(
+            config_reference.contains(term),
+            "{term} should be documented"
+        );
+        assert!(
+            rendered_config.contains(term),
+            "{term} should render into reference-config.html.md"
+        );
+    }
+
+    for term in [
         "fmt: compact=false",
         "fmt: canonical=true",
         "#| fmt: skip",
-        "hashpipe YAML",
-        "Quarto chunk header",
-        "missing optional embedded formatter",
+        "Quarto source fence",
         "fmt: off",
         "fmt: on",
         "fmt: markdown",
@@ -854,42 +1040,115 @@ fn website_documents_user_facing_references() {
         "scope=next",
         "scope=from-here",
         "scope=file",
-        "Layout repair",
+        "empty-valued collection parent",
     ] {
-        assert!(reference.contains(term), "{term} should be documented");
+        assert!(directives.contains(term), "{term} should be documented");
         assert!(
-            rendered_reference.contains(term),
-            "{term} should render into reference.html.md"
+            rendered_directives.contains(term),
+            "{term} should render into reference-directives.html.md"
         );
     }
 
     for term in [
-        "Pandoc citations",
-        "Quarto divs",
-        "heading attributes",
-        "task lists",
-        "Reference links",
-        "Nested image links",
-        "Footnote blocks",
-        "Pandoc tables",
-        "definition lists",
-        "Scalar folding",
-        "Flow expansion",
-        "Bool/null normalization",
-        "Tags and anchors",
-        "BOM and line endings",
-        "Tab indentation",
+        "editor_options",
+        "## Document Markdown options",
+        "## Interaction rules",
+        "Column 72",
+        "Structural line width",
+        "front matter overrides the corresponding base Markdown settings",
+        "Directives then override the corresponding settings within their scope",
+        "Unknown front-matter keys and unrecognized values are ignored",
+        "rewrites supported `_emphasis_` and `__strong__` spans",
+        "Over-width flow collections that cannot be rendered safely in block style may be preserved",
     ] {
-        assert!(reference.contains(term), "{term} should be documented");
+        assert!(options.contains(term), "{term} should be documented");
         assert!(
-            rendered_reference.contains(term),
-            "{term} should render into reference.html.md"
+            rendered_options.contains(term),
+            "{term} should render into reference-options.html.md"
         );
     }
+
+    for contract in [
+        "A missing executable or nonzero exit preserves the target",
+        "A successful process that writes to stderr is an error",
+        "valid multiline YAML",
+        "does not fail solely because the requested flow form is too wide",
+        "not restricted to strict JSON objects",
+        "For a delegated language, the embedded formatter must succeed",
+        "initial consecutive `#|` option block",
+        "An explicit directive instead requires a supported target",
+        "A multi-file write run is not transactional",
+        "Extension matching is ASCII case-insensitive",
+        "unsupported extensions are counted as skipped and do not make the run fail",
+        "unsupported `--stdin-file-path` is an error",
+        "writes are direct rather than atomic",
+        "does not promise rollback",
+    ] {
+        assert!(
+            files_prose.contains(contract),
+            "supported-files reference should document {contract:?}"
+        );
+        assert!(
+            rendered_files_prose.contains(contract),
+            "rendered supported-files reference should document {contract:?}"
+        );
+    }
+
+    let directives_prose = directives.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(directives_prose.contains(
+        "A bare `fmt: template.delimiters` directive uses the next target when placed directly"
+    ));
+    assert!(directives_prose.contains("requires an explicit scope in every other placement"));
+    assert!(directives_prose.contains("anywhere in the initial consecutive `#|` option block"));
+    assert!(
+        directives_prose
+            .contains("Scopes stop at the current parsed document or nested-region boundary")
+    );
+    assert!(directives_prose.contains(
+        "A `scope=file` directive inside one hashpipe YAML block does not span later blocks"
+    ));
+    assert!(directives_prose.contains(
+        "`compact`, `compact=true`, `compact=yes`, `compact=1`, and `compact true` enable compaction"
+    ));
+    assert!(directives_prose.contains("a Markdown block, including a supported fence"));
+    assert!(directives_prose.contains(
+        "YAML rejects a targetless `skip`, a stray `on`, a nested `off`, and an `off` without a later `on`"
+    ));
+    assert!(
+        directives_prose.contains("Delimiter arguments must be non-empty double-quoted tokens")
+    );
+    assert!(directives_prose.contains("`\\\"`, `\\\\`, `\\n`, `\\r`, and `\\t`"));
+
+    let config_prose = config_reference
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for contract in [
+        "uses only the nearest file; it does not merge ancestor configs",
+        "Each `replace_delimiters` discards delimiters accumulated by earlier layers",
+        "Configured embedded-Markdown delimiters do not apply inside Python f-strings",
+    ] {
+        assert!(
+            config_prose.contains(contract),
+            "configuration reference should document {contract:?}"
+        );
+    }
+
+    let options_prose = options.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(options_prose.contains(
+        "For YAML input, emits trace counters; it also emits notes for skipped or failing optional embedded formatters"
+    ));
+    assert!(
+        options_prose
+            .contains("`wrap`, `format`, `true`, `yes`, and `1` format footnote definitions")
+    );
+    assert!(options_prose.contains("`preserve`, `none`, `false`, `no`, and `0` preserve them"));
+
+    assert!(rendered_files_prose.contains("leaves unsupported regions unchanged"));
 }
 
 #[test]
-fn website_documents_cli_help_on_dedicated_page() {
+fn website_documents_command_line_reference() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("website");
     let config = fs::read_to_string(root.join("_quarto.yml")).unwrap();
     let cli_help = fs::read_to_string(root.join("cli-help.qmd")).unwrap();
@@ -897,13 +1156,42 @@ fn website_documents_cli_help_on_dedicated_page() {
     let usage = fs::read_to_string(root.join("usage.qmd")).unwrap();
     let not_found = fs::read_to_string(root.join("404.qmd")).unwrap();
 
-    assert!(!config.contains("text: CLI Help"));
-    assert!(usage.contains("[CLI Help](cli-help.qmd)"));
-    assert!(not_found.contains("[CLI Help](cli-help.qmd)"));
-    assert!(cli_help.contains("title: CLI Help"));
+    assert!(config.contains("text: Command line"));
+    assert!(usage.contains("[Command line](cli-help.qmd)"));
+    let usage_prose = usage.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        usage_prose.contains(
+            "generated `--help` for Yamark, `format`, and the `git-filter` command group"
+        )
+    );
+    assert!(!usage_prose.contains("generated `--help` for each command"));
+    assert!(not_found.contains("[Command line](cli-help.qmd)"));
+    assert!(cli_help.contains("title: Command line"));
+    assert!(cli_help.contains("## Modes, output, and status"));
+    assert!(cli_help.contains("## Generated help"));
     assert!(cli_help.contains("source(\"_yamark-build.R\")"));
     assert!(cli_help.contains("yamark_help <- function(...)"));
     assert!(cli_help.contains("NO_COLOR="));
+    for contents in [&cli_help, &rendered_cli_help] {
+        let prose = contents.split_whitespace().collect::<Vec<_>>().join(" ");
+        for contract in [
+            "`yamark format PATHS`",
+            "`yamark format --check PATHS`",
+            "`yamark format --diff PATHS`",
+            "`yamark format --stdin-file-path PATH`",
+            "When `PATHS` is omitted, Yamark uses the current directory (`.`)",
+            "An unsupported `--stdin-file-path` is an error",
+            "Unified diffs",
+            "Formatted content only",
+            "exits `1`",
+            "exits `2`",
+        ] {
+            assert!(
+                prose.contains(contract),
+                "command-line reference should document {contract:?}"
+            );
+        }
+    }
     for invocation in [
         "yamark_help()",
         "yamark_help(\"format\")",
@@ -968,7 +1256,7 @@ fn website_renders_examples_with_one_current_yamark_binary() {
     assert!(helper.contains(r#"file.path("..", "target", "release", yamark_exe)"#));
     assert!(helper.contains("yamark_format <- function"));
 
-    for file in ["index.qmd", "examples.qmd", "reference.qmd", "cli-help.qmd"] {
+    for file in ["index.qmd", "examples.qmd", "cli-help.qmd"] {
         let contents = fs::read_to_string(root.join(file)).unwrap();
         assert!(
             contents.contains("source(\"_yamark-build.R\")"),
@@ -979,20 +1267,6 @@ fn website_renders_examples_with_one_current_yamark_binary() {
             "{file} should not select a debug build"
         );
     }
-
-    let reference = fs::read_to_string(root.join("reference.qmd")).unwrap();
-    let rendered_reference = fs::read_to_string(root.join("reference.html.md")).unwrap();
-    assert!(reference.contains("reference_before_after("));
-    let output = Command::cargo_bin("yamark")
-        .unwrap()
-        .args(["format", "--wrap", "72", "--stdin-file-path", "layout.yaml"])
-        .write_stdin("tags: [\n  - yaml\n  - markdown\n  - docs\n")
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let expected = String::from_utf8(output.stdout).unwrap();
-    assert!(rendered_reference.contains(expected.trim_end()));
-    assert!(!rendered_reference.contains("tags: [llm, authoring, formats]"));
 }
 
 #[test]
@@ -1003,6 +1277,10 @@ fn public_docs_do_not_advertise_verify() {
         "website/cli-help.html.md",
         "website/examples.qmd",
         "website/index.qmd",
+        "website/reference-config.qmd",
+        "website/reference-directives.qmd",
+        "website/reference-files.qmd",
+        "website/reference-options.qmd",
         "website/reference.qmd",
         "website/usage.qmd",
     ] {
@@ -1151,13 +1429,29 @@ fn website_keeps_intermediate_markdown_outputs() {
         "404.html.md",
         "benchmarks.html.md",
         "cli-help.html.md",
+        "directives.html.md",
         "editors.html.md",
         "examples.html.md",
         "git-filter.html.md",
         "index.html.md",
+        "reference-config.html.md",
+        "reference-directives.html.md",
+        "reference-files.html.md",
+        "reference-options.html.md",
         "reference.html.md",
         "usage.html.md",
     ] {
         assert!(root.join(file).is_file(), "{file} should be checked in");
+    }
+
+    for stem in [
+        "reference",
+        "reference-config",
+        "reference-files",
+        "reference-options",
+    ] {
+        let source = fs::read_to_string(root.join(format!("{stem}.qmd"))).unwrap();
+        let rendered = fs::read_to_string(root.join(format!("{stem}.html.md"))).unwrap();
+        assert_eq!(source, rendered, "{stem}.html.md should match its source");
     }
 }

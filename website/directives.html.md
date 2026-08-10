@@ -164,24 +164,21 @@ Preserve a region and resume formatting afterward:
 <!-- fmt: on -->
 ```
 
-Skip a whole file by putting the file directive at the top. Use the comment
-syntax for that file:
+Skip a whole file by putting the file directive at the top. YAML, Python, and R
+use the same hash-comment form:
 
-```yaml
+```text
 # fmt: skip file
 ```
 
-```python
-# fmt: skip file
-```
+Markdown uses an HTML comment:
 
 ```markdown
 <!-- fmt: skip file -->
 ```
 
-The same `# fmt: skip file` form works in R files. A whole-file skip is useful
-for generated files or files whose layout is intentionally outside Yamark's
-scope.
+A whole-file skip is useful for generated files or files whose layout is
+intentionally outside Yamark's scope.
 
 ## Set file-specific Markdown options
 
@@ -248,8 +245,8 @@ compact = true
 ```
 
 Yamark discovers `yamark.toml` from each formatted file's directory upward.
-Use the [Reference](reference.qmd#configuration) page for the full
-`[format]`, `[template]`, `[embedded]`, and `[paths]` settings.
+Use the [Configuration reference](reference-config.qmd) for the full
+`[format]`, `[template]`, `[embedded]`, and `[paths]` schema.
 
 ## For one-off runs
 
@@ -262,5 +259,8 @@ yamark format --compact config.yaml
 yamark format --check docs/
 ```
 
-Use [CLI Help](cli-help.qmd) for the accepted arguments and
+Use the [Directive syntax reference](reference-directives.qmd) for every
+accepted form, scope, and value.
+
+Use the [Command-line reference](cli-help.qmd) for the accepted arguments and
 [Usage](usage.qmd) for installation and common commands.

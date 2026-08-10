@@ -21,6 +21,7 @@ website:
     image: assets/social-card.svg
     card-style: summary_large_image
   navbar:
+    search: true
     left:
       - text: Usage
         href: usage.qmd
@@ -31,7 +32,19 @@ website:
       - text: Editors
         href: editors.qmd
       - text: Reference
-        href: reference.qmd
+        menu:
+          - text: Overview
+            href: reference.qmd
+          - text: Supported files and syntax
+            href: reference-files.qmd
+          - text: Formatting settings
+            href: reference-options.qmd
+          - text: Configuration
+            href: reference-config.qmd
+          - text: Directive syntax
+            href: reference-directives.qmd
+          - text: Command line
+            href: cli-help.qmd
       - text: Benchmarks
         href: benchmarks.qmd
     right:

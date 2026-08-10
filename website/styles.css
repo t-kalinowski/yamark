@@ -261,6 +261,30 @@ h3 {
   letter-spacing: 0;
 }
 
+.reference-index {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1.25rem 0 2rem;
+}
+
+.reference-index-item {
+  background: var(--yamark-surface);
+  border: 1px solid var(--yamark-line);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+}
+
+.reference-index-item h3 {
+  font-size: 1.1rem;
+  margin: 0 0 0.45rem;
+}
+
+.reference-index-item p:last-child {
+  color: var(--yamark-muted);
+  margin-bottom: 0;
+}
+
 .code-copy-outer-scaffold,
 div.sourceCode {
   background: var(--yamark-surface);
@@ -784,6 +808,11 @@ table.benchmark-summary-table {
   .before-after {
     justify-content: flex-start;
   }
+
+  .reference-index {
+    grid-template-columns: 1fr;
+  }
+
 }
 
 @media (max-width: 560px) {

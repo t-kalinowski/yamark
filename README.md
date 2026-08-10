@@ -110,8 +110,8 @@ YAML Test Suite round-trip test. Populate that directory with:
 tools/bootstrap-yaml-test-suite-data.py --source ~/github/posit-dev/r-yaml12/tests/testthat/yaml-test-suite
 ```
 
-Use `website/reference.qmd` and the public CLI tests as behavior
-references.
+Use the pages linked from `website/reference.qmd` and the public CLI tests as
+behavior references.
 
 ## Release
 
