@@ -278,6 +278,39 @@ test("JSON as YAML bypasses format arguments and the next formatter", async () =
   assert.equal(vscode.window.shownTextDocuments[0].document.getText(), "answer: 42\n");
 });
 
+test("JSON as YAML ignores unrelated language-scoped formatter settings", async () => {
+  const source = fakeDocument("/tmp/data.json5", "{answer:42}\n", "json5");
+  const calls = [];
+  const vscode = fakeVscode({
+    documents: [source],
+    settings: {
+      "[json5]": {
+        enabledFileExtensions: [""],
+        extraArguments: "not an array",
+        runNextFormatter: "not a boolean",
+        nextFormatterExecutable: [""],
+      },
+    },
+  });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return "answer: 42\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, [
+    "to-yaml",
+    "--stdin-file-path",
+    "/tmp/data.json5",
+  ]);
+});
+
 test("preview commands reject the other operation's source types", async () => {
   const markdown = fakeDocument("/tmp/notes.md", "# Notes\n", "markdown");
   const json = fakeDocument("/tmp/data.json", "{}\n", "json");
@@ -340,6 +373,62 @@ test("formatted preview uses dirty text and refreshes one stable virtual documen
   assert.deepEqual(changedUris, [secondPreview]);
   assert.deepEqual(vscode.languages.changedDocumentLanguages, []);
   assert.equal(await provider.provideTextDocumentContent(secondPreview), "version: 2\n");
+});
+
+test("an older concurrent refresh cannot replace a newer preview", async () => {
+  const source = fakeDocument(
+    "/tmp/data.json",
+    '{"version":1}\n',
+    "json",
+    { isDirty: true, version: 1 },
+  );
+  let resolveFirst;
+  let resolveSecond;
+  let markFirstStarted;
+  let markSecondStarted;
+  const firstStarted = new Promise((resolve) => {
+    markFirstStarted = resolve;
+  });
+  const secondStarted = new Promise((resolve) => {
+    markSecondStarted = resolve;
+  });
+  const firstOutput = new Promise((resolve) => {
+    resolveFirst = resolve;
+  });
+  const secondOutput = new Promise((resolve) => {
+    resolveSecond = resolve;
+  });
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      if (call.input.includes(":1")) {
+        markFirstStarted();
+        return await firstOutput;
+      }
+      markSecondStarted();
+      return await secondOutput;
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  const first = vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  await firstStarted;
+  source.text = '{"version":2}\n';
+  source.version = 2;
+  const second = vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  await secondStarted;
+
+  resolveSecond("version: 2\n");
+  await second;
+  resolveFirst("version: 1\n");
+  await first;
+
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  const previewUri = vscode.window.shownTextDocuments[0].document.uri;
+  assert.equal(vscode.window.shownTextDocuments.length, 1);
+  assert.equal(await provider.provideTextDocumentContent(previewUri), "version: 2\n");
 });
 
 test("formatted preview provider only reads cached output", async () => {
