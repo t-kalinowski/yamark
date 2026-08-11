@@ -1,0 +1,19 @@
+-- args
+to-yaml --stdin-file-path input.json --line-width 40 --indent-width 4
+-- stdin
+{"schema_version":1,"connectors":[{"id":"synthetic_connector","name":"% Example","status":"active"}],"groups":[["alpha-value","beta-value","gamma-value","delta-value"]]}
+-- stdout
+schema_version: 1
+connectors:
+    - id: synthetic_connector
+      name: "% Example"
+      status: active
+groups:
+    -
+        - alpha-value
+        - beta-value
+        - gamma-value
+        - delta-value
+-- stderr
+-- status
+0

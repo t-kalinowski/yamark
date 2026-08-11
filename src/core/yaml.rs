@@ -7189,12 +7189,18 @@ fn yaml_flow_collection_block_renderable(
                 if yaml_node_is_flow_collection(ast.node(*entry))
                     && indent + 2 + value_width > options.line_width
                 {
+                    let child_indent =
+                        if matches!(ast.node(*entry).kind, YamlAstKind::FlowMapping(_)) {
+                            indent + 2
+                        } else {
+                            indent + options.indent_width
+                        };
                     yaml_flow_collection_block_renderable(
                         source,
                         document,
                         ast,
                         *entry,
-                        indent + options.indent_width,
+                        child_indent,
                         options,
                     )?;
                 }
@@ -7327,18 +7333,33 @@ fn emit_yaml_flow_collection_block_lines(
                     && indent + 2 + value_width > options.line_width
                 {
                     out.push('-');
-                    out.push_str(newline);
-                    emit_yaml_flow_collection_block_lines(
-                        out,
-                        source,
-                        document,
-                        ast,
-                        *entry,
-                        indent + options.indent_width,
-                        newline,
-                        options,
-                        first_line_prefix,
-                    )?;
+                    if matches!(ast.node(*entry).kind, YamlAstKind::FlowMapping(_)) {
+                        let mut mapping_first_line_prefix = Some(" ");
+                        emit_yaml_flow_collection_block_lines(
+                            out,
+                            source,
+                            document,
+                            ast,
+                            *entry,
+                            indent + 2,
+                            newline,
+                            options,
+                            &mut mapping_first_line_prefix,
+                        )?;
+                    } else {
+                        out.push_str(newline);
+                        emit_yaml_flow_collection_block_lines(
+                            out,
+                            source,
+                            document,
+                            ast,
+                            *entry,
+                            indent + options.indent_width,
+                            newline,
+                            options,
+                            first_line_prefix,
+                        )?;
+                    }
                 } else {
                     out.push_str("- ");
                     emit_yaml_inline_node_into_for_flow(out, source, document, ast, *entry)?;
