@@ -6292,6 +6292,29 @@ fn render_folded_prose_scalar(
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
+    let newline = line_ending_or_default(source, node.span, options);
+    let final_newline = !line_ending_for_span(source, node.span).is_empty();
+    render_folded_prose_scalar_with_layout(
+        source,
+        scalar,
+        node,
+        options,
+        body_indent,
+        newline,
+        final_newline,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_folded_prose_scalar_with_layout(
+    source: &SourceBuffer,
+    scalar: &YamlScalar<'_>,
+    node: &YamlAstNode<'_>,
+    options: FormatOptions,
+    body_indent: Option<usize>,
+    newline: &str,
+    final_newline: bool,
+) -> Option<String> {
     if scalar.tag.is_some_and(|tag| source.slice(tag) != "!!str")
         || scalar.anchor.is_some()
         || scalar.trailing_comment.is_some()
@@ -6334,8 +6357,6 @@ fn render_folded_prose_scalar(
     if lines.len() <= 1 {
         return None;
     }
-    let newline = line_ending_or_default(source, node.span, options);
-    let final_newline = !line_ending_for_span(source, node.span).is_empty();
     let indent = body_indent.unwrap_or_else(|| {
         let line_index = source.line_at_byte(node.span.start());
         indentation(source.line_text(line_index)) + options.indent_width
@@ -7286,7 +7307,7 @@ fn emit_yaml_flow_collection_block_lines(
                 return None;
             }
             for entry in &sequence.entries {
-                if let Some(rendered) = render_yaml_flow_block_literal_scalar(
+                if let Some(rendered) = render_yaml_flow_block_scalar(
                     source,
                     ast,
                     *entry,
@@ -7343,7 +7364,7 @@ fn emit_yaml_flow_collection_block_lines(
                 let key_width =
                     render_yaml_inline_node_width_for_flow(source, document, ast, pair.key)?;
                 let value_action = if let Some(value_id) = pair.value {
-                    if let Some(rendered) = render_yaml_flow_block_literal_scalar(
+                    if let Some(rendered) = render_yaml_flow_block_scalar(
                         source,
                         ast,
                         value_id,
@@ -7401,7 +7422,7 @@ fn emit_yaml_flow_collection_block_lines(
     Some(())
 }
 
-fn render_yaml_flow_block_literal_scalar(
+fn render_yaml_flow_block_scalar(
     source: &SourceBuffer,
     ast: &YamlDocumentAst<'_>,
     id: YamlNodeId,
@@ -7417,17 +7438,35 @@ fn render_yaml_flow_block_literal_scalar(
         return None;
     }
     let raw = source.slice(scalar.value).trim_ascii();
-    match scalar.style {
-        YamlScalarStyle::DoubleQuoted if memchr(b'\\', raw.as_bytes()).is_none() => return None,
-        YamlScalarStyle::SingleQuoted if !raw.contains("''") || !raw.contains(['"', '\\']) => {
-            return None;
-        }
+    let literal_candidate = match scalar.style {
+        YamlScalarStyle::DoubleQuoted => memchr(b'\\', raw.as_bytes()).is_some(),
+        YamlScalarStyle::SingleQuoted => raw.contains("''") && raw.contains(['"', '\\']),
         YamlScalarStyle::Plain | YamlScalarStyle::LiteralBlock | YamlScalarStyle::FoldedBlock => {
-            return None;
+            false
         }
-        YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {}
+    };
+    if literal_candidate
+        && let Some(rendered) = render_quoted_literal_scalar_with_layout(
+            source,
+            scalar,
+            node,
+            options,
+            Some(body_indent),
+            newline,
+            true,
+        )
+    {
+        return Some(rendered);
     }
-    render_quoted_literal_scalar_with_layout(
+    // Wrapping only breaks at decoded ASCII spaces. Reject opaque values
+    // before decoding them again for folded prose.
+    let folded_candidate = raw.contains(' ')
+        || scalar.style == YamlScalarStyle::DoubleQuoted
+            && (raw.contains("\\x20") || raw.contains("\\u0020") || raw.contains("\\U00000020"));
+    if !folded_candidate {
+        return None;
+    }
+    render_folded_prose_scalar_with_layout(
         source,
         scalar,
         node,

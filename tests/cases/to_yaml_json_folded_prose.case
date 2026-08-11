@@ -1,0 +1,21 @@
+-- args
+to-yaml --stdin-file-path input.json --line-width 42 --prose-width 42
+-- stdin
+{"summary":"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.","prompt-history":{"global":["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.","Donec vitae sapien."]},"status":"Completed."}
+-- stdout
+summary: >-
+  Lorem ipsum dolor sit amet, consectetur
+  adipiscing elit. Sed do eiusmod tempor
+  incididunt ut labore et dolore magna
+  aliqua.
+prompt-history:
+  global:
+    - >-
+      Ut enim ad minim veniam, quis nostrud
+      exercitation ullamco laboris nisi ut
+      aliquip ex ea commodo consequat.
+    - Donec vitae sapien.
+status: Completed.
+-- stderr
+-- status
+0
