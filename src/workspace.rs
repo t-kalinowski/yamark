@@ -144,7 +144,10 @@ pub fn project_source_to_yaml(
         )
         .with_path(path));
     };
-    let config = load_config_for_formatted_path(path, config_path)?;
+    let mut config = load_config_for_formatted_path(path, config_path)?;
+    // JSON-family input cannot contain active YAML templates. Delimiter text
+    // in the generated YAML is data and must not preserve a flow collection.
+    config.template_delimiters.clear();
     let yaml_input = json_to_yaml_source(&input, json_kind).map_err(|err| err.with_path(path))?;
     drop(input);
     let mut options = options;
