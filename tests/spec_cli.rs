@@ -4477,6 +4477,24 @@ text: |-
 }
 
 #[test]
+fn yaml_escaped_newline_quoted_sequence_scalars_with_colons_emit_literal_blocks() {
+    let input = "messages:\n  - \"Lorem ipsum: dolor sit amet\\nConsectetur adipiscing elit\"\n";
+    let expected = "\
+messages:
+  - |-
+    Lorem ipsum: dolor sit amet
+    Consectetur adipiscing elit
+";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--verify", "--stdin-file-path", "input.yaml"],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_escaped_newline_quoted_scalar_with_leading_spaces_uses_literal_block() {
     let input = r#"result:
   content:
@@ -5836,6 +5854,26 @@ config:
             "input.yaml",
             "--line-width",
             "18",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_multiline_quoted_flow_scalar_expands_without_final_newline() {
+    let input = "items: [\"alpha\\nbeta\"]";
+    let expected = "items:\n  - |-\n    alpha\n    beta\n";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--verify",
+            "--stdin-file-path",
+            "input.yaml",
+            "--line-width",
+            "20",
         ],
         input,
     );

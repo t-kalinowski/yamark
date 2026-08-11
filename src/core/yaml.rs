@@ -532,6 +532,10 @@ fn unsupported_sequence_entry_line(text: &str, indent: usize) -> bool {
         let rest = rest.trim_ascii_start();
         return !rest.starts_with(['[', '{']);
     }
+    let content_start = node_properties_content_start(text, value_start);
+    if matches!(text.as_bytes().get(content_start), Some(b'\'' | b'"')) {
+        return false;
+    }
     if value.starts_with(['&', '!']) && value.contains(" : ") {
         return true;
     }
@@ -5590,7 +5594,7 @@ fn emit_yaml_mapping_value_after_colon(
                 value_node.emit,
                 YamlEmitPlan::Rendered(YamlRenderedKind::BlockFlowCollection)
             ) {
-                let newline = line_ending_for_span(source, pair.line);
+                let newline = line_ending_or_default(source, pair.line, options);
                 out.push_str(newline);
                 emit_yaml_flow_collection_block_into(
                     out,
@@ -6073,6 +6077,29 @@ fn render_quoted_literal_scalar(
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
+    let newline = line_ending_or_default(source, node.span, options);
+    let final_newline = !line_ending_for_span(source, node.span).is_empty();
+    render_quoted_literal_scalar_with_layout(
+        source,
+        scalar,
+        node,
+        options,
+        body_indent,
+        newline,
+        final_newline,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_quoted_literal_scalar_with_layout(
+    source: &SourceBuffer,
+    scalar: &YamlScalar<'_>,
+    node: &YamlAstNode<'_>,
+    options: FormatOptions,
+    body_indent: Option<usize>,
+    newline: &str,
+    final_newline: bool,
+) -> Option<String> {
     if !matches!(
         scalar.style,
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted
@@ -6116,8 +6143,6 @@ fn render_quoted_literal_scalar(
         return None;
     }
 
-    let newline = line_ending_or_default(source, node.span, options);
-    let final_newline = !line_ending_for_span(source, node.span).is_empty();
     let indent = body_indent.unwrap_or_else(|| {
         let line_index = source.line_at_byte(node.span.start());
         indentation(source.line_text(line_index)) + options.indent_width
@@ -7261,6 +7286,19 @@ fn emit_yaml_flow_collection_block_lines(
                 return None;
             }
             for entry in &sequence.entries {
+                if let Some(rendered) = render_yaml_flow_block_literal_scalar(
+                    source,
+                    ast,
+                    *entry,
+                    indent + options.indent_width,
+                    newline,
+                    options,
+                ) {
+                    emit_yaml_flow_block_line_prefix(out, indent, first_line_prefix);
+                    out.push_str("- ");
+                    out.push_str(&rendered);
+                    continue;
+                }
                 let value_width =
                     render_yaml_inline_node_width_for_flow(source, document, ast, *entry)?;
                 emit_yaml_flow_block_line_prefix(out, indent, first_line_prefix);
@@ -7305,21 +7343,37 @@ fn emit_yaml_flow_collection_block_lines(
                 let key_width =
                     render_yaml_inline_node_width_for_flow(source, document, ast, pair.key)?;
                 let value_action = if let Some(value_id) = pair.value {
-                    let value_width =
-                        render_yaml_inline_node_width_for_flow(source, document, ast, value_id)?;
-                    Some((
+                    if let Some(rendered) = render_yaml_flow_block_literal_scalar(
+                        source,
+                        ast,
                         value_id,
-                        yaml_node_is_flow_collection(ast.node(value_id))
-                            && indent + key_width + 2 + value_width > options.line_width,
-                    ))
+                        indent + options.indent_width,
+                        newline,
+                        options,
+                    ) {
+                        Some((value_id, false, Some(rendered)))
+                    } else {
+                        let value_width = render_yaml_inline_node_width_for_flow(
+                            source, document, ast, value_id,
+                        )?;
+                        Some((
+                            value_id,
+                            yaml_node_is_flow_collection(ast.node(value_id))
+                                && indent + key_width + 2 + value_width > options.line_width,
+                            None,
+                        ))
+                    }
                 } else {
                     None
                 };
                 emit_yaml_flow_block_line_prefix(out, indent, first_line_prefix);
                 emit_yaml_inline_node_into_for_flow(out, source, document, ast, pair.key)?;
                 out.push(':');
-                if let Some((value_id, should_expand)) = value_action {
-                    if should_expand {
+                if let Some((value_id, should_expand, rendered)) = value_action {
+                    if let Some(rendered) = rendered {
+                        out.push(' ');
+                        out.push_str(&rendered);
+                    } else if should_expand {
                         out.push_str(newline);
                         emit_yaml_flow_collection_block_lines(
                             out,
@@ -7345,6 +7399,43 @@ fn emit_yaml_flow_collection_block_lines(
         _ => return None,
     }
     Some(())
+}
+
+fn render_yaml_flow_block_literal_scalar(
+    source: &SourceBuffer,
+    ast: &YamlDocumentAst<'_>,
+    id: YamlNodeId,
+    body_indent: usize,
+    newline: &str,
+    options: FormatOptions,
+) -> Option<String> {
+    let node = ast.node(id);
+    let YamlAstKind::Scalar(scalar) = &node.kind else {
+        return None;
+    };
+    if !matches!(node.emit, YamlEmitPlan::Rendered(YamlRenderedKind::Scalar)) {
+        return None;
+    }
+    let raw = source.slice(scalar.value).trim_ascii();
+    match scalar.style {
+        YamlScalarStyle::DoubleQuoted if memchr(b'\\', raw.as_bytes()).is_none() => return None,
+        YamlScalarStyle::SingleQuoted if !raw.contains("''") || !raw.contains(['"', '\\']) => {
+            return None;
+        }
+        YamlScalarStyle::Plain | YamlScalarStyle::LiteralBlock | YamlScalarStyle::FoldedBlock => {
+            return None;
+        }
+        YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {}
+    }
+    render_quoted_literal_scalar_with_layout(
+        source,
+        scalar,
+        node,
+        options,
+        Some(body_indent),
+        newline,
+        true,
+    )
 }
 
 fn emit_yaml_flow_block_line_prefix(

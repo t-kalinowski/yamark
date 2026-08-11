@@ -1,0 +1,20 @@
+-- args
+to-yaml --stdin-file-path events.jsonl --line-width 40
+-- stdin
+{"payload":{"client":"Example Desktop","cwd":"/workspace/example","summary":"Ut enim ad minim veniam.\nQuis nostrud exercitation ullamco laboris.\n","input-messages":["Lorem ipsum: dolor sit amet, consectetur adipiscing elit.\n\nSed do eiusmod tempor incididunt ut labore."]}}
+-- stdout
+---
+payload:
+  client: Example Desktop
+  cwd: /workspace/example
+  summary: |
+    Ut enim ad minim veniam.
+    Quis nostrud exercitation ullamco laboris.
+  input-messages:
+    - |-
+      Lorem ipsum: dolor sit amet, consectetur adipiscing elit.
+
+      Sed do eiusmod tempor incididunt ut labore.
+-- stderr
+-- status
+0
