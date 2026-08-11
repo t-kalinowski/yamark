@@ -341,7 +341,8 @@ test("formatted preview uses dirty text and refreshes one stable virtual documen
     { isDirty: true, version: 1 },
   );
   const calls = [];
-  const vscode = fakeVscode({ documents: [source] });
+  const activeTextEditor = { document: source };
+  const vscode = fakeVscode({ documents: [source], activeTextEditor });
   source.uri = vscode.Uri.file(source.fileName);
   const api = createYamarkExtension(vscode, {
     runProcess: async (call) => {
@@ -360,9 +361,10 @@ test("formatted preview uses dirty text and refreshes one stable virtual documen
   const changedUris = [];
   provider.onDidChange((uri) => changedUris.push(uri));
 
+  activeTextEditor.document = vscode.window.shownTextDocuments[0].document;
   source.text = '{"version":2}\n';
   source.version = 2;
-  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml");
   const secondPreview = vscode.window.shownTextDocuments[1].document.uri;
 
   assert.deepEqual(calls.map((call) => call.input), [
@@ -1692,6 +1694,23 @@ function fakeVscode(options = {}) {
         fsPath: filePath,
         scheme: "file",
         path: match ? match[2] : filePath,
+      });
+    }
+
+    static parse(value) {
+      const parsed = new URL(value);
+      const scheme = parsed.protocol.slice(0, -1);
+      const authority = parsed.host;
+      const uriPath = decodeURIComponent(parsed.pathname);
+      return new Uri({
+        authority,
+        fsPath:
+          authority !== "" && scheme === "file"
+            ? `//${authority}${uriPath}`
+            : uriPath,
+        scheme,
+        path: uriPath,
+        query: parsed.search.slice(1),
       });
     }
 

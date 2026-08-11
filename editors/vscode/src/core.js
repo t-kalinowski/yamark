@@ -468,11 +468,15 @@ function gitFilterFileUri(vscode, resource) {
 
 function previewSourceUri(vscode, resource, allowedExtensions, errorMessage) {
   const document = activeDocument(vscode);
-  const uri = resource && resource.resourceUri
+  let uri = resource && resource.resourceUri
     ? resource.resourceUri
     : resource && resource.scheme
       ? resource
       : document && document.uri;
+  if (uri && uri.scheme === FORMATTED_PREVIEW_DOCUMENT_SCHEME) {
+    const source = new URLSearchParams(uri.query).get("source");
+    uri = source ? vscode.Uri.parse(source) : undefined;
+  }
   if (!uri || !uri.fsPath || uri.scheme === FORMATTED_PREVIEW_DOCUMENT_SCHEME) {
     throw new Error("Yamark needs a source file for the formatted preview");
   }
