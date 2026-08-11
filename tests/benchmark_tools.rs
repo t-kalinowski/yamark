@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -9,6 +10,198 @@ use tempfile::tempdir;
 
 fn python() -> OsString {
     std::env::var_os("PYTHON").unwrap_or_else(|| OsString::from("python3"))
+}
+
+fn git_output(cwd: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .unwrap_or_else(|err| panic!("failed to run git {}: {err}", args.join(" ")));
+    assert!(
+        output.status.success(),
+        "git {} failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+fn command_for<'a>(stdout: &'a str, label: &str) -> &'a str {
+    let heading = format!("[{label}]");
+    let mut lines = stdout.lines();
+    while let Some(line) = lines.next() {
+        if line == heading {
+            return lines
+                .next()
+                .unwrap_or_else(|| panic!("missing command after {heading}"));
+        }
+    }
+    panic!("missing {heading} in benchmark dry run")
+}
+
+#[test]
+fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
+    let dir = tempdir().unwrap();
+    let result_dir = dir.path().join("complete-run");
+
+    let output = Command::new(python())
+        .arg("tools/bench/run-all.py")
+        .arg("--dry-run")
+        .arg("--result-dir")
+        .arg(&result_dir)
+        .output()
+        .unwrap_or_else(|err| panic!("failed to inspect complete benchmark suite: {err}"));
+
+    assert!(
+        output.status.success(),
+        "benchmark dry run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !result_dir.exists(),
+        "a dry run should not create its result directory"
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains(&format!(
+        "benchmark commit: {}",
+        git_output(Path::new("."), &["rev-parse", "HEAD"])
+    )));
+    assert!(stdout.contains(&format!(
+        "benchmark tree:   {}",
+        git_output(Path::new("."), &["rev-parse", "HEAD^{tree}"])
+    )));
+
+    let resolved_result = dir.path().canonicalize().unwrap().join("complete-run");
+    let frozen_binary = resolved_result.join("bin/yamark");
+
+    let build = command_for(&stdout, "build");
+    assert!(build.starts_with("cargo build --release --locked --bin yamark"));
+    assert!(build.contains(&format!(
+        "--target-dir {}",
+        resolved_result.join("scratch/cargo-target").display()
+    )));
+    assert_eq!(
+        command_for(&stdout, "yaml-performance-tests"),
+        "cargo test --locked --test yaml_performance"
+    );
+    assert_eq!(
+        command_for(&stdout, "benchmark-tool-tests"),
+        "cargo test --locked --test benchmark_tools"
+    );
+
+    let default = command_for(&stdout, "default-yaml");
+    assert!(default.contains("tools/bench/run.py"));
+    assert!(default.contains("--corpus yaml --corpus-shape flow-heavy"));
+    assert!(default.contains("--invocation per-file --operation write"));
+    assert!(default.contains("--width-profile default"));
+    assert!(default.contains("--files 400 --items 80"));
+    assert!(default.contains("--reps 2 --warmups 1 --tools yamark"));
+    assert!(default.contains("--skip-yamark-build"));
+    assert!(default.contains("--keep-corpus"));
+    assert!(default.contains(&format!("--yamark-bin {}", frozen_binary.display())));
+    assert!(default.contains(&format!(
+        "--out-dir {}",
+        resolved_result.join("scratch/default").display()
+    )));
+    assert!(default.contains(&format!(
+        "--artifact-dir {}",
+        resolved_result.join("artifacts/default").display()
+    )));
+
+    let big = command_for(&stdout, "big-files");
+    assert!(big.contains("tools/bench/big.py"));
+    assert!(big.contains("--target-bytes 4000000"));
+    assert!(big.contains("--frontmatter-yaml-bytes 200000 --seed 20260602"));
+    assert!(big.contains("--reps 10 --warmups 2"));
+    assert!(big.contains(
+        "--tools yamark,panache,mdformat,prettier,dprint-markdown,deno-fmt,yamlfmt,yamlfix,dprint-yaml"
+    ));
+    assert!(big.contains("--skip-yamark-build"));
+    assert!(big.contains("--keep-corpus"));
+    assert!(big.contains(&format!("--yamark-bin {}", frozen_binary.display())));
+    assert!(big.contains(&format!(
+        "--out-dir {}",
+        resolved_result.join("scratch/big").display()
+    )));
+    assert!(big.contains(&format!(
+        "--artifact-dir {}",
+        resolved_result.join("artifacts/big").display()
+    )));
+
+    let directory = command_for(&stdout, "directory-yaml");
+    assert!(directory.contains("tools/bench/run.py"));
+    assert!(directory.contains("--corpus yaml --corpus-shape flow-heavy"));
+    assert!(directory.contains("--invocation directory --operation write"));
+    assert!(directory.contains("--width-profile default"));
+    assert!(directory.contains("--files 500 --items 540"));
+    assert!(directory.contains("--reps 3 --warmups 1"));
+    assert!(directory.contains("--tools yamark,yamlfmt,prettier,yamlfix,dprint-yaml,deno-fmt"));
+    assert!(directory.contains("--skip-yamark-build"));
+    assert!(directory.contains("--keep-corpus"));
+    assert!(directory.contains(&format!("--yamark-bin {}", frozen_binary.display())));
+    assert!(directory.contains(&format!(
+        "--out-dir {}",
+        resolved_result.join("scratch/directory").display()
+    )));
+    assert!(directory.contains(&format!(
+        "--artifact-dir {}",
+        resolved_result.join("artifacts/directory").display()
+    )));
+}
+
+#[test]
+fn complete_benchmark_help_describes_the_public_runner() {
+    let output = Command::new(python())
+        .arg("tools/bench/run-all.py")
+        .arg("--help")
+        .output()
+        .unwrap_or_else(|err| panic!("failed to inspect complete benchmark help: {err}"));
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("default per-file YAML benchmark"));
+    assert!(stdout.contains("large-file benchmark"));
+    assert!(stdout.contains("directory YAML benchmark"));
+    assert!(stdout.contains("--result-dir"));
+    assert!(stdout.contains("--dry-run"));
+}
+
+#[test]
+fn complete_benchmark_refuses_a_dirty_worktree_before_writing() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let bench_dir = repo.join("tools/bench");
+    fs::create_dir_all(&bench_dir).unwrap();
+    fs::copy("tools/bench/run-all.py", bench_dir.join("run-all.py")).unwrap();
+    fs::write(repo.join("tracked.txt"), "clean\n").unwrap();
+
+    git_output(&repo, &["init", "-q"]);
+    git_output(&repo, &["config", "user.name", "Benchmark Test"]);
+    git_output(
+        &repo,
+        &["config", "user.email", "benchmark-test@example.com"],
+    );
+    git_output(&repo, &["add", "."]);
+    git_output(&repo, &["commit", "--no-gpg-sign", "-q", "-m", "fixture"]);
+    fs::write(repo.join("tracked.txt"), "dirty\n").unwrap();
+
+    let result_dir = dir.path().join("results");
+    let output = Command::new(python())
+        .arg(bench_dir.join("run-all.py"))
+        .arg("--result-dir")
+        .arg(&result_dir)
+        .output()
+        .unwrap_or_else(|err| panic!("failed to run complete benchmark guard: {err}"));
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "working tree must be clean before running benchmarks\n"
+    );
+    assert!(!result_dir.exists());
 }
 
 #[test]
