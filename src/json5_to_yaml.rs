@@ -498,6 +498,9 @@ fn convert_value(
             }
             Ok(node)
         }
+        // json-five currently rejects bare identifiers in value position, but keep
+        // this variant permissive if its parser accepts one. Yamark projects parser
+        // output; it does not duplicate JSON5 validation here.
         JSONValue::Identifier(raw) => {
             let start = cursor.next().map_or(0, |span| span.0);
             let value = decode_identifier(&raw, start, normalized, original)?;
