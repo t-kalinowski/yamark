@@ -6664,6 +6664,34 @@ fn to_yaml_json5_rejects_excessive_nesting_without_aborting() {
 }
 
 #[test]
+fn to_yaml_jsonc_parser_inputs_reject_excessive_nesting_without_aborting() {
+    let input = format!("{}0{}", "[".repeat(10_000), "]".repeat(10_000));
+    for (extension, dialect) in [
+        ("json", "JSON"),
+        ("jsonc", "JSONC"),
+        ("jsonl", "JSON"),
+        ("ndjson", "JSON"),
+    ] {
+        let path = format!("input.{extension}");
+        let output = yamark()
+            .args(["to-yaml", "--stdin-file-path", &path])
+            .write_stdin(input.clone())
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            stderr.contains(&format!(
+                "{path}:1:257: error: invalid {dialect}: nesting exceeds 256 levels"
+            )),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
 fn to_yaml_json5_rejects_repeated_unary_operators_without_aborting() {
     let input = format!("{}1", "+".repeat(10_000));
     let output = yamark()

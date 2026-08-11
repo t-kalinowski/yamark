@@ -64,11 +64,11 @@ scalar; this does not change how ordinary YAML such as `1\n2` is interpreted by
 `yamark format`.
 
 String escapes are decoded before YAML emission. Lone UTF-16 surrogate escapes
-are rejected because they do not represent Unicode scalar values. JSON5 also
-rejects legacy numeric escapes such as `\1`, invalid escaped identifier
-characters, U+0085 as whitespace, and input nested more than 256 levels deep.
-Characters that YAML cannot carry inside a comment are shown as visible
-hexadecimal escapes.
+are rejected because they do not represent Unicode scalar values. All
+JSON-family inputs reject nesting deeper than 256 levels. JSON5 also rejects
+legacy numeric escapes such as `\1`, invalid escaped identifier characters, and
+U+0085 as whitespace. Characters that YAML cannot carry inside a comment are
+shown as visible hexadecimal escapes.
 
 Projection does not scan JSON strings or comments for embedded Markdown or
 formatter directives, and it does not dispatch to Prettier or another embedded

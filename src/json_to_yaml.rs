@@ -41,6 +41,7 @@ pub(crate) fn json_to_yaml_source(input: &str, kind: JsonSourceKind) -> Result<S
 
 fn render_jsonc(input: &str) -> Result<String> {
     let normalized = normalize_jsonc_comment_line_breaks(input);
+    check_json_nesting(&normalized, "JSONC", 0)?;
     let parsed = parse_to_ast(
         &normalized,
         &jsonc_collect_options(),
@@ -73,7 +74,7 @@ fn render_jsonc(input: &str) -> Result<String> {
 }
 
 #[derive(Clone, Copy)]
-enum JsoncScanState {
+enum JsonScanState {
     Outside,
     String,
     LineComment,
@@ -86,24 +87,24 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
     }
     let mut normalized = None;
     let mut copied_until = 0;
-    let mut state = JsoncScanState::Outside;
+    let mut state = JsonScanState::Outside;
     let mut offset = 0;
     while offset < input.len() {
         let rest = &input[offset..];
         match state {
-            JsoncScanState::Outside if rest.starts_with("//") => {
+            JsonScanState::Outside if rest.starts_with("//") => {
                 offset += 2;
-                state = JsoncScanState::LineComment;
+                state = JsonScanState::LineComment;
                 continue;
             }
-            JsoncScanState::Outside if rest.starts_with("/*") => {
+            JsonScanState::Outside if rest.starts_with("/*") => {
                 offset += 2;
-                state = JsoncScanState::BlockComment;
+                state = JsonScanState::BlockComment;
                 continue;
             }
-            JsoncScanState::BlockComment if rest.starts_with("*/") => {
+            JsonScanState::BlockComment if rest.starts_with("*/") => {
                 offset += 2;
-                state = JsoncScanState::Outside;
+                state = JsonScanState::Outside;
                 continue;
             }
             _ => {}
@@ -112,15 +113,15 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
         let character = rest.chars().next().expect("offset is before input end");
         let next_offset = offset + character.len_utf8();
         match state {
-            JsoncScanState::Outside => {
+            JsonScanState::Outside => {
                 state = if character == '"' {
-                    JsoncScanState::String
+                    JsonScanState::String
                 } else {
-                    JsoncScanState::Outside
+                    JsonScanState::Outside
                 };
                 offset = next_offset;
             }
-            JsoncScanState::String => {
+            JsonScanState::String => {
                 if character == '\\' {
                     offset = next_offset;
                     if offset < input.len() {
@@ -133,13 +134,13 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
                 } else {
                     offset = next_offset;
                     if character == '"' {
-                        state = JsoncScanState::Outside;
+                        state = JsonScanState::Outside;
                     }
                 }
             }
-            JsoncScanState::LineComment => {
+            JsonScanState::LineComment => {
                 if character == '\r' {
-                    state = JsoncScanState::Outside;
+                    state = JsonScanState::Outside;
                     if !input[next_offset..].starts_with('\n') {
                         replace_jsonc_comment_line_break(
                             &mut normalized,
@@ -150,7 +151,7 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
                         );
                     }
                 } else if character == '\n' {
-                    state = JsoncScanState::Outside;
+                    state = JsonScanState::Outside;
                 } else if matches!(character, '\u{2028}' | '\u{2029}') {
                     replace_jsonc_comment_line_break(
                         &mut normalized,
@@ -159,11 +160,11 @@ fn normalize_jsonc_comment_line_breaks(input: &str) -> Cow<'_, str> {
                         offset,
                         next_offset,
                     );
-                    state = JsoncScanState::Outside;
+                    state = JsonScanState::Outside;
                 }
                 offset = next_offset;
             }
-            JsoncScanState::BlockComment => {
+            JsonScanState::BlockComment => {
                 if (character == '\r' && !input[next_offset..].starts_with('\n'))
                     || matches!(character, '\u{2028}' | '\u{2029}')
                 {
@@ -233,6 +234,7 @@ fn render_json_lines(input: &str) -> Result<String> {
 }
 
 fn parse_json_value(input: &str, line_offset: usize) -> Result<Value<'_>> {
+    check_json_nesting(input, "JSON", line_offset)?;
     let parsed =
         parse_to_ast(input, &strict_collect_options(), &strict_parse_options()).map_err(|err| {
             YamarkError::at(
@@ -244,6 +246,104 @@ fn parse_json_value(input: &str, line_offset: usize) -> Result<Value<'_>> {
     parsed
         .value
         .ok_or_else(|| YamarkError::at("invalid JSON: expected a JSON value", line_offset + 1, 1))
+}
+
+fn check_json_nesting(input: &str, dialect: &str, line_offset: usize) -> Result<()> {
+    const MAX_NESTING: usize = 256;
+
+    let bytes = input.as_bytes();
+    let mut state = JsonScanState::Outside;
+    let mut nesting = 0usize;
+    let mut offset = 0usize;
+    while offset < bytes.len() {
+        match state {
+            JsonScanState::Outside => match bytes[offset] {
+                b'"' => {
+                    state = JsonScanState::String;
+                    offset += 1;
+                }
+                b'/' if bytes.get(offset + 1) == Some(&b'/') => {
+                    state = JsonScanState::LineComment;
+                    offset += 2;
+                }
+                b'/' if bytes.get(offset + 1) == Some(&b'*') => {
+                    state = JsonScanState::BlockComment;
+                    offset += 2;
+                }
+                b'[' | b'{' => {
+                    nesting += 1;
+                    if nesting > MAX_NESTING {
+                        let (line, column) = line_column(input, offset);
+                        return Err(YamarkError::at(
+                            format!("invalid {dialect}: nesting exceeds {MAX_NESTING} levels"),
+                            line + line_offset,
+                            column,
+                        ));
+                    }
+                    offset += 1;
+                }
+                b']' | b'}' => {
+                    nesting = nesting.saturating_sub(1);
+                    offset += 1;
+                }
+                _ => offset += 1,
+            },
+            JsonScanState::String => match bytes[offset] {
+                b'\\' => offset = (offset + 2).min(bytes.len()),
+                b'"' => {
+                    state = JsonScanState::Outside;
+                    offset += 1;
+                }
+                _ => offset += 1,
+            },
+            JsonScanState::LineComment => {
+                if matches!(bytes[offset], b'\r' | b'\n') {
+                    state = JsonScanState::Outside;
+                }
+                offset += 1;
+            }
+            JsonScanState::BlockComment => {
+                if bytes[offset] == b'*' && bytes.get(offset + 1) == Some(&b'/') {
+                    state = JsonScanState::Outside;
+                    offset += 2;
+                } else {
+                    offset += 1;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn line_column(source: &str, offset: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut column = 1;
+    let mut previous_was_cr = false;
+    for (byte_offset, character) in source.char_indices() {
+        if byte_offset >= offset {
+            break;
+        }
+        match character {
+            '\r' => {
+                line += 1;
+                column = 1;
+                previous_was_cr = true;
+            }
+            '\n' if previous_was_cr => {
+                previous_was_cr = false;
+            }
+            '\n' | '\u{2028}' | '\u{2029}' => {
+                line += 1;
+                column = 1;
+                previous_was_cr = false;
+            }
+            _ => {
+                column += 1;
+                previous_was_cr = false;
+            }
+        }
+    }
+    (line, column)
 }
 
 fn strict_collect_options() -> CollectOptions {

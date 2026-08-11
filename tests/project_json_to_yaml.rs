@@ -425,6 +425,39 @@ fn json5_handles_each_previously_ambiguous_comment_position() {
 }
 
 #[test]
+fn json5_preserves_comments_between_a_unary_sign_and_its_operand() {
+    let rendered = project_source_to_yaml(
+        Path::new("input.json5"),
+        "{value: -/* units */1}\n".to_owned(),
+        FormatOptions::default(),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(rendered.output, "# units\nvalue: -1\n");
+}
+
+#[test]
+fn json_family_nesting_limit_ignores_strings_and_jsonc_comments() {
+    let delimiters = "[{".repeat(300);
+    for (extension, input) in [
+        ("json", format!("{{\"text\":\"{delimiters}\"}}\n")),
+        (
+            "jsonc",
+            format!("{{/* {delimiters} */\n// {delimiters}\n\"text\":\"{delimiters}\"}}\n"),
+        ),
+    ] {
+        project_source_to_yaml(
+            Path::new(&format!("input.{extension}")),
+            input,
+            FormatOptions::default(),
+            None,
+        )
+        .unwrap();
+    }
+}
+
+#[test]
 fn json5_comments_cannot_become_yamark_format_directives() {
     let rendered = project_source_to_yaml(
         Path::new("input.json5"),

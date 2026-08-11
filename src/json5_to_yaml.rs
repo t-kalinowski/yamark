@@ -6,7 +6,9 @@ use num_bigint::BigUint;
 use unicode_general_category::{GeneralCategory, get_general_category};
 
 use crate::diagnostic::{Result, YamarkError};
-use crate::json_to_yaml::{emit_yaml_comment_line, emit_yaml_double_quoted, for_each_comment_line};
+use crate::json_to_yaml::{
+    emit_yaml_comment_line, emit_yaml_double_quoted, for_each_comment_line, line_column,
+};
 
 pub(crate) fn json5_to_yaml_source(input: &str) -> Result<String> {
     let normalized = normalize_line_separators(input)?;
@@ -59,6 +61,7 @@ pub(crate) fn json5_to_yaml_source(input: &str) -> Result<String> {
             previous_token_was_unary = is_unary;
         }
     }
+    move_unary_trivia_before_operator(&mut tokens.tok_spans);
 
     // The tokenizer gives reserved words their value token types in every
     // position, while JSON5 permits them as IdentifierName object keys.
@@ -340,6 +343,23 @@ fn is_trivia(kind: &TokType) -> bool {
         kind,
         TokType::Whitespace | TokType::LineComment | TokType::BlockComment
     )
+}
+
+fn move_unary_trivia_before_operator(spans: &mut [(usize, TokType, usize)]) {
+    let mut index = 0;
+    while index < spans.len() {
+        if matches!(spans[index].1, TokType::Plus | TokType::Minus) {
+            let mut operand = index + 1;
+            while operand < spans.len() && is_trivia(&spans[operand].1) {
+                operand += 1;
+            }
+            if operand > index + 1 {
+                spans[index..operand].rotate_left(1);
+                index = operand;
+            }
+        }
+        index += 1;
+    }
 }
 
 #[derive(Default)]
@@ -1054,35 +1074,4 @@ fn invalid_json5_at(
 ) -> YamarkError {
     let (line, column) = line_column(original, original_offset);
     YamarkError::at(format!("invalid JSON5: {}", message.into()), line, column)
-}
-
-fn line_column(source: &str, offset: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut column = 1;
-    let mut previous_was_cr = false;
-    for (byte_offset, character) in source.char_indices() {
-        if byte_offset >= offset {
-            break;
-        }
-        match character {
-            '\r' => {
-                line += 1;
-                column = 1;
-                previous_was_cr = true;
-            }
-            '\n' if previous_was_cr => {
-                previous_was_cr = false;
-            }
-            '\n' | '\u{2028}' | '\u{2029}' => {
-                line += 1;
-                column = 1;
-                previous_was_cr = false;
-            }
-            _ => {
-                column += 1;
-                previous_was_cr = false;
-            }
-        }
-    }
-    (line, column)
 }
