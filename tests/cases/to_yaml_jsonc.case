@@ -1,0 +1,22 @@
+-- args
+to-yaml --stdin-file-path input.jsonc --line-width 40
+-- stdin
+{
+  // before a
+  "a": 1, // after a
+  "text": "http://x/*y*/",
+  /* before nested */
+  "nested": {"b": 2 /* after b */},
+}
+-- stdout
+# before a
+a: 1
+# after a
+text: http://x/*y*/
+# before nested
+nested:
+  b: 2
+  # after b
+-- stderr
+-- status
+0

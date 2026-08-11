@@ -1,0 +1,13 @@
+-- args
+to-yaml --stdin-file-path input.json --line-width 40
+-- stdin
+{"first":1,"emoji":"\uD83D\uDE00","a":-0,"a":1e+02,"big":123456789012345678901234567890}
+-- stdout
+first: 1
+emoji: 😀
+a: -0
+a: 1e+02
+big: 123456789012345678901234567890
+-- stderr
+-- status
+0

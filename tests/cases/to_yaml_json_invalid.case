@@ -1,0 +1,9 @@
+-- args
+to-yaml --stdin-file-path input.json
+-- stdin
+{"a":}
+-- stdout
+-- stderr
+input.json:1:6: error: invalid JSON: Unexpected close brace
+-- status
+1

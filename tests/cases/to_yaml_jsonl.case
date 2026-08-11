@@ -1,0 +1,16 @@
+-- args
+to-yaml --stdin-file-path records.ndjson
+-- stdin
+{"a":1}
+[2,3]
+"four"
+-- stdout
+---
+{a: 1}
+---
+[2, 3]
+---
+four
+-- stderr
+-- status
+0

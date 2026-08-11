@@ -62,6 +62,48 @@ test("package contributes a filtered working-tree diff command", () => {
   );
 });
 
+test("package contributes formatted preview commands for supported files", () => {
+  const nativeWhen =
+    "isFileSystemResource && resourceExtname =~ /\\.(md|qmd|rmd|yaml|yml|py|r)$/i";
+  const jsonWhen =
+    "isFileSystemResource && resourceExtname =~ /\\.(json|jsonl|ndjson|jsonc|json5)$/i";
+  const commands = new Map(
+    packageJson.contributes.commands.map((entry) => [entry.command, entry.title]),
+  );
+
+  assert.ok(packageJson.activationEvents.includes("onCommand:yamark.openFormattedPreview"));
+  assert.ok(packageJson.activationEvents.includes("onCommand:yamark.openJsonAsYaml"));
+  assert.equal(
+    commands.get("yamark.openFormattedPreview"),
+    "Yamark: Preview Format Document",
+  );
+  assert.equal(commands.get("yamark.openJsonAsYaml"), "Yamark: View JSON as YAML");
+  assert.deepEqual(packageJson.contributes.menus["explorer/context"], [
+    {
+      command: "yamark.openFormattedPreview",
+      when: `${nativeWhen} && !explorerResourceIsFolder`,
+      group: "navigation@20",
+    },
+    {
+      command: "yamark.openJsonAsYaml",
+      when: `${jsonWhen} && !explorerResourceIsFolder`,
+      group: "navigation@20",
+    },
+  ]);
+  assert.deepEqual(packageJson.contributes.menus["editor/title/context"], [
+    {
+      command: "yamark.openFormattedPreview",
+      when: nativeWhen,
+      group: "navigation@20",
+    },
+    {
+      command: "yamark.openJsonAsYaml",
+      when: jsonWhen,
+      group: "navigation@20",
+    },
+  ]);
+});
+
 test("package has public repository metadata", () => {
   assert.equal(packageJson.repository.type, "git");
   assert.equal(packageJson.repository.url, "https://github.com/t-kalinowski/yamark.git");
@@ -76,6 +118,449 @@ test("activates format selection command", () => {
   api.activate({ extensionPath: "/extension", subscriptions: [] });
 
   assert.ok(vscode.commands.registeredCommands.includes("yamark.formatSelectionAsMarkdown"));
+});
+
+test("native and JSON-family commands share one formatted preview provider", async () => {
+  const markdown = fakeDocument("/tmp/notes.md", "#   Notes ##\n", "markdown");
+  const jsonDocuments = ["json", "jsonl", "ndjson", "jsonc", "json5"].map(
+    (extension) =>
+      fakeDocument(`/tmp/data.${extension}`, '{"answer":42}\n', extension),
+  );
+  const documents = [markdown, ...jsonDocuments];
+  const sourceCount = documents.length;
+  const calls = [];
+  const vscode = fakeVscode({ documents });
+  for (const document of documents) {
+    document.uri = vscode.Uri.file(document.fileName);
+  }
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return call.input.startsWith("#") ? "# Notes\n" : "answer: 42\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  assert.ok(vscode.commands.registeredCommands.includes("yamark.openFormattedPreview"));
+  assert.ok(vscode.commands.registeredCommands.includes("yamark.openJsonAsYaml"));
+
+  await vscode.commands.executeCommand("yamark.openFormattedPreview", markdown.uri);
+  for (const document of jsonDocuments) {
+    const callCount = calls.length;
+    await vscode.commands.executeCommand("yamark.openJsonAsYaml", document.uri);
+    assert.equal(calls.length, callCount + 1);
+  }
+
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  assert.ok(provider);
+  assert.equal(calls.length, sourceCount);
+  assert.deepEqual(calls[0], {
+    command: "yamark",
+    args: ["format", "--stdin-file-path", "/tmp/notes.md"],
+    input: "#   Notes ##\n",
+    cwd: "/tmp",
+  });
+  assert.deepEqual(calls[1], {
+    command: "yamark",
+    args: ["to-yaml", "--stdin-file-path", "/tmp/data.json"],
+    input: '{"answer":42}\n',
+    cwd: "/tmp",
+  });
+  assert.deepEqual(
+    vscode.window.shownTextDocuments.map(({ document }) => document.uri.scheme),
+    Array.from({ length: sourceCount }, () => "yamark-preview"),
+  );
+  assert.deepEqual(
+    vscode.window.shownTextDocuments.map(({ options }) => options),
+    Array.from({ length: sourceCount }, () => ({ preview: true })),
+  );
+  assert.equal(vscode.window.shownTextDocuments[0].document.languageId, "markdown");
+  for (const { document } of vscode.window.shownTextDocuments.slice(1)) {
+    assert.equal(document.languageId, "yaml");
+  }
+});
+
+test("formatted native preview runs the complete Format Document chain", async () => {
+  const source = fakeDocument(
+    "/tmp/notes.qmd",
+    "---\ntags: [r,code]\n---\n\n```{r}\nx<-1\n```\n",
+    "quarto",
+    { isDirty: true, version: 3 },
+  );
+  const calls = [];
+  const appliedEdits = [];
+  const vscode = fakeVscode({
+    documents: [source],
+    settings: {
+      extraArguments: ["--compact"],
+      runNextFormatter: true,
+      nextFormatterExecutable: ["quarto-native", "--stdin-file-path", "${file}"],
+    },
+    onApplyEdit: async (edit) => appliedEdits.push(edit),
+  });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      if (call.command === "yamark") {
+        return "---\ntags: [r, code]\n---\n\n```{r}\nx<-1\n```\n";
+      }
+      if (call.command === "quarto-native") {
+        return "---\ntags: [r, code]\n---\n\n```{r}\nx <- 1\n```\n";
+      }
+      assert.fail(`unexpected command: ${call.command}`);
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openFormattedPreview", source.uri);
+
+  assert.deepEqual(calls, [
+    {
+      command: "yamark",
+      args: [
+        "format",
+        "--compact",
+        "--skip-embedded-formatters",
+        "--stdin-file-path",
+        "/tmp/notes.qmd",
+      ],
+      input: "---\ntags: [r,code]\n---\n\n```{r}\nx<-1\n```\n",
+      cwd: "/tmp",
+    },
+    {
+      command: "quarto-native",
+      args: ["--stdin-file-path", "/tmp/notes.qmd"],
+      input: "---\ntags: [r, code]\n---\n\n```{r}\nx<-1\n```\n",
+      cwd: "/tmp",
+    },
+  ]);
+  assert.equal(
+    vscode.window.shownTextDocuments[0].document.getText(),
+    "---\ntags: [r, code]\n---\n\n```{r}\nx <- 1\n```\n",
+  );
+  assert.equal(source.getText(), "---\ntags: [r,code]\n---\n\n```{r}\nx<-1\n```\n");
+  assert.deepEqual(appliedEdits, []);
+});
+
+test("JSON as YAML bypasses format arguments and the next formatter", async () => {
+  const source = fakeDocument("/tmp/data.json5", "{answer:42}\n", "json5");
+  const calls = [];
+  const vscode = fakeVscode({
+    documents: [source],
+    settings: {
+      extraArguments: ["--wrap", "sentence"],
+      runNextFormatter: true,
+      nextFormatterExecutable: ["prettier", "--stdin-filepath", "${file}"],
+    },
+  });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return "answer: 42\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+
+  assert.deepEqual(calls, [
+    {
+      command: "yamark",
+      args: ["to-yaml", "--stdin-file-path", "/tmp/data.json5"],
+      input: "{answer:42}\n",
+      cwd: "/tmp",
+    },
+  ]);
+  assert.equal(vscode.window.shownTextDocuments[0].document.languageId, "yaml");
+  assert.equal(vscode.window.shownTextDocuments[0].document.getText(), "answer: 42\n");
+});
+
+test("JSON as YAML ignores unrelated language-scoped formatter settings", async () => {
+  const source = fakeDocument("/tmp/data.json5", "{answer:42}\n", "json5");
+  const calls = [];
+  const vscode = fakeVscode({
+    documents: [source],
+    settings: {
+      "[json5]": {
+        enabledFileExtensions: [""],
+        extraArguments: "not an array",
+        runNextFormatter: "not a boolean",
+        nextFormatterExecutable: [""],
+      },
+    },
+  });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return "answer: 42\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, [
+    "to-yaml",
+    "--stdin-file-path",
+    "/tmp/data.json5",
+  ]);
+});
+
+test("preview commands reject the other operation's source types", async () => {
+  const markdown = fakeDocument("/tmp/notes.md", "# Notes\n", "markdown");
+  const json = fakeDocument("/tmp/data.json", "{}\n", "json");
+  const vscode = fakeVscode({ documents: [markdown, json] });
+  markdown.uri = vscode.Uri.file(markdown.fileName);
+  json.uri = vscode.Uri.file(json.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async () => assert.fail("wrong preview command must not run Yamark"),
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await assert.rejects(
+    () => vscode.commands.executeCommand("yamark.openFormattedPreview", json.uri),
+    /cannot preview \.json with Format Document/,
+  );
+  await assert.rejects(
+    () => vscode.commands.executeCommand("yamark.openJsonAsYaml", markdown.uri),
+    /cannot view \.md as YAML/,
+  );
+  assert.deepEqual(vscode.window.shownTextDocuments, []);
+});
+
+test("formatted preview uses dirty text and refreshes one stable virtual document", async () => {
+  const source = fakeDocument(
+    "/tmp/data.json",
+    '{"version":1}\n',
+    "json",
+    { isDirty: true, version: 1 },
+  );
+  const calls = [];
+  const activeTextEditor = { document: source };
+  const vscode = fakeVscode({ documents: [source], activeTextEditor });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return call.input.includes(":1") ? "version: 1\n" : "version: 2\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  assert.ok(provider);
+  assert.equal(vscode.window.shownTextDocuments.length, 1);
+  const firstPreview = vscode.window.shownTextDocuments[0].document.uri;
+  const changedUris = [];
+  provider.onDidChange((uri) => changedUris.push(uri));
+
+  activeTextEditor.document = vscode.window.shownTextDocuments[0].document;
+  source.text = '{"version":2}\n';
+  source.version = 2;
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml");
+  const secondPreview = vscode.window.shownTextDocuments[1].document.uri;
+
+  assert.deepEqual(calls.map((call) => call.input), [
+    '{"version":1}\n',
+    '{"version":2}\n',
+  ]);
+  assert.equal(secondPreview.toString(), firstPreview.toString());
+  assert.deepEqual(changedUris, [secondPreview]);
+  assert.deepEqual(vscode.languages.changedDocumentLanguages, []);
+  assert.equal(await provider.provideTextDocumentContent(secondPreview), "version: 2\n");
+});
+
+test("an older concurrent refresh cannot replace a newer preview", async () => {
+  const source = fakeDocument(
+    "/tmp/data.json",
+    '{"version":1}\n',
+    "json",
+    { isDirty: true, version: 1 },
+  );
+  let resolveFirst;
+  let resolveSecond;
+  let markFirstStarted;
+  let markSecondStarted;
+  const firstStarted = new Promise((resolve) => {
+    markFirstStarted = resolve;
+  });
+  const secondStarted = new Promise((resolve) => {
+    markSecondStarted = resolve;
+  });
+  const firstOutput = new Promise((resolve) => {
+    resolveFirst = resolve;
+  });
+  const secondOutput = new Promise((resolve) => {
+    resolveSecond = resolve;
+  });
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      if (call.input.includes(":1")) {
+        markFirstStarted();
+        return await firstOutput;
+      }
+      markSecondStarted();
+      return await secondOutput;
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  const first = vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  await firstStarted;
+  source.text = '{"version":2}\n';
+  source.version = 2;
+  const second = vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  await secondStarted;
+
+  resolveSecond("version: 2\n");
+  await second;
+  resolveFirst("version: 1\n");
+  await first;
+
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  const previewUri = vscode.window.shownTextDocuments[0].document.uri;
+  assert.equal(vscode.window.shownTextDocuments.length, 1);
+  assert.equal(await provider.provideTextDocumentContent(previewUri), "version: 2\n");
+});
+
+test("formatted preview provider only reads cached output", async () => {
+  const source = fakeDocument("/tmp/data.json", '{"answer":42}\n', "json");
+  const calls = [];
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return "answer: 42\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  assert.ok(provider);
+  assert.equal(vscode.window.shownTextDocuments.length, 1);
+  const previewUri = vscode.window.shownTextDocuments[0].document.uri;
+  assert.equal(await provider.provideTextDocumentContent(previewUri), "answer: 42\n");
+  assert.equal(await provider.provideTextDocumentContent(previewUri), "answer: 42\n");
+  assert.equal(calls.length, 1);
+
+  const expiredUri = vscode.Uri.file("/tmp/expired.json").with({
+    scheme: "yamark-preview",
+  });
+  await assert.rejects(() => provider.provideTextDocumentContent(expiredUri));
+  assert.equal(calls.length, 1);
+});
+
+test("closing a formatted preview releases its cached output", async () => {
+  const source = fakeDocument("/tmp/data.json", '{"answer":42}\n', "json");
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async () => "answer: 42\n",
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  assert.ok(provider);
+  assert.equal(vscode.window.shownTextDocuments.length, 1);
+  const previewDocument = vscode.window.shownTextDocuments[0].document;
+  assert.equal(
+    await provider.provideTextDocumentContent(previewDocument.uri),
+    "answer: 42\n",
+  );
+
+  vscode.workspace.closeTextDocument(previewDocument);
+
+  await assert.rejects(() => provider.provideTextDocumentContent(previewDocument.uri));
+});
+
+test("a JSON-to-YAML failure does not open a formatted preview", async () => {
+  const source = fakeDocument("/tmp/data.json5", "{broken}\n", "json5");
+  const calls = [];
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      throw new Error("invalid JSON5");
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri).catch(() => {});
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(vscode.window.shownTextDocuments, []);
+});
+
+test("a native next-formatter failure does not publish partial output", async () => {
+  const source = fakeDocument("/tmp/notes.md", "#   Notes ##\n", "markdown");
+  const calls = [];
+  const vscode = fakeVscode({
+    documents: [source],
+    settings: {
+      runNextFormatter: true,
+      nextFormatterExecutable: ["nativefmt"],
+    },
+  });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      if (call.command === "yamark") {
+        return "# Notes\n";
+      }
+      throw new Error("native formatter failed");
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await assert.rejects(
+    () => vscode.commands.executeCommand("yamark.openFormattedPreview", source.uri),
+    /native formatter failed/,
+  );
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(vscode.window.shownTextDocuments, []);
+});
+
+test("formatted preview documents are excluded from the formatting provider", async () => {
+  const source = fakeDocument("/tmp/notes.md", "#   Notes ##\n", "markdown");
+  const calls = [];
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      return "# Notes\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openFormattedPreview", source.uri);
+  assert.equal(vscode.window.shownTextDocuments.length, 1);
+  const previewDocument = vscode.window.shownTextDocuments[0].document;
+  const edits = await vscode.commands.executeCommand(
+    "vscode.executeFormatDocumentProvider",
+    previewDocument.uri,
+  );
+
+  assert.deepEqual(edits, []);
+  assert.equal(calls.length, 1);
 });
 
 test("opens the filtered index beside an unstaged working-tree file", async () => {
@@ -1170,6 +1655,8 @@ function fakeVscode(options = {}) {
   const registeredCommands = [];
   const registeredCommandHandlers = new Map();
   const executedCommands = [];
+  const shownTextDocuments = [];
+  const changedDocumentLanguages = [];
   class EventEmitter {
     constructor() {
       this.listeners = new Set();
@@ -1210,6 +1697,23 @@ function fakeVscode(options = {}) {
       });
     }
 
+    static parse(value) {
+      const parsed = new URL(value);
+      const scheme = parsed.protocol.slice(0, -1);
+      const authority = parsed.host;
+      const uriPath = decodeURIComponent(parsed.pathname);
+      return new Uri({
+        authority,
+        fsPath:
+          authority !== "" && scheme === "file"
+            ? `//${authority}${uriPath}`
+            : uriPath,
+        scheme,
+        path: uriPath,
+        query: parsed.search.slice(1),
+      });
+    }
+
     with(changes) {
       const scheme = changes.scheme ?? this.scheme;
       const authority = changes.authority ?? this.authority;
@@ -1221,7 +1725,7 @@ function fakeVscode(options = {}) {
             ? `//${authority}${changes.path ?? this.path}`
             : authority !== "" && scheme !== "file"
               ? changes.path ?? this.path
-              : this.fsPath),
+              : changes.path ?? this.path),
         scheme,
         path: changes.path ?? this.path,
         query: changes.query ?? this.query,
@@ -1233,6 +1737,7 @@ function fakeVscode(options = {}) {
       return `${this.scheme}://${this.authority}${this.path}${query}`;
     }
   }
+  const didCloseTextDocument = new EventEmitter();
   return {
     Range: class Range {
       constructor(start, end) {
@@ -1304,6 +1809,13 @@ function fakeVscode(options = {}) {
           },
         };
       },
+      setTextDocumentLanguage: async (document, languageId) => {
+        didCloseTextDocument.fire(document);
+        document.languageId = languageId;
+        changedDocumentLanguages.push({ document, languageId });
+        return document;
+      },
+      changedDocumentLanguages,
     },
     window: {
       activeTextEditor: options.activeTextEditor,
@@ -1319,6 +1831,11 @@ function fakeVscode(options = {}) {
         }
         return disposable();
       },
+      showTextDocument: async (document, showOptions) => {
+        shownTextDocuments.push({ document, options: showOptions });
+        return { document };
+      },
+      shownTextDocuments,
     },
     workspace: {
       applyEdit: async (edit) => {
@@ -1343,6 +1860,39 @@ function fakeVscode(options = {}) {
         };
       },
       onDidChangeConfiguration: () => disposable(),
+      onDidCloseTextDocument: didCloseTextDocument.event,
+      openTextDocument: async (target) => {
+        if (target && typeof target.getText === "function") {
+          return target;
+        }
+        const targetKey = target && target.toString();
+        const existing = documents.find(
+          (document) => document.uri && document.uri.toString() === targetKey,
+        );
+        if (existing) {
+          return existing;
+        }
+        if (!target || !textDocumentContentProviders.has(target.scheme)) {
+          return resolveFakeDocument(documents, target);
+        }
+        const provider = textDocumentContentProviders.get(target.scheme);
+        const text = await provider.provideTextDocumentContent(target);
+        const document = fakeDocument(
+          target.fsPath,
+          text,
+          inferredLanguageId(target.fsPath),
+        );
+        document.uri = target;
+        documents.push(document);
+        return document;
+      },
+      closeTextDocument: (document) => {
+        const index = documents.indexOf(document);
+        if (index >= 0) {
+          documents.splice(index, 1);
+        }
+        didCloseTextDocument.fire(document);
+      },
       registerTextDocumentContentProvider: (scheme, provider) => {
         textDocumentContentProviders.set(scheme, provider);
         return {
@@ -1351,9 +1901,29 @@ function fakeVscode(options = {}) {
           },
         };
       },
+      textDocuments: documents,
       registeredTextDocumentContentProviders: textDocumentContentProviders,
     },
   };
+}
+
+function inferredLanguageId(fileName) {
+  switch (path.extname(fileName).toLowerCase()) {
+    case ".md":
+    case ".rmd":
+      return "markdown";
+    case ".qmd":
+      return "quarto";
+    case ".yaml":
+    case ".yml":
+      return "yaml";
+    case ".py":
+      return "python";
+    case ".r":
+      return "r";
+    default:
+      return "plaintext";
+  }
 }
 
 async function executeFormatDocumentProvider(formattingProviders, documents, target, options) {
@@ -1396,6 +1966,9 @@ function documentMatchesSelector(selector, document) {
 function documentMatchesSelectorEntry(entry, document) {
   if (typeof entry === "string") {
     return entry === document.languageId;
+  }
+  if (entry.scheme && entry.scheme !== document.uri.scheme) {
+    return false;
   }
   if (entry.language && entry.language !== document.languageId) {
     return false;

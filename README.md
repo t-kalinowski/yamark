@@ -63,6 +63,15 @@ Format stdin for editor and CI integrations:
 yamark format --stdin-file-path config.yaml < config.yaml
 ```
 
+Convert JSON-family input from stdin to formatted YAML on stdout:
+
+```sh
+yamark to-yaml --stdin-file-path data.json5 < data.json5
+```
+
+The path is not read or written. Its suffix selects the exact JSON dialect.
+This is a conversion, not source formatting.
+
 Directory traversal skips hidden paths and respects `.gitignore`,
 `.ignore`, and global Git ignore files by default. Pass a hidden path
 explicitly to format it.

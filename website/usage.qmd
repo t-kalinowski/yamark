@@ -67,7 +67,16 @@ yamark format --stdin-file-path config.yaml < config.yaml
 `--check` and `--diff` do not write files. Both exit `1` when any
 selected file would change.
 
-Use `--diagnostics` to explain preserved content. Use
+Convert JSON-family input from stdin to formatted YAML on stdout:
+
+```sh
+yamark to-yaml --stdin-file-path data.json5 < data.json5
+```
+
+The path is not read or written. Its suffix selects the exact JSON dialect.
+This is a conversion, not source formatting.
+
+For `yamark format`, use `--diagnostics` to explain preserved content. Use
 `--skip-embedded-formatters` when another tool formats the same embedded code.
 
 ## Integrations
@@ -81,6 +90,6 @@ Use `--diagnostics` to explain preserved content. Use
 - [Reference](reference.qmd): look up supported files and syntax, formatting
   settings, `yamark.toml`, directive grammar, and command behavior.
 - [Command line](cli-help.qmd): modes, output, exit status, and generated
-  `--help` for Yamark, `format`, and the `git-filter` command group.
+  `--help` for Yamark, `format`, `to-yaml`, and the `git-filter` command group.
 - [Git Filter](git-filter.qmd): an experimental workflow that stores Markdown
   sentence-per-line while keeping the working tree column-wrapped.

@@ -56,18 +56,21 @@ generated from the current Yamark binary.
 | `yamark format --check PATHS` | Does not write. | - | Summary, failures, and requested diagnostics. |
 | `yamark format --diff PATHS` | Does not write. | Unified diffs. | Summary, failures, and requested diagnostics. |
 | `yamark format --stdin-file-path PATH` | Does not read or write `PATH`; uses it to select file-aware behavior for stdin. | Formatted content only. | Failures and requested diagnostics. |
+| `yamark to-yaml --stdin-file-path PATH` | Does not read or write `PATH`; uses its JSON-family suffix to parse stdin. | Formatted YAML only. | Failures. |
 
 `--check` and `--diff` exit `1` when any selected file would change. Every mode
 exits `1` when formatting fails and `0` on success otherwise. Invalid command
 syntax exits `2`.
 
-When `PATHS` is omitted, Yamark uses the current directory (`.`). Path mode
-counts unsupported extensions as skipped without failing. An unsupported
-`--stdin-file-path` is an error because stdin mode requires a supported file
-type.
+When `PATHS` is omitted from `yamark format`, Yamark uses the current directory
+(`.`). Format path mode counts unsupported extensions as skipped without
+failing. An unsupported `--stdin-file-path` is an error because stdin mode
+requires a supported file type.
 
-Stdin mode rejects additional paths and cannot be combined with `--check` or
-`--diff`.
+Format stdin mode rejects additional paths and cannot be combined with
+`--check` or `--diff`. `yamark to-yaml` always reads stdin, requires a `.json`,
+`.jsonc`, `.json5`, `.jsonl`, or `.ndjson` path hint, and never reads or writes
+that path.
 
 ## Generated help
 
@@ -85,6 +88,14 @@ yamark_help()
 #| label: help-yamark-format
 #| results: asis
 yamark_help("format")
+```
+
+### `yamark to-yaml`
+
+```{r}
+#| label: help-yamark-to-yaml
+#| results: asis
+yamark_help("to-yaml")
 ```
 
 ### `yamark git-filter`

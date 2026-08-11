@@ -13,7 +13,7 @@ use clap::{
 use crate::core::document::{FormatOptions, MarkdownWrap};
 use crate::workspace::{
     FormatExecutionOptions, FormatMode, format_paths_with_trace_and_overrides,
-    format_source_for_path_with_overrides,
+    format_source_for_path_with_overrides, project_source_to_yaml,
 };
 
 const HELP_STYLES: Styles = Styles::styled()
@@ -75,6 +75,21 @@ enum Command {
         skip_embedded_formatters: bool,
         #[arg(value_name = "PATHS")]
         paths: Vec<PathBuf>,
+    },
+    #[command(about = "Convert JSON-family input from stdin to formatted YAML")]
+    ToYaml {
+        #[arg(long, value_name = "PATH")]
+        stdin_file_path: PathBuf,
+        #[arg(long, value_name = "PATH")]
+        config: Option<PathBuf>,
+        #[arg(long, default_value_t = 80, value_parser = parse_positive_usize)]
+        line_width: usize,
+        #[arg(long, default_value_t = 72, value_parser = parse_positive_usize)]
+        prose_width: usize,
+        #[arg(long, default_value_t = 2, value_parser = parse_positive_usize)]
+        indent_width: usize,
+        #[arg(long)]
+        compact: bool,
     },
     #[command(
         about = "Git clean/smudge filter helpers for Markdown files",
@@ -334,6 +349,21 @@ where
             skip_embedded_formatters,
             paths,
         ),
+        Command::ToYaml {
+            stdin_file_path,
+            config,
+            line_width,
+            prose_width,
+            indent_width,
+            compact,
+        } => run_to_yaml(
+            stdin_file_path,
+            config,
+            line_width,
+            prose_width,
+            indent_width,
+            compact,
+        ),
         Command::GitFilter { command } => match command {
             GitFilterCommand::Clean { stdin_filename } => {
                 run_git_filter(stdin_filename, MarkdownWrap::Sentence)
@@ -532,6 +562,47 @@ fn run_stdin(
             }
             let mut stdout = io::stdout().lock();
             if let Err(err) = stdout.write_all(formatted.output.as_bytes()) {
+                eprintln!(
+                    "{}:1:1: error: failed to write stdout: {err}",
+                    path.display()
+                );
+                return ExitCode::from(1);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{}", err.diagnostic.render());
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_to_yaml(
+    path: PathBuf,
+    config: Option<PathBuf>,
+    line_width: usize,
+    prose_width: usize,
+    indent_width: usize,
+    compact: bool,
+) -> ExitCode {
+    let input = match read_stdin_utf8() {
+        Ok(input) => input,
+        Err(message) => {
+            eprintln!("{}:1:1: error: {message}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+    let options = FormatOptions {
+        line_width,
+        prose_width,
+        indent_width,
+        yaml_compact: compact,
+        ..FormatOptions::default()
+    };
+    match project_source_to_yaml(&path, input, options, config.as_deref()) {
+        Ok(projected) => {
+            let mut stdout = io::stdout().lock();
+            if let Err(err) = stdout.write_all(projected.output.as_bytes()) {
                 eprintln!(
                     "{}:1:1: error: failed to write stdout: {err}",
                     path.display()

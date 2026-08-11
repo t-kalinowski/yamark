@@ -2,7 +2,24 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const DEFAULT_FILE_EXTENSIONS = Object.freeze([".md", ".qmd", ".yaml", ".yml"]);
+const FORMATTED_PREVIEW_DOCUMENT_SCHEME = "yamark-preview";
 const GIT_FILTER_DOCUMENT_SCHEME = "yamark-git-filter";
+const JSON_PREVIEW_EXTENSIONS = new Set([
+  ".json",
+  ".jsonl",
+  ".ndjson",
+  ".jsonc",
+  ".json5",
+]);
+const NATIVE_PREVIEW_EXTENSIONS = new Set([
+  ".md",
+  ".qmd",
+  ".rmd",
+  ".yaml",
+  ".yml",
+  ".py",
+  ".r",
+]);
 
 function createYamarkExtension(vscode, runtime = {}) {
   const runProcess = runtime.runProcess || runProcessWithSpawn;
@@ -12,9 +29,50 @@ function createYamarkExtension(vscode, runtime = {}) {
   let extensionRoot = runtime.extensionRoot;
   let providerDisposable;
   let providerSuppressionDepth = 0;
+  let nextFormattedPreviewRequestId = 0;
   const providerSuppressionReasons = [];
+  const formattedPreviewDocumentChanged = new vscode.EventEmitter();
+  const formattedPreviewDocuments = new Map();
+  const formattedPreviewRequests = new Map();
   const gitFilterDocumentChanged = new vscode.EventEmitter();
   const gitFilterRepositoryWatches = new Map();
+
+  async function formatDocumentText(document, input, op) {
+    const settings = readSettings(vscode, document);
+    logUnsupportedCommandSettings(vscode, document, op);
+    op.log(
+      `settings runNextFormatter=${settings.runNextFormatter} ` +
+        `nextFormatterExecutable=${formatArgvForLog(settings.nextFormatterExecutable)} ` +
+        `useBundledExecutable=${settings.useBundledExecutable}`,
+    );
+
+    let formatted = await formatTextWithYamark(
+      vscode,
+      runProcess,
+      document,
+      input,
+      op,
+      { arch, extensionRoot, platform },
+      { settings },
+    );
+
+    if (settings.runNextFormatter && settings.nextFormatterExecutable.length > 0) {
+      formatted = await runNextFormatterExecutable(
+        vscode,
+        runProcess,
+        document,
+        formatted,
+        settings,
+        op,
+      );
+    } else if (settings.nextFormatterExecutable.length > 0) {
+      op.log("formatter step=skip name=next-executable reason=runNextFormatter-false");
+    } else if (settings.runNextFormatter) {
+      op.log("formatter step=skip name=next-executable reason=not-configured");
+    }
+
+    return formatted;
+  }
 
   async function provideDocumentFormattingEdits(document, options = {}) {
     const op = options.op || logger.startOp("format");
@@ -22,6 +80,11 @@ function createYamarkExtension(vscode, runtime = {}) {
     const trigger = options.trigger || "provider";
     op.log(documentLogLine(document, trigger));
     op.log(`formatter step=start name=vscode-provider trigger=${trigger}`);
+
+    if (isFormattedPreviewDocument(document)) {
+      logProviderReturn(op, ownsOp, 0, "formatted-preview");
+      return [];
+    }
 
     if (providerSuppressionDepth > 0) {
       const reason = currentProviderSuppressionReason(providerSuppressionReasons);
@@ -40,41 +103,10 @@ function createYamarkExtension(vscode, runtime = {}) {
       return [];
     }
 
-    const settings = readSettings(vscode, document);
-    logUnsupportedCommandSettings(vscode, document, op);
-    op.log(
-      `settings runNextFormatter=${settings.runNextFormatter} ` +
-        `nextFormatterExecutable=${formatArgvForLog(settings.nextFormatterExecutable)} ` +
-        `useBundledExecutable=${settings.useBundledExecutable}`,
-    );
-
-    const runtime = { arch, extensionRoot, platform };
     const originalText = document.getText();
 
     try {
-      let formatted = await formatTextWithYamark(
-        vscode,
-        runProcess,
-        document,
-        originalText,
-        op,
-        runtime,
-      );
-
-      if (settings.runNextFormatter && settings.nextFormatterExecutable.length > 0) {
-        formatted = await runNextFormatterExecutable(
-          vscode,
-          runProcess,
-          document,
-          formatted,
-          settings,
-          op,
-        );
-      } else if (settings.nextFormatterExecutable.length > 0) {
-        op.log("formatter step=skip name=next-executable reason=runNextFormatter-false");
-      } else if (settings.runNextFormatter) {
-        op.log("formatter step=skip name=next-executable reason=not-configured");
-      }
+      const formatted = await formatDocumentText(document, originalText, op);
 
       if (formatted === originalText) {
         logProviderReturn(op, ownsOp, 0, "no-change", formatted);
@@ -165,6 +197,104 @@ function createYamarkExtension(vscode, runtime = {}) {
     }
   }
 
+  async function openFormattedPreview(resource) {
+    const sourceUri = previewSourceUri(
+      vscode,
+      resource,
+      NATIVE_PREVIEW_EXTENSIONS,
+      (extension) => `Yamark cannot preview ${extension} with Format Document`,
+    );
+    const sourceDocument = await vscode.workspace.openTextDocument(sourceUri);
+    const sourcePath = documentPath(sourceDocument);
+    const request = beginFormattedPreviewRequest(sourceUri, sourcePath);
+    const op = logger.startOp("preview");
+    try {
+      op.log(documentLogLine(sourceDocument, "preview-command"));
+      const output = await formatDocumentText(
+        sourceDocument,
+        sourceDocument.getText(),
+        op,
+      );
+      const published = await publishFormattedPreview(request, output);
+      op.end(
+        `done published=${published} output.bytes=${Buffer.byteLength(output, "utf8")}`,
+      );
+    } catch (err) {
+      finishFormattedPreviewRequest(request);
+      op.error(err);
+      throw err;
+    }
+  }
+
+  async function openJsonAsYaml(resource) {
+    const sourceUri = previewSourceUri(
+      vscode,
+      resource,
+      JSON_PREVIEW_EXTENSIONS,
+      (extension) => `Yamark cannot view ${extension} as YAML`,
+    );
+    const sourceDocument = await vscode.workspace.openTextDocument(sourceUri);
+    const sourcePath = documentPath(sourceDocument);
+    const request = beginFormattedPreviewRequest(sourceUri, sourcePath);
+    const op = logger.startOp("to-yaml");
+    try {
+      op.log(documentLogLine(sourceDocument, "to-yaml-command"));
+      const output = await jsonToYamlTextWithYamark(
+        vscode,
+        runProcess,
+        sourceDocument,
+        sourceDocument.getText(),
+        op,
+        { arch, extensionRoot, platform },
+      );
+      const published = await publishFormattedPreview(request, output);
+      op.end(
+        `done published=${published} output.bytes=${Buffer.byteLength(output, "utf8")}`,
+      );
+    } catch (err) {
+      finishFormattedPreviewRequest(request);
+      op.error(err);
+      throw err;
+    }
+  }
+
+  function beginFormattedPreviewRequest(sourceUri, sourcePath) {
+    const uri = formattedPreviewUri(sourceUri, sourcePath);
+    const key = uri.toString();
+    const id = ++nextFormattedPreviewRequestId;
+    formattedPreviewRequests.set(key, id);
+    return { id, key, uri };
+  }
+
+  function finishFormattedPreviewRequest(request) {
+    if (formattedPreviewRequests.get(request.key) === request.id) {
+      formattedPreviewRequests.delete(request.key);
+    }
+  }
+
+  async function publishFormattedPreview(request, output) {
+    if (formattedPreviewRequests.get(request.key) !== request.id) {
+      return false;
+    }
+    formattedPreviewRequests.delete(request.key);
+    const refresh = formattedPreviewDocuments.has(request.key);
+    formattedPreviewDocuments.set(request.key, output);
+    if (refresh) {
+      formattedPreviewDocumentChanged.fire(request.uri);
+    }
+    const previewDocument = await vscode.workspace.openTextDocument(request.uri);
+    await vscode.window.showTextDocument(previewDocument, { preview: true });
+    return true;
+  }
+
+  async function provideFormattedPreviewDocument(uri) {
+    const output = formattedPreviewDocuments.get(uri.toString());
+    if (output === undefined) {
+      throw new Error("Yamark formatted preview expired; reopen it from the source file");
+    }
+    return output;
+  }
+
   async function openGitFilterDiff(resource) {
     const fileUri = gitFilterFileUri(vscode, resource);
     const git = await gitFilterRepository(vscode, fileUri);
@@ -217,7 +347,24 @@ function createYamarkExtension(vscode, runtime = {}) {
         provideTextDocumentContent: provideGitFilterDocument,
       }),
     );
+    context.subscriptions.push(
+      vscode.workspace.registerTextDocumentContentProvider(
+        FORMATTED_PREVIEW_DOCUMENT_SCHEME,
+        {
+          onDidChange: formattedPreviewDocumentChanged.event,
+          provideTextDocumentContent: provideFormattedPreviewDocument,
+        },
+      ),
+    );
     context.subscriptions.push(gitFilterDocumentChanged);
+    context.subscriptions.push(formattedPreviewDocumentChanged);
+    context.subscriptions.push(
+      vscode.workspace.onDidCloseTextDocument((document) => {
+        if (isFormattedPreviewDocument(document)) {
+          formattedPreviewDocuments.delete(document.uri.toString());
+        }
+      }),
+    );
     context.subscriptions.push({
       dispose() {
         for (const watch of gitFilterRepositoryWatches.values()) {
@@ -239,6 +386,16 @@ function createYamarkExtension(vscode, runtime = {}) {
     context.subscriptions.push(
       vscode.commands.registerCommand("yamark.formatSelectionAsMarkdown", () =>
         formatSelectionAsMarkdown(),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand("yamark.openFormattedPreview", (resource) =>
+        openFormattedPreview(resource),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand("yamark.openJsonAsYaml", (resource) =>
+        openJsonAsYaml(resource),
       ),
     );
     context.subscriptions.push(
@@ -292,6 +449,8 @@ function createYamarkExtension(vscode, runtime = {}) {
     formatDocument,
     formatSelectionAsMarkdown,
     isEnabledDocument: (document) => isEnabledDocument(vscode, document),
+    openFormattedPreview,
+    openJsonAsYaml,
     provideDocumentFormattingEdits,
   };
 }
@@ -305,6 +464,46 @@ function gitFilterFileUri(vscode, resource) {
     throw new Error("Yamark needs a working-tree file for the filtered Git diff");
   }
   return uri;
+}
+
+function previewSourceUri(vscode, resource, allowedExtensions, errorMessage) {
+  const document = activeDocument(vscode);
+  let uri = resource && resource.resourceUri
+    ? resource.resourceUri
+    : resource && resource.scheme
+      ? resource
+      : document && document.uri;
+  if (uri && uri.scheme === FORMATTED_PREVIEW_DOCUMENT_SCHEME) {
+    const source = new URLSearchParams(uri.query).get("source");
+    uri = source ? vscode.Uri.parse(source) : undefined;
+  }
+  if (!uri || !uri.fsPath || uri.scheme === FORMATTED_PREVIEW_DOCUMENT_SCHEME) {
+    throw new Error("Yamark needs a source file for the formatted preview");
+  }
+  const extension = path.extname(uri.fsPath).toLowerCase();
+  if (!allowedExtensions.has(extension)) {
+    throw new Error(errorMessage(extension || "this file type"));
+  }
+  return uri;
+}
+
+function formattedPreviewUri(sourceUri, sourcePath) {
+  const extension = JSON_PREVIEW_EXTENSIONS.has(path.extname(sourcePath).toLowerCase())
+    ? ".yaml"
+    : path.extname(sourcePath).toLowerCase();
+  return sourceUri.with({
+    scheme: FORMATTED_PREVIEW_DOCUMENT_SCHEME,
+    path: `${sourceUri.path}.formatted${extension}`,
+    query: `source=${encodeURIComponent(sourceUri.toString())}`,
+  });
+}
+
+function isFormattedPreviewDocument(document) {
+  return Boolean(
+    document &&
+      document.uri &&
+      document.uri.scheme === FORMATTED_PREVIEW_DOCUMENT_SCHEME,
+  );
 }
 
 async function gitFilterRepository(vscode, fileUri) {
@@ -362,13 +561,12 @@ async function requireYamarkGitFilter(runProcess, git) {
 }
 
 function readSettings(vscode, document) {
-  const config = vscode.workspace.getConfiguration("yamark", documentConfigurationScope(document));
+  const config = vscode.workspace.getConfiguration(
+    "yamark",
+    documentConfigurationScope(document),
+  );
   return {
-    executable: requireNonEmptyString(config.get("executable", "yamark"), "yamark.executable"),
-    useBundledExecutable: requireBoolean(
-      config.get("useBundledExecutable", false),
-      "yamark.useBundledExecutable",
-    ),
+    ...executableSettingsFromConfig(config),
     enabledFileExtensions: normalizeFileExtensions(
       config.get("enabledFileExtensions", DEFAULT_FILE_EXTENSIONS),
     ),
@@ -383,6 +581,24 @@ function readSettings(vscode, document) {
     nextFormatterExecutable: requireNonEmptyStringArray(
       config.get("nextFormatterExecutable", []),
       "yamark.nextFormatterExecutable",
+    ),
+  };
+}
+
+function readExecutableSettings(vscode, document) {
+  const config = vscode.workspace.getConfiguration(
+    "yamark",
+    documentConfigurationScope(document),
+  );
+  return executableSettingsFromConfig(config);
+}
+
+function executableSettingsFromConfig(config) {
+  return {
+    executable: requireNonEmptyString(config.get("executable", "yamark"), "yamark.executable"),
+    useBundledExecutable: requireBoolean(
+      config.get("useBundledExecutable", false),
+      "yamark.useBundledExecutable",
     ),
   };
 }
@@ -469,7 +685,7 @@ async function formatTextWithYamark(
   runtime,
   options = {},
 ) {
-  const settings = readSettings(vscode, document);
+  const settings = options.settings || readSettings(vscode, document);
   const filePath = options.stdinFilePath || documentPath(document);
   const skipEmbeddedFormatters = Object.prototype.hasOwnProperty.call(
     options,
@@ -506,6 +722,44 @@ async function formatTextWithYamark(
   } catch (err) {
     op.log(
       `formatter step=error name=yamark kind=process dt.ms=${Date.now() - t} ` +
+        `err=${errorMessage(err)}`,
+    );
+    throw err;
+  }
+}
+
+async function jsonToYamlTextWithYamark(
+  vscode,
+  runProcess,
+  document,
+  input,
+  op,
+  runtime,
+) {
+  const settings = readExecutableSettings(vscode, document);
+  const filePath = documentPath(document);
+  const args = ["to-yaml", "--stdin-file-path", filePath];
+  const command = resolveExecutable(settings, runtime);
+  op.log(
+    `formatter step=start name=yamark-to-yaml kind=process command=${command} ` +
+      `args=${JSON.stringify(args)} input.bytes=${Buffer.byteLength(input, "utf8")}`,
+  );
+  const t = Date.now();
+  try {
+    const output = await runProcess({
+      command,
+      args,
+      input,
+      cwd: path.dirname(filePath),
+    });
+    op.log(
+      `formatter step=end name=yamark-to-yaml kind=process output.bytes=${Buffer.byteLength(output, "utf8")} ` +
+        `dt.ms=${Date.now() - t}`,
+    );
+    return output;
+  } catch (err) {
+    op.log(
+      `formatter step=error name=yamark-to-yaml kind=process dt.ms=${Date.now() - t} ` +
         `err=${errorMessage(err)}`,
     );
     throw err;

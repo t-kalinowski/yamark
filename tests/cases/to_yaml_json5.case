@@ -1,0 +1,33 @@
+-- args
+to-yaml --stdin-file-path input.json5 --line-width 40
+-- stdin
+{
+  // JSON5 values
+  foo:1,
+  single: 'don\'t',
+  apostrophe: "don\'t",
+  letter: "\a",
+  underscore: "\_",
+  emoji: "\uD83D\uDE00",
+  hex: 0X2A,
+  infinity: Infinity,
+  negativeInfinity: -Infinity,
+  nan: NaN,
+  \u0061: "\x41",
+}
+-- stdout
+# JSON5 values
+foo: 1
+single: don't
+apostrophe: don't
+letter: a
+underscore: _
+emoji: 😀
+hex: 0x2A
+infinity: .inf
+negativeInfinity: -.inf
+nan: .nan
+a: A
+-- stderr
+-- status
+0

@@ -10,12 +10,19 @@ use crate::config::{Config, discover_config_path};
 use crate::core::document::{FileKind, FormatOptions, MarkdownWrap};
 use crate::core::parser::format_source_report_with_policy;
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
+use crate::json_to_yaml::{JsonSourceKind, json_to_yaml_source};
 use crate::plugins::PluginRegistry;
 
 #[derive(Debug, Clone)]
 pub struct FormattedSource {
     pub output: String,
     pub changed: bool,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectedSource {
+    pub output: String,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -125,6 +132,37 @@ pub fn format_source_for_path_with_trace(
     )
 }
 
+pub fn project_source_to_yaml(
+    path: &Path,
+    input: String,
+    options: FormatOptions,
+    config_path: Option<&Path>,
+) -> Result<ProjectedSource> {
+    let Some(json_kind) = JsonSourceKind::for_path(path) else {
+        return Err(YamarkError::new(
+            "JSON-to-YAML projection requires a .json, .jsonc, .json5, .jsonl, or .ndjson source path",
+        )
+        .with_path(path));
+    };
+    let config = load_config_for_formatted_path(path, config_path)?;
+    let yaml_input = json_to_yaml_source(&input, json_kind).map_err(|err| err.with_path(path))?;
+    drop(input);
+    let mut options = options;
+    options.skip_embedded_formatters = true;
+    let formatted = format_source_with_config_as(
+        path,
+        yaml_input,
+        FileKind::Yaml,
+        options,
+        &config,
+        FormatExecutionOptions::default(),
+    )?;
+    Ok(ProjectedSource {
+        output: formatted.output,
+        diagnostics: formatted.diagnostics,
+    })
+}
+
 pub(crate) fn format_source_for_path_with_overrides(
     path: &Path,
     input: String,
@@ -143,10 +181,21 @@ fn format_source_with_config(
     config: &Config,
     execution: FormatExecutionOptions,
 ) -> Result<FormattedSource> {
+    let kind = FileKind::for_path(path);
+    format_source_with_config_as(path, input, kind, options, config, execution)
+}
+
+fn format_source_with_config_as(
+    path: &Path,
+    input: String,
+    kind: FileKind,
+    options: FormatOptions,
+    config: &Config,
+    execution: FormatExecutionOptions,
+) -> Result<FormattedSource> {
     if input.as_bytes().starts_with(&[0xff, 0xfe]) || input.as_bytes().starts_with(&[0xfe, 0xff]) {
         return Err(YamarkError::new("unsupported encoding: UTF-16 BOM").with_path(path));
     }
-    let kind = FileKind::for_path(path);
     if !kind.is_supported() {
         return Err(YamarkError::new("unsupported file type").with_path(path));
     }

@@ -39,6 +39,44 @@ This runs the same default benchmark, writes the commit-scoped JSON
 artifact, and prints the current row, previous matching row, delta,
 artifact path, and log path.
 
+## Complete suite
+
+Use the complete runner when every canonical benchmark is required:
+
+```sh
+tools/bench/run-all.py
+```
+
+This long-running command requires a clean worktree. It runs the
+allocation and benchmark-harness tests, builds one locked release
+binary, then uses that frozen binary for the default per-file YAML
+benchmark, the three-file large-file benchmark, and the published
+directory comparison. The workload sizes, formatter rosters,
+repetitions, and warmups are explicit in the runner so a child script's
+changed defaults cannot silently change the suite.
+
+By default, logs, scratch data, the frozen binary, and three separate
+JSON artifacts are written under a new
+`target/bench-all/<timestamp>-<commit>/` directory. A `manifest.json` is
+written only after every command and artifact validation succeeds. It
+records hashes for the binary, artifacts, and retained input corpora, as
+well as the R package versions used to generate the large files. To
+choose another new directory or inspect the commands without running or
+writing anything, use:
+
+```sh
+tools/bench/run-all.py --result-dir /path/to/results
+tools/bench/run-all.py --dry-run --result-dir /path/to/results
+```
+
+The full comparison requires a Unix-like Python runtime with the
+`resource` module and `os.wait4`, `Rscript` with the `stringi` and
+`yaml12` packages, plus `panache`, `mdformat`, `prettier`, `dprint`,
+`deno`, `yamlfmt`, and `yamlfix` on `PATH`. Missing comparison tools
+fail the complete run instead of producing a partial result. The runner
+does not copy results into `docs/benchmarks`; publishing remains a
+separate, reviewed step.
+
 ## Big single-file benchmark
 
 The big-file benchmark generates three deterministic single-file

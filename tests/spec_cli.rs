@@ -6550,6 +6550,166 @@ fn format_skips_cmd_files() {
 }
 
 #[test]
+fn format_skips_json_family_files_without_rewriting_them() {
+    let dir = tempdir().unwrap();
+    for (extension, input) in [
+        ("json", "{\"unformatted\":[1,2]}\n"),
+        ("jsonc", "{// comment\n\"unformatted\":[1,2,],}\n"),
+        ("json5", "{unformatted:[1,2,],}\n"),
+        ("jsonl", "{\"unformatted\":[1,2]}\n"),
+        ("ndjson", "{\"unformatted\":[1,2]}\n"),
+    ] {
+        let path = dir.path().join(format!("input.{extension}"));
+        fs::write(&path, input).unwrap();
+
+        let output = yamark()
+            .args(["format", path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), input);
+    }
+}
+
+#[test]
+fn to_yaml_accepts_stdin_only() {
+    let output = yamark()
+        .args(["to-yaml", "--stdin-file-path", "input.json", "other.json"])
+        .write_stdin("{}\n")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("unexpected argument 'other.json'")
+    );
+}
+
+#[test]
+fn to_yaml_rejects_native_source_types() {
+    for path in ["input.md", "input.yaml", "input.py", "input.r"] {
+        let output = yamark()
+            .args(["to-yaml", "--stdin-file-path", path])
+            .write_stdin("{}\n")
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains(
+                    "JSON-to-YAML projection requires a .json, .jsonc, .json5, .jsonl, or .ndjson source path"
+                ),
+            "{path} should not be projected"
+        );
+    }
+}
+
+#[test]
+fn command_help_exposes_to_yaml_without_render() {
+    let output = yamark().arg("--help").output().unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("to-yaml"));
+    assert!(
+        !stdout
+            .lines()
+            .any(|line| line.trim_start().starts_with("render "))
+    );
+}
+
+#[test]
+fn render_is_not_a_hidden_compatibility_alias() {
+    let output = yamark().arg("render").output().unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("unrecognized subcommand 'render'")
+    );
+}
+
+#[test]
+fn to_yaml_json5_rejects_excessive_nesting_without_aborting() {
+    let input = format!("{}/* comment */0{}", "[".repeat(900), "]".repeat(900));
+    let output = yamark()
+        .args(["to-yaml", "--stdin-file-path", "input.json5"])
+        .write_stdin(input)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("invalid JSON5: nesting exceeds 256 levels")
+    );
+}
+
+#[test]
+fn to_yaml_jsonc_parser_inputs_reject_excessive_nesting_without_aborting() {
+    let input = format!("{}0{}", "[".repeat(10_000), "]".repeat(10_000));
+    for (extension, dialect) in [
+        ("json", "JSON"),
+        ("jsonc", "JSONC"),
+        ("jsonl", "JSON"),
+        ("ndjson", "JSON"),
+    ] {
+        let path = format!("input.{extension}");
+        let output = yamark()
+            .args(["to-yaml", "--stdin-file-path", &path])
+            .write_stdin(input.clone())
+            .output()
+            .unwrap();
+
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            stderr.contains(&format!(
+                "{path}:1:257: error: invalid {dialect}: nesting exceeds 256 levels"
+            )),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn to_yaml_json5_rejects_repeated_unary_operators_without_aborting() {
+    let input = format!("{}1", "+".repeat(10_000));
+    let output = yamark()
+        .args(["to-yaml", "--stdin-file-path", "input.json5"])
+        .write_stdin(input)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8(output.stdout).unwrap().is_empty());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("invalid JSON5: Only one unary operator is allowed")
+    );
+}
+
+#[test]
 fn diff_mode_prints_contextual_unified_hunks() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("input.yaml");

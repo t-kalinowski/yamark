@@ -972,6 +972,7 @@ fn website_documents_user_facing_references() {
         "## Files and regions",
         "## Markdown",
         "## YAML",
+        "## JSON-to-YAML projection",
         "## Python and R source files",
         "## Embedded formatter dispatch",
         "## Layout repair",
@@ -998,12 +999,23 @@ fn website_documents_user_facing_references() {
         "`powershell`, and `cmd`",
         "supported multiline string literals",
         "same comment prefix",
+        "Formatting preserves the source language",
+        "`yamark to-yaml --stdin-file-path`",
+        "`.json`, `.jsonc`, `.json5`, `.jsonl`, and `.ndjson`",
+        "does not dispatch to Prettier",
+        "legacy numeric escapes",
     ] {
         assert!(files.contains(term), "{term} should be documented");
         assert!(
             rendered_files.contains(term),
             "{term} should render into reference-files.html.md"
         );
+    }
+
+    for prose in [&files_prose, &rendered_files_prose] {
+        assert!(prose.contains(
+            "does not scan JSON strings or comments for embedded Markdown or formatter directives"
+        ));
     }
 
     for option in [
@@ -1183,11 +1195,9 @@ fn website_documents_command_line_reference() {
     assert!(config.contains("text: Command line"));
     assert!(usage.contains("[Command line](cli-help.qmd)"));
     let usage_prose = usage.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(
-        usage_prose.contains(
-            "generated `--help` for Yamark, `format`, and the `git-filter` command group"
-        )
-    );
+    assert!(usage_prose.contains(
+        "generated `--help` for Yamark, `format`, `to-yaml`, and the `git-filter` command group"
+    ));
     assert!(!usage_prose.contains("generated `--help` for each command"));
     assert!(not_found.contains("[Command line](cli-help.qmd)"));
     assert!(cli_help.contains("title: Command line"));
@@ -1203,10 +1213,11 @@ fn website_documents_command_line_reference() {
             "`yamark format --check PATHS`",
             "`yamark format --diff PATHS`",
             "`yamark format --stdin-file-path PATH`",
-            "When `PATHS` is omitted, Yamark uses the current directory (`.`)",
+            "`yamark to-yaml --stdin-file-path PATH`",
+            "When `PATHS` is omitted from `yamark format`, Yamark uses the current directory (`.`)",
             "An unsupported `--stdin-file-path` is an error",
             "Unified diffs",
-            "Formatted content only",
+            "Formatted YAML only",
             "exits `1`",
             "exits `2`",
         ] {
@@ -1219,6 +1230,7 @@ fn website_documents_command_line_reference() {
     for invocation in [
         "yamark_help()",
         "yamark_help(\"format\")",
+        "yamark_help(\"to-yaml\")",
         "yamark_help(\"git-filter\")",
     ] {
         assert!(
@@ -1357,6 +1369,8 @@ fn website_documents_editor_and_git_filter_integrations() {
         "Positron",
         "Yamark: Format Document",
         "Yamark: Format Selection as Markdown",
+        "Yamark: Preview Format Document",
+        "Yamark: View JSON as YAML",
         "Yamark: Open Filtered Working Tree Diff",
         "yamark.useBundledExecutable",
         "yamark.enabledFileExtensions",
@@ -1364,6 +1378,10 @@ fn website_documents_editor_and_git_filter_integrations() {
         "yamark.runNextFormatter",
         "yamark.nextFormatterExecutable",
         "Yamark: Show Log",
+        "read-only snapshot",
+        "including the configured next formatter",
+        "does not run the configured next formatter",
+        "JSON, JSONC, JSON5, JSONL, and NDJSON",
     ] {
         assert!(editors.contains(term), "{term} should be documented");
         assert!(

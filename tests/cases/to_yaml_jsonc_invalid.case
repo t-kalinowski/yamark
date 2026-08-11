@@ -1,0 +1,9 @@
+-- args
+to-yaml --stdin-file-path input.jsonc
+-- stdin
+{"a": 1 /* unterminated}
+-- stdout
+-- stderr
+input.jsonc:1:9: error: invalid JSONC: Unterminated comment block
+-- status
+1
