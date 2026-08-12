@@ -2,12 +2,14 @@
 
 Yamark keeps its development version at the most recently released version plus `+dev`. The current version must end in `+dev` before starting a release. Run releases from a clean, up-to-date `main` checkout with authenticated `git` and `gh` access.
 
+`RELEASE_NOTES.md` holds the pending notes for the next release; it is not a changelog. Add user-facing notes as changes land, finalize them during release preparation, publish them with the release, then reset the file. Published notes remain available with each GitHub release.
+
 The examples below release `0.4.0`. Pass versions to the helper without a `v` prefix.
 
 ## Prepare the release
 
 1. Fetch `main` and tags, then confirm that the checkout is clean, `HEAD` matches `origin/main`, and `v0.4.0` does not exist locally or remotely.
-2. Review the changes since the previous tag and replace `RELEASE_NOTES.md` with the notes for the new version. Its first sentence must start with `Yamark 0.4.0 `. Put command-line changes first and editor-only changes in a separate section, then format the file with `yamark format --wrap paragraph RELEASE_NOTES.md`.
+2. Review the changes since the previous tag and finalize the pending notes in `RELEASE_NOTES.md`. Their first sentence must start with `Yamark 0.4.0 `. Put command-line changes first and editor-only changes in a separate section, then format the file with `yamark format --wrap paragraph RELEASE_NOTES.md`.
 3. Update all five version locations:
 
    ```sh
@@ -51,10 +53,16 @@ Stop and wait for the Release workflow to finish. Then:
 
 Once the public release checks pass, mark subsequent builds as development builds:
 
+Reset `RELEASE_NOTES.md` to its pending placeholder:
+
+```md
+<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
+```
+
 ```sh
 scripts/set-version.py 0.4.0+dev
 scripts/check.sh
-git add Cargo.toml Cargo.lock pyproject.toml uv.lock editors/vscode/package.json
+git add Cargo.toml Cargo.lock pyproject.toml uv.lock editors/vscode/package.json RELEASE_NOTES.md
 git commit -m "Mark post-release builds as development versions"
 git push origin main
 ```

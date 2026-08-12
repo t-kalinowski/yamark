@@ -278,7 +278,7 @@ fn release_workflow_publishes_python_package() {
 }
 
 #[test]
-fn release_process_uses_versioned_curated_notes() {
+fn release_process_uses_pending_curated_notes() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo = fs::read_to_string(root.join("Cargo.toml")).unwrap();
     let readme = fs::read_to_string(root.join("README.md")).unwrap();
@@ -288,10 +288,6 @@ fn release_process_uses_versioned_curated_notes() {
 
     let cargo: toml::Value = toml::from_str(&cargo).unwrap();
     let package_version = cargo["package"]["version"].as_str().unwrap();
-    let version = package_version
-        .strip_suffix("+dev")
-        .unwrap_or(package_version);
-
     assert!(
         readme.contains(
             "[release guide](https://github.com/t-kalinowski/yamark/blob/main/RELEASE.md)"
@@ -309,11 +305,20 @@ fn release_process_uses_versioned_curated_notes() {
             "release guide should document {contract}"
         );
     }
-    assert!(release_notes.starts_with(&format!("Yamark {version} ")));
-    assert!(
-        release_notes.find("## Command line").unwrap()
-            < release_notes.find("## VS Code and Positron").unwrap()
-    );
+    assert!(release_guide.contains("holds the pending notes for the next release"));
+    assert!(release_guide.contains("Reset `RELEASE_NOTES.md` to its pending placeholder"));
+    if package_version.ends_with("+dev") {
+        assert_eq!(
+            release_notes,
+            "<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->\n"
+        );
+    } else {
+        assert!(release_notes.starts_with(&format!("Yamark {package_version} ")));
+        assert!(
+            release_notes.find("## Command line").unwrap()
+                < release_notes.find("## VS Code and Positron").unwrap()
+        );
+    }
     assert!(!release_notes.contains("## New Contributors"));
     assert!(workflow.contains("--notes-file RELEASE_NOTES.md"));
     assert!(workflow.contains("release_notes.startswith(f\"Yamark {version} \""));
