@@ -26,12 +26,17 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import tomllib
           from pathlib import Path
 
           tag = os.environ["GITHUB_REF_NAME"]
           assert tag.startswith("v"), f"release tag must start with v: {tag}"
           version = tag.removeprefix("v")
+          assert re.fullmatch(
+              r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)",
+              version,
+          ), f"release tag must be a stable version: {tag}"
 
           versions = {
               "Cargo.toml": tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"],
@@ -53,6 +58,11 @@ jobs:
 
           mismatches = {name: value for name, value in versions.items() if value != version}
           assert not mismatches, f"tag {tag} does not match package versions: {mismatches}"
+
+          release_notes = Path("RELEASE_NOTES.md").read_text()
+          assert release_notes.startswith(f"Yamark {version} "), (
+              f"RELEASE_NOTES.md must start with 'Yamark {version} '"
+          )
           PY
 
   build:
@@ -230,7 +240,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title
-          "$GITHUB_REF_NAME" --generate-notes
+          "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
 
   publish-pypi:
     name: Publish to PyPI

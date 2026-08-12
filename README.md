@@ -124,18 +124,8 @@ behavior references.
 
 ## Release
 
-Update the package versions in `Cargo.toml`, `pyproject.toml`, and
-`editors/vscode/package.json`, refresh `Cargo.lock` and `uv.lock`, then
-push a matching `vX.Y.Z` tag:
-
-```sh
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-The release workflow validates the tag, builds binary archives and
-Python distributions, smoke-tests each wheel, creates the GitHub release
-with generated release notes, and publishes the Python distributions to
-PyPI.
+See the [release guide](https://github.com/t-kalinowski/yamark/blob/main/RELEASE.md)
+for the stable-version bump, checks, release notes, tag, publication
+verification, and post-release `+dev` bump.
 
 [editor-docs]: https://t-kalinowski.github.io/yamark/editors.html

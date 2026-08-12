@@ -171,6 +171,7 @@ fn public_repo_metadata_is_ready() {
 fn ci_runs_public_readiness_checks() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let ci = fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
+    let checks = fs::read_to_string(root.join("scripts/check.sh")).unwrap();
 
     assert!(ci.contains("permissions:"));
     assert!(ci.contains("contents: read"));
@@ -194,6 +195,7 @@ fn ci_runs_public_readiness_checks() {
         ci.contains("uv tool install ruff"),
         "CI should install ruff because Rust tests invoke the default Python formatter"
     );
+    assert!(ci.contains("run: scripts/check.sh"));
 
     for command in [
         "cargo fmt --check",
@@ -203,8 +205,8 @@ fn ci_runs_public_readiness_checks() {
         "npm test",
     ] {
         assert!(
-            ci.contains(command),
-            "CI should run public readiness command {command}"
+            checks.contains(command),
+            "the shared check script should run public readiness command {command}"
         );
     }
 }
@@ -273,6 +275,50 @@ fn release_workflow_publishes_python_package() {
         readme.contains("uvx yamark format"),
         "README should document running the published package"
     );
+}
+
+#[test]
+fn release_process_uses_versioned_curated_notes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cargo = fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let readme = fs::read_to_string(root.join("README.md")).unwrap();
+    let release_guide = fs::read_to_string(root.join("RELEASE.md")).unwrap();
+    let release_notes = fs::read_to_string(root.join("RELEASE_NOTES.md")).unwrap();
+    let workflow = fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+
+    let cargo: toml::Value = toml::from_str(&cargo).unwrap();
+    let package_version = cargo["package"]["version"].as_str().unwrap();
+    let version = package_version
+        .strip_suffix("+dev")
+        .unwrap_or(package_version);
+
+    assert!(
+        readme.contains(
+            "[release guide](https://github.com/t-kalinowski/yamark/blob/main/RELEASE.md)"
+        )
+    );
+    for contract in [
+        "scripts/set-version.py 0.4.0",
+        "scripts/check.sh",
+        "current version must end in `+dev`",
+        "Mark post-release builds as development versions",
+        "uvx --isolated --no-cache --no-sources yamark@0.4.0",
+    ] {
+        assert!(
+            release_guide.contains(contract),
+            "release guide should document {contract}"
+        );
+    }
+    assert!(release_notes.starts_with(&format!("Yamark {version} ")));
+    assert!(
+        release_notes.find("## Command line").unwrap()
+            < release_notes.find("## VS Code and Positron").unwrap()
+    );
+    assert!(!release_notes.contains("## New Contributors"));
+    assert!(workflow.contains("--notes-file RELEASE_NOTES.md"));
+    assert!(workflow.contains("release_notes.startswith(f\"Yamark {version} \""));
+    assert!(workflow.contains("release tag must be a stable version"));
+    assert!(!workflow.contains("--generate-notes"));
 }
 
 #[test]
