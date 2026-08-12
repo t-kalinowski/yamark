@@ -65,6 +65,43 @@ fn collect_text_files(path: &Path, files: &mut Vec<std::path::PathBuf>) {
     }
 }
 
+fn latest_benchmark_artifact(
+    directory: &Path,
+    keep: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .map(|path| {
+            serde_json::from_str::<serde_json::Value>(&fs::read_to_string(path).unwrap()).unwrap()
+        })
+        .filter(keep)
+        .max_by_key(|artifact| artifact["created_at"].as_str().unwrap().to_owned())
+        .unwrap()
+}
+
+fn benchmark_has_ok_result(
+    artifact: &serde_json::Value,
+    formatter: &str,
+    target: Option<&str>,
+    invocation: Option<&str>,
+) -> bool {
+    artifact["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|result| {
+            result["status"] == "ok"
+                && result["formatter"] == formatter
+                && target.is_none_or(|target| result["file"] == target)
+                && invocation.is_none_or(|invocation| result["invocation"] == invocation)
+        })
+}
+
 #[test]
 fn public_repo_metadata_is_ready() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -385,25 +422,64 @@ fn website_includes_benchmarks_page() {
     );
     // Published benchmarks can lag the package version during release
     // preparation, so derive the displayed version from the selected artifact.
-    let artifact_path = fs::read_dir(root.join("..").join("docs/benchmarks/big"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .find(|path| {
-            path.file_stem()
-                .and_then(|stem| stem.to_str())
-                .is_some_and(|stem| stem.starts_with(commit))
-        })
-        .unwrap();
-    let artifact: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(artifact_path).unwrap()).unwrap();
-    let version = artifact["tool_versions"]["yamark"]
+    let benchmark_root = root.join("..").join("docs/benchmarks");
+    let markdown_formatters = [
+        "yamark",
+        "panache",
+        "mdformat",
+        "prettier",
+        "dprint-markdown",
+        "deno-fmt",
+    ];
+    let yaml_formatters = [
+        "yamark",
+        "yamlfmt",
+        "prettier",
+        "yamlfix",
+        "dprint-yaml",
+        "deno-fmt",
+    ];
+    let big_artifact = latest_benchmark_artifact(&benchmark_root.join("big"), |artifact| {
+        let requested = &artifact["corpus"]["requested_bytes"];
+        requested["markdown"] == 4_000_000
+            && requested["yaml"] == 4_000_000
+            && requested["frontmatter"] == 4_000_000
+            && requested["frontmatter_yaml"] == 200_000
+            && [
+                ("big.md", markdown_formatters.as_slice()),
+                ("big.yaml", yaml_formatters.as_slice()),
+                ("big-with-frontmatter.md", markdown_formatters.as_slice()),
+            ]
+            .into_iter()
+            .all(|(target, formatters)| {
+                formatters.iter().all(|formatter| {
+                    benchmark_has_ok_result(artifact, formatter, Some(target), None)
+                })
+            })
+    });
+    let yaml_artifact = latest_benchmark_artifact(&benchmark_root.join("yaml"), |artifact| {
+        artifact["corpus"]["shape"] == "flow-heavy"
+            && artifact["corpus"]["files"] == 500
+            && artifact["corpus"]["items_per_file"] == 540
+            && yaml_formatters.iter().all(|formatter| {
+                benchmark_has_ok_result(artifact, formatter, None, Some("directory"))
+            })
+    });
+    let artifact_commit = big_artifact["git"]["commit"].as_str().unwrap();
+    assert_eq!(yaml_artifact["git"]["commit"], artifact_commit);
+    assert_eq!(commit, &artifact_commit[..12]);
+    assert_eq!(
+        yaml_artifact["tool_versions"]["yamark"],
+        big_artifact["tool_versions"]["yamark"]
+    );
+    let version = big_artifact["tool_versions"]["yamark"]
         .as_str()
         .unwrap()
         .strip_prefix("yamark ")
         .unwrap();
     assert!(rendered.contains(&format!("Yamark `{version}`, built from commit")));
-    assert!(rendered.contains(&format!("docs/benchmarks/big/{commit}")));
-    assert!(rendered.contains(&format!("docs/benchmarks/yaml/{commit}")));
+    assert!(rendered.contains(&format!("docs/benchmarks/big/{artifact_commit}.json")));
+    assert!(rendered.contains(&format!("docs/benchmarks/yaml/{artifact_commit}.json")));
     assert!(rendered.contains("<th style=\"text-align:right;\"> Wall time </th>"));
     assert!(rendered.contains("<th style=\"text-align:right;\"> Peak RSS </th>"));
     assert!(rendered.contains("<th style=\"text-align:right;\"> User CPU time </th>"));
