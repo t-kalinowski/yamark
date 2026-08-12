@@ -370,10 +370,6 @@ fn website_includes_benchmarks_page() {
     assert!(rendered.contains("docs/benchmarks/big"));
     assert!(rendered.contains("MacBook Pro"));
     assert!(rendered.contains("using the published PyPI release"));
-    assert!(rendered.contains(&format!(
-        "Yamark `{}`, built from commit",
-        env!("CARGO_PKG_VERSION")
-    )));
     let commit = rendered
         .split_once("built from commit")
         .unwrap()
@@ -387,6 +383,25 @@ fn website_includes_benchmarks_page() {
             .chars()
             .all(|character| character.is_ascii_hexdigit())
     );
+    // Published benchmarks can lag the package version during release
+    // preparation, so derive the displayed version from the selected artifact.
+    let artifact_path = fs::read_dir(root.join("..").join("docs/benchmarks/big"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .is_some_and(|stem| stem.starts_with(commit))
+        })
+        .unwrap();
+    let artifact: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(artifact_path).unwrap()).unwrap();
+    let version = artifact["tool_versions"]["yamark"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("yamark ")
+        .unwrap();
+    assert!(rendered.contains(&format!("Yamark `{version}`, built from commit")));
     assert!(rendered.contains(&format!("docs/benchmarks/big/{commit}")));
     assert!(rendered.contains(&format!("docs/benchmarks/yaml/{commit}")));
     assert!(rendered.contains("<th style=\"text-align:right;\"> Wall time </th>"));
