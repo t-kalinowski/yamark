@@ -5,7 +5,7 @@ description: Yamark performance against other YAML and Markdown formatters.
 
 
 
-**On the benchmark host (Apple M4 Max, macOS arm64), Yamark recorded the lowest elapsed time in all four workloads:** 78–115 ms for each generated 4 MB file and 158 ms for 500 generated YAML files (50 MB).
+**On the benchmark host (Apple M4 Max, macOS arm64), Yamark recorded the lowest elapsed time in all four workloads:** 78–117 ms for each generated 4 MB file and 181 ms for 500 generated YAML files (50 MB).
 
 Each table compares the formatter CLIs in this harness that accept that input.
 Tools use their default formatting behavior, with no formatting options, shims,
@@ -33,30 +33,30 @@ timing.
 <tbody>
   <tr>
    <td style="text-align:left;"> 4 MB Markdown </td>
-   <td style="text-align:right;"> 113 ms </td>
-   <td style="text-align:left;"> dprint · 359 ms </td>
+   <td style="text-align:right;"> 117 ms </td>
+   <td style="text-align:left;"> dprint · 378 ms </td>
    <td style="text-align:right;"> 3.2× </td>
    <td style="text-align:left;"> Both rewrite Markdown </td>
   </tr>
   <tr>
    <td style="text-align:left;"> 4 MB YAML </td>
    <td style="text-align:right;"> 78 ms </td>
-   <td style="text-align:left;"> yamlfmt · 190 ms </td>
-   <td style="text-align:right;"> 2.4× </td>
+   <td style="text-align:left;"> yamlfmt · 196 ms </td>
+   <td style="text-align:right;"> 2.5× </td>
    <td style="text-align:left;"> Both rewrite YAML </td>
   </tr>
   <tr>
    <td style="text-align:left;"> 4 MB Markdown + 200 KB YAML front matter </td>
-   <td style="text-align:right;"> 115 ms </td>
-   <td style="text-align:left;"> dprint · 348 ms </td>
-   <td style="text-align:right;"> 3.0× </td>
+   <td style="text-align:right;"> 111 ms </td>
+   <td style="text-align:left;"> dprint · 345 ms </td>
+   <td style="text-align:right;"> 3.1× </td>
    <td style="text-align:left;"> dprint leaves YAML front matter untouched </td>
   </tr>
   <tr>
    <td style="text-align:left;"> 500 YAML files (50 MB) </td>
-   <td style="text-align:right;"> 158 ms </td>
-   <td style="text-align:left;"> Deno · 2.3 s </td>
-   <td style="text-align:right;"> 14.3× </td>
+   <td style="text-align:right;"> 181 ms </td>
+   <td style="text-align:left;"> Deno · 2.5 s </td>
+   <td style="text-align:right;"> 13.7× </td>
    <td style="text-align:left;"> Both rewrite all 500 files </td>
   </tr>
 </tbody>
@@ -69,8 +69,8 @@ timing.
 <p>Median wall time; lower is better. All four panels share a logarithmic seconds scale.</p>
 </figcaption>
 <div class="benchmark-chart-canvas" data-benchmark-chart="full-field" data-benchmark-source="benchmark-full-field-data"></div>
-<div class="benchmark-chart-fallback"><p>Exact values:</p><ul><li><strong>4 MB Markdown - Yamark:</strong> 113 ms</li><li><strong>4 MB Markdown - dprint:</strong> 359 ms</li><li><strong>4 MB Markdown - Panache:</strong> 406 ms</li><li><strong>4 MB Markdown - Deno:</strong> 408 ms</li><li><strong>4 MB Markdown - Prettier:</strong> 1.8 s</li><li><strong>4 MB Markdown - mdformat:</strong> 3.2 s</li><li><strong>4 MB YAML - Yamark:</strong> 78 ms</li><li><strong>4 MB YAML - yamlfmt:</strong> 190 ms</li><li><strong>4 MB YAML - Deno:</strong> 777 ms</li><li><strong>4 MB YAML - dprint:</strong> 1.1 s</li><li><strong>4 MB YAML - yamlfix:</strong> 7.4 s</li><li><strong>4 MB YAML - Prettier:</strong> 20.1 s (file unchanged)</li><li><strong>4 MB Markdown + front matter - Yamark:</strong> 115 ms (formatted)</li><li><strong>4 MB Markdown + front matter - dprint:</strong> 348 ms (untouched)</li><li><strong>4 MB Markdown + front matter - Deno:</strong> 418 ms (formatted)</li><li><strong>4 MB Markdown + front matter - Prettier:</strong> 1.9 s (formatted)</li><li><strong>4 MB Markdown + front matter - mdformat:</strong> 3.8 s (not preserved)</li><li><strong>4 MB Markdown + front matter - Panache:</strong> 6.7 s (formatted)</li><li><strong>500 YAML files · 50 MB - Yamark:</strong> 158 ms</li><li><strong>500 YAML files · 50 MB - Deno:</strong> 2.3 s</li><li><strong>500 YAML files · 50 MB - dprint:</strong> 2.7 s</li><li><strong>500 YAML files · 50 MB - yamlfmt:</strong> 3.9 s</li><li><strong>500 YAML files · 50 MB - Prettier:</strong> 47.4 s</li><li><strong>500 YAML files · 50 MB - yamlfix:</strong> 183.5 s</li></ul></div>
-<script type="application/json" id="benchmark-full-field-data">[{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Yamark","seconds":0.1126175619428977,"duration":"113 ms","is_yamark":true,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"dprint","seconds":0.3589440209325403,"duration":"359 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Panache","seconds":0.4059670210117474,"duration":"406 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Deno","seconds":0.4075945625081658,"duration":"408 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Prettier","seconds":1.814105249941349,"duration":"1.8 s","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"mdformat","seconds":3.241150583373383,"duration":"3.2 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Yamark","seconds":0.07822704198770225,"duration":"78 ms","is_yamark":true,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"yamlfmt","seconds":0.1900328961201012,"duration":"190 ms","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Deno","seconds":0.7769087500637397,"duration":"777 ms","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"dprint","seconds":1.143036437570117,"duration":"1.1 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"yamlfix","seconds":7.376165624940768,"duration":"7.4 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Prettier","seconds":20.144398229429498,"duration":"20.1 s","is_yamark":false,"outcome":"file unchanged"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Yamark","seconds":0.1145400630775839,"duration":"115 ms","is_yamark":true,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"dprint","seconds":0.3479785829549655,"duration":"348 ms","is_yamark":false,"outcome":"untouched"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Deno","seconds":0.418059729039669,"duration":"418 ms","is_yamark":false,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Prettier","seconds":1.90301912499126,"duration":"1.9 s","is_yamark":false,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"mdformat","seconds":3.832500186981633,"duration":"3.8 s","is_yamark":false,"outcome":"not preserved"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Panache","seconds":6.664456958067603,"duration":"6.7 s","is_yamark":false,"outcome":"formatted"},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Yamark","seconds":0.1578086251392961,"duration":"158 ms","is_yamark":true,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Deno","seconds":2.251173458993435,"duration":"2.3 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"dprint","seconds":2.652126084081829,"duration":"2.7 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"yamlfmt","seconds":3.923564207972959,"duration":"3.9 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Prettier","seconds":47.350564582971856,"duration":"47.4 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"yamlfix","seconds":183.51191100012511,"duration":"183.5 s","is_yamark":false,"outcome":null}]</script>
+<div class="benchmark-chart-fallback"><p>Exact values:</p><ul><li><strong>4 MB Markdown - Yamark:</strong> 117 ms</li><li><strong>4 MB Markdown - dprint:</strong> 378 ms</li><li><strong>4 MB Markdown - Deno:</strong> 412 ms</li><li><strong>4 MB Markdown - Panache:</strong> 417 ms</li><li><strong>4 MB Markdown - Prettier:</strong> 1.9 s</li><li><strong>4 MB Markdown - mdformat:</strong> 3.4 s</li><li><strong>4 MB YAML - Yamark:</strong> 78 ms</li><li><strong>4 MB YAML - yamlfmt:</strong> 196 ms</li><li><strong>4 MB YAML - Deno:</strong> 766 ms</li><li><strong>4 MB YAML - dprint:</strong> 1.2 s</li><li><strong>4 MB YAML - yamlfix:</strong> 7.6 s</li><li><strong>4 MB YAML - Prettier:</strong> 20.6 s (file unchanged)</li><li><strong>4 MB Markdown + front matter - Yamark:</strong> 111 ms (formatted)</li><li><strong>4 MB Markdown + front matter - dprint:</strong> 345 ms (untouched)</li><li><strong>4 MB Markdown + front matter - Deno:</strong> 420 ms (formatted)</li><li><strong>4 MB Markdown + front matter - Prettier:</strong> 1.9 s (formatted)</li><li><strong>4 MB Markdown + front matter - mdformat:</strong> 3.8 s (not preserved)</li><li><strong>4 MB Markdown + front matter - Panache:</strong> 6.5 s (formatted)</li><li><strong>500 YAML files · 50 MB - Yamark:</strong> 181 ms</li><li><strong>500 YAML files · 50 MB - Deno:</strong> 2.5 s</li><li><strong>500 YAML files · 50 MB - dprint:</strong> 3.0 s</li><li><strong>500 YAML files · 50 MB - yamlfmt:</strong> 4.0 s</li><li><strong>500 YAML files · 50 MB - Prettier:</strong> 45.0 s</li><li><strong>500 YAML files · 50 MB - yamlfix:</strong> 176.3 s</li></ul></div>
+<script type="application/json" id="benchmark-full-field-data">[{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Yamark","seconds":0.1168582085520029,"duration":"117 ms","is_yamark":true,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"dprint","seconds":0.3777924790047109,"duration":"378 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Deno","seconds":0.4124717705417424,"duration":"412 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Panache","seconds":0.4173165620304644,"duration":"417 ms","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"Prettier","seconds":1.886349040898494,"duration":"1.9 s","is_yamark":false,"outcome":null},{"workload_id":"markdown","short_workload":"4 MB Markdown","workload_order":1,"formatter":"mdformat","seconds":3.358799333451316,"duration":"3.4 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Yamark","seconds":0.07816008350346237,"duration":"78 ms","is_yamark":true,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"yamlfmt","seconds":0.1964544999646023,"duration":"196 ms","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Deno","seconds":0.7658654995029792,"duration":"766 ms","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"dprint","seconds":1.1645917709684,"duration":"1.2 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"yamlfix","seconds":7.550535458605736,"duration":"7.6 s","is_yamark":false,"outcome":null},{"workload_id":"yaml","short_workload":"4 MB YAML","workload_order":2,"formatter":"Prettier","seconds":20.620182874961756,"duration":"20.6 s","is_yamark":false,"outcome":"file unchanged"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Yamark","seconds":0.110607854090631,"duration":"111 ms","is_yamark":true,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"dprint","seconds":0.3445675210095942,"duration":"345 ms","is_yamark":false,"outcome":"untouched"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Deno","seconds":0.4197737494250759,"duration":"420 ms","is_yamark":false,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Prettier","seconds":1.85313666658476,"duration":"1.9 s","is_yamark":false,"outcome":"formatted"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"mdformat","seconds":3.774733791477047,"duration":"3.8 s","is_yamark":false,"outcome":"not preserved"},{"workload_id":"frontmatter","short_workload":"4 MB Markdown + front matter","workload_order":3,"formatter":"Panache","seconds":6.544588541495614,"duration":"6.5 s","is_yamark":false,"outcome":"formatted"},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Yamark","seconds":0.1807032499928027,"duration":"181 ms","is_yamark":true,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Deno","seconds":2.478343124967068,"duration":"2.5 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"dprint","seconds":2.958234000019729,"duration":"3.0 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"yamlfmt","seconds":4.031520792050287,"duration":"4.0 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"Prettier","seconds":44.952759457984939,"duration":"45.0 s","is_yamark":false,"outcome":null},{"workload_id":"directory","short_workload":"500 YAML files · 50 MB","workload_order":4,"formatter":"yamlfix","seconds":176.27065745787695,"duration":"176.3 s","is_yamark":false,"outcome":null}]</script>
 </figure>
 
 ## Detailed results
@@ -95,33 +95,33 @@ RSS is the median across measured runs.
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 113 ms </td>
-   <td style="text-align:right;"> 12.5 MB </td>
+   <td style="text-align:right;"> 117 ms </td>
+   <td style="text-align:right;"> 12.7 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-markdown </td>
-   <td style="text-align:right;"> 359 ms </td>
-   <td style="text-align:right;"> 166.3 MB </td>
-  </tr>
-  <tr>
-   <td style="text-align:left;"> panache </td>
-   <td style="text-align:right;"> 406 ms </td>
-   <td style="text-align:right;"> 31.9 MB </td>
+   <td style="text-align:right;"> 378 ms </td>
+   <td style="text-align:right;"> 172.8 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 408 ms </td>
-   <td style="text-align:right;"> 329.4 MB </td>
+   <td style="text-align:right;"> 412 ms </td>
+   <td style="text-align:right;"> 482.7 MB </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> panache </td>
+   <td style="text-align:right;"> 417 ms </td>
+   <td style="text-align:right;"> 32.2 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 1.8 s </td>
-   <td style="text-align:right;"> 584.9 MB </td>
+   <td style="text-align:right;"> 1.9 s </td>
+   <td style="text-align:right;"> 596.2 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> mdformat </td>
-   <td style="text-align:right;"> 3.2 s </td>
-   <td style="text-align:right;"> 152.9 MB </td>
+   <td style="text-align:right;"> 3.4 s </td>
+   <td style="text-align:right;"> 152.5 MB </td>
   </tr>
 </tbody>
 </table>
@@ -143,32 +143,32 @@ block scalars, and comments. Same procedure as the Markdown comparison.
   <tr>
    <td style="text-align:left;"> yamark </td>
    <td style="text-align:right;"> 78 ms </td>
-   <td style="text-align:right;"> 51.3 MB </td>
+   <td style="text-align:right;"> 51.7 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfmt </td>
-   <td style="text-align:right;"> 190 ms </td>
-   <td style="text-align:right;"> 298.2 MB </td>
+   <td style="text-align:right;"> 196 ms </td>
+   <td style="text-align:right;"> 302.8 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 777 ms </td>
-   <td style="text-align:right;"> 140.2 MB </td>
+   <td style="text-align:right;"> 766 ms </td>
+   <td style="text-align:right;"> 142.0 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-yaml </td>
-   <td style="text-align:right;"> 1.1 s </td>
-   <td style="text-align:right;"> 118.3 MB </td>
+   <td style="text-align:right;"> 1.2 s </td>
+   <td style="text-align:right;"> 118.7 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfix </td>
-   <td style="text-align:right;"> 7.4 s </td>
-   <td style="text-align:right;"> 264.0 MB </td>
+   <td style="text-align:right;"> 7.6 s </td>
+   <td style="text-align:right;"> 269.9 MB </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 20.1 s </td>
-   <td style="text-align:right;"> 1061.2 MB </td>
+   <td style="text-align:right;"> 20.6 s </td>
+   <td style="text-align:right;"> 1024.3 MB </td>
   </tr>
 </tbody>
 </table>
@@ -194,38 +194,38 @@ preserved** (broke the delimiters).
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 115 ms </td>
-   <td style="text-align:right;"> 15.0 MB </td>
+   <td style="text-align:right;"> 111 ms </td>
+   <td style="text-align:right;"> 15.2 MB </td>
    <td style="text-align:center;"> formatted </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-markdown </td>
-   <td style="text-align:right;"> 348 ms </td>
-   <td style="text-align:right;"> 166.5 MB </td>
+   <td style="text-align:right;"> 345 ms </td>
+   <td style="text-align:right;"> 173.0 MB </td>
    <td style="text-align:center;"> untouched </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 418 ms </td>
-   <td style="text-align:right;"> 318.7 MB </td>
+   <td style="text-align:right;"> 420 ms </td>
+   <td style="text-align:right;"> 585.3 MB </td>
    <td style="text-align:center;"> formatted </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
    <td style="text-align:right;"> 1.9 s </td>
-   <td style="text-align:right;"> 579.7 MB </td>
+   <td style="text-align:right;"> 585.7 MB </td>
    <td style="text-align:center;"> formatted </td>
   </tr>
   <tr>
    <td style="text-align:left;"> mdformat </td>
    <td style="text-align:right;"> 3.8 s </td>
-   <td style="text-align:right;"> 179.2 MB </td>
+   <td style="text-align:right;"> 180.1 MB </td>
    <td style="text-align:center;"> not preserved </td>
   </tr>
   <tr>
    <td style="text-align:left;"> panache </td>
-   <td style="text-align:right;"> 6.7 s </td>
-   <td style="text-align:right;"> 39.8 MB </td>
+   <td style="text-align:right;"> 6.5 s </td>
+   <td style="text-align:right;"> 40.9 MB </td>
    <td style="text-align:center;"> formatted </td>
   </tr>
 </tbody>
@@ -256,33 +256,33 @@ itself. Every run uses a fresh copy and is verified to reformat all
 <tbody>
   <tr>
    <td style="text-align:left;"> yamark </td>
-   <td style="text-align:right;"> 0.158 s </td>
-   <td style="text-align:right;"> 1.245 s </td>
+   <td style="text-align:right;"> 0.181 s </td>
+   <td style="text-align:right;"> 1.226 s </td>
   </tr>
   <tr>
    <td style="text-align:left;"> deno-fmt </td>
-   <td style="text-align:right;"> 2.251 s </td>
-   <td style="text-align:right;"> 32.639 s </td>
+   <td style="text-align:right;"> 2.478 s </td>
+   <td style="text-align:right;"> 33.541 s </td>
   </tr>
   <tr>
    <td style="text-align:left;"> dprint-yaml </td>
-   <td style="text-align:right;"> 2.652 s </td>
-   <td style="text-align:right;"> 36.987 s </td>
+   <td style="text-align:right;"> 2.958 s </td>
+   <td style="text-align:right;"> 39.450 s </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfmt </td>
-   <td style="text-align:right;"> 3.924 s </td>
-   <td style="text-align:right;"> 4.318 s </td>
+   <td style="text-align:right;"> 4.032 s </td>
+   <td style="text-align:right;"> 4.431 s </td>
   </tr>
   <tr>
    <td style="text-align:left;"> prettier </td>
-   <td style="text-align:right;"> 47.351 s </td>
-   <td style="text-align:right;"> 73.560 s </td>
+   <td style="text-align:right;"> 44.953 s </td>
+   <td style="text-align:right;"> 67.189 s </td>
   </tr>
   <tr>
    <td style="text-align:left;"> yamlfix </td>
-   <td style="text-align:right;"> 183.512 s </td>
-   <td style="text-align:right;"> 181.431 s </td>
+   <td style="text-align:right;"> 176.271 s </td>
+   <td style="text-align:right;"> 175.446 s </td>
   </tr>
 </tbody>
 </table>
@@ -313,13 +313,13 @@ Autofixing linters (`pymarkdown`, `markdownlint-cli2`) are outside this
 formatter-CLI comparison. The harness can still run them with `--tools`.
 
 Measured on a MacBook Pro (Apple M4 Max, macOS arm64) using the published PyPI release
-Yamark `0.2.1`, built from commit
-`fd88cdd90e20`.
-Tool versions: `yamark 0.2.1`, `deno 2.9.4 (stable, release, aarch64-apple-darwin)`, `dprint 0.55.2`, `yamlfmt 0.21.0 (Homebrew)`, `prettier 3.8.3`, `yamlfix 1.19.1`, `panache 2.46.0`, `mdformat 1.0.0`.
+Yamark `0.3.0`, built from commit
+`2518d01011b3`.
+Tool versions: `yamark 0.3.0`, `deno 2.9.5 (stable, release, aarch64-apple-darwin)`, `dprint 0.55.2`, `yamlfmt 0.21.0 (Homebrew)`, `prettier 3.8.3`, `yamlfix 1.19.1`, `panache 2.46.0`, `mdformat 1.0.0`.
 
 The tables use the latest complete checked-in
-[single-file results](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/big/fd88cdd90e20cecab0ca260a7145d18e17c66b6f.json) and
-[directory results](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/yaml/fd88cdd90e20cecab0ca260a7145d18e17c66b6f.json). The artifacts
+[single-file results](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/big/2518d01011b394031bf48f3f8f6b312d48c8deda.json) and
+[directory results](https://github.com/t-kalinowski/yamark/blob/main/docs/benchmarks/yaml/2518d01011b394031bf48f3f8f6b312d48c8deda.json). The artifacts
 record the full per-run timings, output hashes, git commit, and host details. A
 table renders only when every tool in its roster completes the benchmark.
 
