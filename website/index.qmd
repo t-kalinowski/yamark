@@ -87,29 +87,31 @@ Format nested YAML and Markdown inside fenced blocks.
 
 ## A quick example
 
-Here is a Markdown file with YAML front matter, a long paragraph, and a nested
-list. Yamark formats the YAML and Markdown in one pass. The first pane shows the
-input; the second shows what `yamark format` writes back.
+A short Markdown file with YAML front matter - a native document format for LLM
+work. It combines software-readable structure with natural language for prompts,
+skills, reference documents, and generated output. The Before pane shows the
+unformatted source; the After pane shows what `yamark format` writes back.
 
 ```{cat}
 #| label: example-text
 #| include: false
 ---
 title: Why YAML + Markdown?
-description: Structured fields for software alongside prose, instructions, examples, and code for readers.
-tags: [documentation,configuration,formatting]
+description: The source languages of LLM work - structured fields for tools alongside instructions, examples, and context for models.
+tags: [llm,authoring,formats]
 ---
 
 #   Why YAML + Markdown? ##
 
-YAML front matter and a Markdown body let one file serve readers and software. The front matter carries fields a program can inspect; the body carries prose that people can edit and review in a diff.
+When LLMs become part of a software system, YAML and Markdown start to feel like programming languages. YAML defines named fields tools can act on; Markdown carries the instructions, examples, and context that shape model behavior. Together they create a shared source file that stays readable to people and models, exposes explicit structure to software, produces clear diffs, and renders directly.
 
-This shape is useful for:
+Where the combination shines:
 
-- Repository documents that need to render for readers and remain easy for tools to inspect.
-  - The body can carry examples and nested Markdown structures.
-- Prompts and agent instructions where metadata sits next to free-form text.
-- Text that moves between documentation, configuration, and tool input without a separate source format.
+- Agent skills and prompt files keep names, versions, and tool metadata beside the instructions they describe.
+  - The Markdown body can carry code samples and nested structures with their own syntax and indentation.
+- Reference documents stay readable to authors and models without a separate source format or build step.
+- Tool inputs and model outputs survive chat, Git, and documentation pipelines as recognizable text.
+- One source can render as HTML or PDF and travel unchanged as agent context.
 ```
 
 ```{r}

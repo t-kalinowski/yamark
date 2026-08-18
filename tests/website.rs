@@ -701,7 +701,7 @@ fn website_includes_homepage_and_examples_content() {
     assert!(!index.contains("Markdown and YAML are source files too."));
     assert!(!index.contains("they hold documentation, configuration"));
     assert!(index_prose.contains(
-        "Here is a Markdown file with YAML front matter, a long paragraph, and a nested list. Yamark formats the YAML and Markdown in one pass. The first pane shows the input; the second shows what `yamark format` writes back."
+        "A short Markdown file with YAML front matter - a native document format for LLM work. It combines software-readable structure with natural language for prompts, skills, reference documents, and generated output."
     ));
     assert!(!index.contains("YAML and Markdown often share a file."));
     assert!(index.contains("**Recurse**"));
@@ -709,18 +709,18 @@ fn website_includes_homepage_and_examples_content() {
     assert!(!index.contains("### Nested content"));
     assert!(!index.contains("**Dispatch**"));
     assert!(!index.contains("### Nested formatters"));
-    assert!(!index.contains("language models"));
+    assert!(index.contains("source languages of LLM work"));
     assert!(!index.contains("hero-coverage"));
     assert!(index.contains("## A quick example"));
     assert!(index.contains("Toggle soft wrap on the Before pane"));
     assert!(index.contains("title: Why YAML + Markdown?"));
     assert!(index.contains(
-        "The front matter carries fields a program can inspect; the body carries prose that people can edit and review in a diff."
+        "When LLMs become part of a software system, YAML and Markdown start to feel like programming languages."
     ));
-    assert!(
-        index
-            .contains("Prompts and agent instructions where metadata sits next to free-form text.")
-    );
+    assert!(index.contains(
+        "YAML defines named fields tools can act on; Markdown carries the instructions, examples, and context that shape model behavior."
+    ));
+    assert!(index.contains("Reference documents stay readable to authors and models"));
     assert!(!index.contains("## The pitch"));
 
     assert!(examples.contains("### Markdown in YAML {#markdown-valued-yaml-scalars}"));
