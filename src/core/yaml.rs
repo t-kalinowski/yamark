@@ -5799,9 +5799,10 @@ fn emit_yaml_scalar_plan_output_into(
                 .or_else(|| block_scalar_body_indent(source.slice(body)))
         {
             if source_indent == body_indent {
-                // Indentation-only blank lines are semantically empty, so keep
-                // the source body instead of rebuilding otherwise identical text.
-                output.push_str(source.slice(body));
+                output.push_str(&normalize_nontrailing_block_scalar_blank_lines(
+                    source.slice(body),
+                    source_indent,
+                ));
             } else {
                 output.push_str(&reindent_block_lines(
                     source.slice(body),
@@ -6730,6 +6731,32 @@ fn block_scalar_body_indent(body: &str) -> Option<usize> {
     body.split(['\r', '\n'])
         .find(|line| !line.trim_ascii().is_empty())
         .map(|line| line.bytes().take_while(|byte| *byte == b' ').count())
+}
+
+fn normalize_nontrailing_block_scalar_blank_lines(body: &str, indent: usize) -> Cow<'_, str> {
+    let mut content_end = 0;
+    let mut offset = 0;
+    for line in body.split_inclusive(['\r', '\n']) {
+        offset += line.len();
+        let (line_body, _) = strip_newline(line);
+        if line_body.trim_ascii().is_empty() {
+            continue;
+        }
+        if line_body.bytes().take_while(|byte| *byte == b' ').count() < indent {
+            break;
+        }
+        content_end = offset;
+    }
+    let content = &body[..content_end];
+    let needs_normalizing = content.split(['\r', '\n']).any(|line| {
+        !line.is_empty() && line.len() <= indent && line.bytes().all(|byte| byte == b' ')
+    });
+    if !needs_normalizing {
+        return Cow::Borrowed(body);
+    }
+    let mut output = reindent_block_lines(content, indent, indent);
+    output.push_str(&body[content_end..]);
+    Cow::Owned(output)
 }
 
 fn reindent_block_lines(body: &str, strip_indent: usize, emit_indent: usize) -> String {

@@ -4713,6 +4713,16 @@ fn yaml_root_block_scalars_preserve_exact_content() {
 }
 
 #[test]
+fn yaml_block_scalar_removes_indentation_from_blank_lines() {
+    let input = concat!("text: |-\n", "  \n", "  [running]\n");
+    let expected = concat!("text: |-\n", "\n", "  [running]\n");
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn yaml_unsupported_implicit_block_scalar_indent_is_preserved() {
     let input = concat!(
         "text: |-\n",
