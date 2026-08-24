@@ -1,3 +1,4 @@
+const { createHash } = require("node:crypto");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
@@ -22,11 +23,16 @@ const NATIVE_PREVIEW_EXTENSIONS = new Set([
   ".r",
 ]);
 
+function contentDigest(input) {
+  return createHash("sha256").update(input).digest("base64");
+}
+
 function createYamarkExtension(vscode, runtime = {}) {
   const runProcess = runtime.runProcess || runProcessWithSpawn;
   const platform = runtime.platform || process.platform;
   const arch = runtime.arch || process.arch;
   const logger = runtime.logger || createNullLogger();
+  const watchPath = runtime.watchPath;
   let extensionRoot = runtime.extensionRoot;
   let providerDisposable;
   let providerSuppressionDepth = 0;
@@ -257,6 +263,7 @@ function createYamarkExtension(vscode, runtime = {}) {
           sourceUri,
           sourcePath,
           request.uri,
+          contentDigest(input),
         );
         if (watch && sourceDocument.isDirty !== true) {
           await catchUpLiveJsonPreview(watch, input);
@@ -312,13 +319,20 @@ function createYamarkExtension(vscode, runtime = {}) {
     return output;
   }
 
-  function watchLiveJsonPreview(sourceDocument, sourceUri, sourcePath, previewUri) {
+  function watchLiveJsonPreview(
+    sourceDocument,
+    sourceUri,
+    sourcePath,
+    previewUri,
+    projectedDigest,
+  ) {
     if (!LIVE_JSON_PREVIEW_EXTENSIONS.has(path.extname(sourcePath).toLowerCase())) {
       return undefined;
     }
     const key = previewUri.toString();
     const existing = liveJsonPreviewWatches.get(key);
     if (existing) {
+      existing.projectedDigest = projectedDigest;
       return existing;
     }
     const watcher = vscode.workspace.createFileSystemWatcher(
@@ -329,6 +343,7 @@ function createYamarkExtension(vscode, runtime = {}) {
     );
     const state = {
       key,
+      projectedDigest,
       refreshPromise: undefined,
       refreshRequested: false,
       sourceDocument: {
@@ -338,10 +353,34 @@ function createYamarkExtension(vscode, runtime = {}) {
       },
       sourcePath,
       sourceUri,
+      subscriptions: [],
       watcher,
     };
-    state.subscription = watcher.onDidChange(() => scheduleLiveJsonPreviewRefresh(state));
     liveJsonPreviewWatches.set(key, state);
+    state.subscriptions.push(
+      watcher.onDidChange(() => scheduleLiveJsonPreviewRefresh(state)),
+      vscode.workspace.onDidChangeTextDocument((event) => {
+        if (
+          event.document.isDirty !== true &&
+          event.document.uri.toString() === state.sourceUri.toString()
+        ) {
+          return scheduleLiveJsonPreviewRefresh(state);
+        }
+      }),
+    );
+    if (watchPath) {
+      try {
+        state.pathWatcher = watchPath(sourcePath, () =>
+          scheduleLiveJsonPreviewRefresh(state),
+        );
+        state.pathWatcher.on("error", (err) => {
+          logger.error(`live JSON preview watch failed: ${errorMessage(err)}`);
+        });
+      } catch (err) {
+        disposeLiveJsonPreviewWatch(key);
+        throw err;
+      }
+    }
     return state;
   }
 
@@ -378,8 +417,14 @@ function createYamarkExtension(vscode, runtime = {}) {
     const op = logger.startOp("to-yaml");
     try {
       const bytes = await vscode.workspace.fs.readFile(state.sourceUri);
+      const digest = contentDigest(bytes);
+      if (digest === state.projectedDigest) {
+        finishFormattedPreviewRequest(request);
+        op.end(`done published=false reason=unchanged input.bytes=${bytes.length}`);
+        return;
+      }
       const input = Buffer.from(bytes).toString("utf8");
-      op.log(documentLogLine(state.sourceDocument, "file-change"));
+      op.log(documentLogLine(state.sourceDocument, "source-change"));
       const output = await jsonToYamlTextWithYamark(
         vscode,
         runProcess,
@@ -389,6 +434,9 @@ function createYamarkExtension(vscode, runtime = {}) {
         { arch, extensionRoot, platform },
       );
       const published = await publishFormattedPreview(request, output, { reveal: false });
+      if (published) {
+        state.projectedDigest = digest;
+      }
       op.end(
         `done published=${published} output.bytes=${Buffer.byteLength(output, "utf8")}`,
       );
@@ -405,7 +453,12 @@ function createYamarkExtension(vscode, runtime = {}) {
     }
     liveJsonPreviewWatches.delete(key);
     state.refreshRequested = false;
-    state.subscription.dispose();
+    for (const subscription of state.subscriptions) {
+      subscription.dispose();
+    }
+    if (state.pathWatcher) {
+      state.pathWatcher.close();
+    }
     state.watcher.dispose();
   }
 

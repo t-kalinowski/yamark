@@ -384,6 +384,7 @@ test("JSONL YAML preview refreshes after its source file is appended", async () 
     "jsonl",
   );
   const calls = [];
+  let directFileChange;
   const vscode = fakeVscode({ documents: [source] });
   source.uri = vscode.Uri.file(source.fileName);
   const api = createYamarkExtension(vscode, {
@@ -392,6 +393,16 @@ test("JSONL YAML preview refreshes after its source file is appended", async () 
       return call.input.includes('"id":2')
         ? "---\nid: 1\n---\nid: 2\n"
         : "---\nid: 1\n";
+    },
+    watchPath: (sourcePath, onChange) => {
+      assert.equal(sourcePath, "/tmp/events.jsonl");
+      directFileChange = onChange;
+      return {
+        close() {},
+        on() {
+          return this;
+        },
+      };
     },
   });
   api.activate({ extensionPath: "/extension", subscriptions: [] });
@@ -405,7 +416,7 @@ test("JSONL YAML preview refreshes after its source file is appended", async () 
 
   vscode.workspace.closeTextDocument(source);
   source.text += '{"id":2}\n';
-  await vscode.workspace.fireFileChange(source.uri);
+  await directFileChange();
 
   assert.deepEqual(calls.map((call) => call.input), [
     '{"id":1}\n',
@@ -416,6 +427,57 @@ test("JSONL YAML preview refreshes after its source file is appended", async () 
   assert.equal(
     await provider.provideTextDocumentContent(previewUri),
     "---\nid: 1\n---\nid: 2\n",
+  );
+});
+
+test("JSONL YAML preview refreshes when its open source reloads from disk", async () => {
+  const source = fakeDocument(
+    "/tmp/events.jsonl",
+    '{"id":1}\n',
+    "jsonl",
+    { isDirty: false, version: 1 },
+  );
+  const calls = [];
+  const vscode = fakeVscode({ documents: [source] });
+  source.uri = vscode.Uri.file(source.fileName);
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      calls.push(call);
+      if (call.input.includes('"id":3')) {
+        return "---\nid: 1\n---\nid: 3\n";
+      }
+      return call.input.includes('"id":2')
+        ? "---\nid: 1\n---\nid: 2\n"
+        : "---\nid: 1\n";
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  await vscode.commands.executeCommand("yamark.openJsonAsYaml", source.uri);
+  const provider =
+    vscode.workspace.registeredTextDocumentContentProviders.get("yamark-preview");
+  const previewUri = vscode.window.shownTextDocuments[0].document.uri;
+
+  await vscode.workspace.reloadTextDocumentFromDisk(
+    source,
+    source.text + '{"id":2}\n',
+  );
+  assert.deepEqual(calls.map((call) => call.input), [
+    '{"id":1}\n',
+    '{"id":1}\n{"id":2}\n',
+  ]);
+
+  await vscode.workspace.fireFileChange(source.uri);
+  assert.equal(calls.length, 2);
+
+  await vscode.workspace.reloadTextDocumentFromDisk(
+    source,
+    source.text.replace('"id":2', '"id":3'),
+  );
+  assert.equal(calls.length, 3);
+  assert.equal(
+    await provider.provideTextDocumentContent(previewUri),
+    "---\nid: 1\n---\nid: 3\n",
   );
 });
 
@@ -663,6 +725,7 @@ test("formatted preview provider only reads cached output", async () => {
 test("closing and reopening a live JSONL preview uses current source text", async () => {
   const source = fakeDocument("/tmp/data.jsonl", '{"answer":42}\n', "jsonl");
   const calls = [];
+  let directWatchClosed = false;
   const vscode = fakeVscode({ documents: [source] });
   source.uri = vscode.Uri.file(source.fileName);
   const api = createYamarkExtension(vscode, {
@@ -672,6 +735,14 @@ test("closing and reopening a live JSONL preview uses current source text", asyn
         ? "---\nanswer: 42\n---\nanswer: 43\n"
         : "answer: 42\n";
     },
+    watchPath: () => ({
+      close() {
+        directWatchClosed = true;
+      },
+      on() {
+        return this;
+      },
+    }),
   });
   api.activate({ extensionPath: "/extension", subscriptions: [] });
 
@@ -687,6 +758,7 @@ test("closing and reopening a live JSONL preview uses current source text", asyn
   );
 
   await vscode.window.closeTextDocumentTab(previewDocument);
+  assert.equal(directWatchClosed, true);
   source.text += '{"answer":43}\n';
   await vscode.workspace.fireFileChange(source.uri);
   assert.equal(calls.length, 1);
@@ -1963,6 +2035,7 @@ function fakeVscode(options = {}) {
       return `${this.scheme}://${this.authority}${this.path}${query}`;
     }
   }
+  const didChangeTextDocument = new EventEmitter();
   const didCloseTextDocument = new EventEmitter();
   const didChangeTabs = new EventEmitter();
   const fileSystemWatchers = [];
@@ -2148,6 +2221,7 @@ function fakeVscode(options = {}) {
         };
       },
       onDidChangeConfiguration: () => disposable(),
+      onDidChangeTextDocument: didChangeTextDocument.event,
       onDidCloseTextDocument: didCloseTextDocument.event,
       createFileSystemWatcher: (
         globPattern,
@@ -2193,6 +2267,17 @@ function fakeVscode(options = {}) {
           }
           return Buffer.from(document.getText(), "utf8");
         },
+      },
+      reloadTextDocumentFromDisk: async (document, text) => {
+        document.text = text;
+        document.version = (document.version || 0) + 1;
+        document.isDirty = false;
+        await Promise.all(
+          didChangeTextDocument.fire({
+            contentChanges: [{ text }],
+            document,
+          }),
+        );
       },
       openTextDocument: async (target) => {
         if (target && typeof target.getText === "function") {
