@@ -49,8 +49,10 @@ Right-click a supported file in the Explorer or its editor tab. Use
 Document, including the configured next formatter, but opens the final text
 instead of applying an edit. `Yamark: View JSON as YAML` sends the current
 editor buffer to `yamark to-yaml` and opens the resulting YAML. Both commands
-include unsaved source edits, do not change the source or create a temporary
-file, and refresh only when run again.
+include unsaved source edits in the initial view and do not change the source
+or create a temporary file. JSONL and NDJSON views then follow the source file
+on disk and refresh the same read-only view as records are appended. Other
+previews refresh only when run again.
 
 JSON-family previews use YAML syntax highlighting. JSONC and JSON5 comments
 become YAML comments. Each JSONL or NDJSON record becomes one document in a

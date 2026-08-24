@@ -170,10 +170,14 @@ Use `Yamark: View JSON as YAML` for JSON, JSONC, JSON5, JSONL, and NDJSON.
 `Yamark: Preview Format Document` runs the same formatting stages as Format
 Document, including the configured next formatter, and opens the final text
 instead of applying it. `Yamark: View JSON as YAML` runs `yamark to-yaml` only.
-Both commands use the current editor buffer and open a read-only snapshot
+Both commands use the current editor buffer and open a read-only view
 without changing the source or creating a temporary file. Unsaved edits are
-included. Run the command again to refresh the same preview; source edits do
-not refresh it automatically.
+included in the initial view. JSONL and NDJSON views then follow the source
+file on disk, updating the same preview as records are appended without
+reopening or focusing the tab. Changes that arrive during a projection are
+coalesced into one follow-up refresh. If an append temporarily leaves an
+incomplete record, Yamark keeps the last successful output and retries after
+the source changes again. Run the command again to refresh other previews.
 
 JSON-family previews use YAML syntax highlighting. JSONC and JSON5 comments
 become YAML comments. Each JSONL or NDJSON record becomes one YAML stream

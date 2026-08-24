@@ -11,6 +11,7 @@ const JSON_PREVIEW_EXTENSIONS = new Set([
   ".jsonc",
   ".json5",
 ]);
+const LIVE_JSON_PREVIEW_EXTENSIONS = new Set([".jsonl", ".ndjson"]);
 const NATIVE_PREVIEW_EXTENSIONS = new Set([
   ".md",
   ".qmd",
@@ -34,6 +35,7 @@ function createYamarkExtension(vscode, runtime = {}) {
   const formattedPreviewDocumentChanged = new vscode.EventEmitter();
   const formattedPreviewDocuments = new Map();
   const formattedPreviewRequests = new Map();
+  const liveJsonPreviewWatches = new Map();
   const gitFilterDocumentChanged = new vscode.EventEmitter();
   const gitFilterRepositoryWatches = new Map();
 
@@ -235,6 +237,7 @@ function createYamarkExtension(vscode, runtime = {}) {
     );
     const sourceDocument = await vscode.workspace.openTextDocument(sourceUri);
     const sourcePath = documentPath(sourceDocument);
+    const input = sourceDocument.getText();
     const request = beginFormattedPreviewRequest(sourceUri, sourcePath);
     const op = logger.startOp("to-yaml");
     try {
@@ -243,11 +246,22 @@ function createYamarkExtension(vscode, runtime = {}) {
         vscode,
         runProcess,
         sourceDocument,
-        sourceDocument.getText(),
+        input,
         op,
         { arch, extensionRoot, platform },
       );
       const published = await publishFormattedPreview(request, output);
+      if (published) {
+        const watch = watchLiveJsonPreview(
+          sourceDocument,
+          sourceUri,
+          sourcePath,
+          request.uri,
+        );
+        if (watch && sourceDocument.isDirty !== true) {
+          await catchUpLiveJsonPreview(watch, input);
+        }
+      }
       op.end(
         `done published=${published} output.bytes=${Buffer.byteLength(output, "utf8")}`,
       );
@@ -272,7 +286,7 @@ function createYamarkExtension(vscode, runtime = {}) {
     }
   }
 
-  async function publishFormattedPreview(request, output) {
+  async function publishFormattedPreview(request, output, options = {}) {
     if (formattedPreviewRequests.get(request.key) !== request.id) {
       return false;
     }
@@ -281,6 +295,9 @@ function createYamarkExtension(vscode, runtime = {}) {
     formattedPreviewDocuments.set(request.key, output);
     if (refresh) {
       formattedPreviewDocumentChanged.fire(request.uri);
+    }
+    if (options.reveal === false) {
+      return true;
     }
     const previewDocument = await vscode.workspace.openTextDocument(request.uri);
     await vscode.window.showTextDocument(previewDocument, { preview: true });
@@ -293,6 +310,130 @@ function createYamarkExtension(vscode, runtime = {}) {
       throw new Error("Yamark formatted preview expired; reopen it from the source file");
     }
     return output;
+  }
+
+  function watchLiveJsonPreview(sourceDocument, sourceUri, sourcePath, previewUri) {
+    if (!LIVE_JSON_PREVIEW_EXTENSIONS.has(path.extname(sourcePath).toLowerCase())) {
+      return undefined;
+    }
+    const key = previewUri.toString();
+    const existing = liveJsonPreviewWatches.get(key);
+    if (existing) {
+      return existing;
+    }
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(sourceUri, "*"),
+      true,
+      false,
+      true,
+    );
+    const state = {
+      key,
+      refreshPromise: undefined,
+      refreshRequested: false,
+      sourceDocument: {
+        fileName: sourcePath,
+        languageId: sourceDocument.languageId,
+        uri: sourceUri,
+      },
+      sourcePath,
+      sourceUri,
+      watcher,
+    };
+    state.subscription = watcher.onDidChange(() => scheduleLiveJsonPreviewRefresh(state));
+    liveJsonPreviewWatches.set(key, state);
+    return state;
+  }
+
+  async function catchUpLiveJsonPreview(state, initialInput) {
+    try {
+      const bytes = await vscode.workspace.fs.readFile(state.sourceUri);
+      if (Buffer.from(bytes).toString("utf8") !== initialInput) {
+        await scheduleLiveJsonPreviewRefresh(state);
+      }
+    } catch (err) {
+      logger.error(`live JSON preview catch-up failed: ${errorMessage(err)}`);
+    }
+  }
+
+  function scheduleLiveJsonPreviewRefresh(state) {
+    state.refreshRequested = true;
+    if (!state.refreshPromise) {
+      state.refreshPromise = refreshLiveJsonPreview(state).finally(() => {
+        state.refreshPromise = undefined;
+      });
+    }
+    return state.refreshPromise;
+  }
+
+  async function refreshLiveJsonPreview(state) {
+    while (state.refreshRequested && liveJsonPreviewWatches.get(state.key) === state) {
+      state.refreshRequested = false;
+      await refreshLiveJsonPreviewOnce(state);
+    }
+  }
+
+  async function refreshLiveJsonPreviewOnce(state) {
+    const request = beginFormattedPreviewRequest(state.sourceUri, state.sourcePath);
+    const op = logger.startOp("to-yaml");
+    try {
+      const bytes = await vscode.workspace.fs.readFile(state.sourceUri);
+      const input = Buffer.from(bytes).toString("utf8");
+      op.log(documentLogLine(state.sourceDocument, "file-change"));
+      const output = await jsonToYamlTextWithYamark(
+        vscode,
+        runProcess,
+        state.sourceDocument,
+        input,
+        op,
+        { arch, extensionRoot, platform },
+      );
+      const published = await publishFormattedPreview(request, output, { reveal: false });
+      op.end(
+        `done published=${published} output.bytes=${Buffer.byteLength(output, "utf8")}`,
+      );
+    } catch (err) {
+      finishFormattedPreviewRequest(request);
+      op.error(err);
+    }
+  }
+
+  function disposeLiveJsonPreviewWatch(key) {
+    const state = liveJsonPreviewWatches.get(key);
+    if (!state) {
+      return;
+    }
+    liveJsonPreviewWatches.delete(key);
+    state.refreshRequested = false;
+    state.subscription.dispose();
+    state.watcher.dispose();
+  }
+
+  function disposeFormattedPreview(uri) {
+    const key = uri.toString();
+    formattedPreviewDocuments.delete(key);
+    stopFormattedPreview(uri);
+  }
+
+  function stopFormattedPreview(uri) {
+    const key = uri.toString();
+    formattedPreviewRequests.delete(key);
+    disposeLiveJsonPreviewWatch(key);
+  }
+
+  function formattedPreviewTabUri(tab) {
+    const uri = tab && tab.input && tab.input.uri;
+    return uri && uri.scheme === FORMATTED_PREVIEW_DOCUMENT_SCHEME ? uri : undefined;
+  }
+
+  function hasFormattedPreviewTab(uri) {
+    const key = uri.toString();
+    return vscode.window.tabGroups.all.some((group) =>
+      group.tabs.some((tab) => {
+        const tabUri = formattedPreviewTabUri(tab);
+        return tabUri && tabUri.toString() === key;
+      }),
+    );
   }
 
   async function openGitFilterDiff(resource) {
@@ -361,10 +502,27 @@ function createYamarkExtension(vscode, runtime = {}) {
     context.subscriptions.push(
       vscode.workspace.onDidCloseTextDocument((document) => {
         if (isFormattedPreviewDocument(document)) {
-          formattedPreviewDocuments.delete(document.uri.toString());
+          disposeFormattedPreview(document.uri);
         }
       }),
     );
+    context.subscriptions.push(
+      vscode.window.tabGroups.onDidChangeTabs((event) => {
+        for (const tab of event.closed) {
+          const uri = formattedPreviewTabUri(tab);
+          if (uri && !hasFormattedPreviewTab(uri)) {
+            stopFormattedPreview(uri);
+          }
+        }
+      }),
+    );
+    context.subscriptions.push({
+      dispose() {
+        for (const key of liveJsonPreviewWatches.keys()) {
+          disposeLiveJsonPreviewWatch(key);
+        }
+      },
+    });
     context.subscriptions.push({
       dispose() {
         for (const watch of gitFilterRepositoryWatches.values()) {
