@@ -308,9 +308,12 @@ fn release_process_uses_pending_curated_notes() {
     assert!(release_guide.contains("holds the pending notes for the next release"));
     assert!(release_guide.contains("Reset `RELEASE_NOTES.md` to its pending placeholder"));
     if package_version.ends_with("+dev") {
+        // Pending notes accumulate below the placeholder during development.
         assert_eq!(
-            release_notes,
-            "<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->\n"
+            release_notes.lines().next(),
+            Some(
+                "<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->"
+            )
         );
     } else {
         assert!(release_notes.starts_with(&format!("Yamark {package_version} ")));
