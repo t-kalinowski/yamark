@@ -7,8 +7,8 @@ cd "$repo_root"
 
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test
-uv run external-tests/run.py --serial
+uv run --upgrade --isolated --no-project --with ruff --with py-yaml12 -- cargo test
+uv run --upgrade external-tests/run.py --serial
 (
   cd editors/vscode
   npm test

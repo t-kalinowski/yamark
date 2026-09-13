@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#   "ruff",
 #   "py-yaml12>=0.2.0",
 #   "pytest>=9.1.1",
 #   "pytest-xdist>=3.8.0",

@@ -41,7 +41,7 @@ jobs:
 
       - name: Install example formatters
         run: |
-          uv tool install ruff==0.16.7
+          uv tool install ruff@latest
           uv tool dir --bin >> "$GITHUB_PATH"
           npm install --global prettier@3.9.6
 
