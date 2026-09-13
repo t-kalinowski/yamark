@@ -72,6 +72,26 @@ PANDOC_TABLE_CASES = [
         "simple-table-emoji-header",
         "👩‍💻  Bée  End\n----  ---  ---\none   two  end",
     ),
+    ("simple-table-tabs", "A\tB\n---\t---\nx\ty"),
+    ("simple-table-tabs-spaced-border", "A\tB\n--- ---\nx\ty"),
+    ("simple-table-consecutive-tabs", "A\t\tB\n---\t\t---\nx\t\ty"),
+    ("simple-table-tab-after-wide-characters", "漢字\tB\n---\t----\n甲\t乙"),
+    ("simple-table-tab-after-combining-mark", "e\u0301\tB\n---\t---\nx\ty"),
+    ("simple-table-headerless-tabs", "---\t---\na\tb\n---\t---"),
+    (
+        "multiline-table-tabs",
+        "------------\nA\tB\n---\t---\nx\ty\n\na\tb\n------------",
+    ),
+    (
+        "grid-table-tabs",
+        (
+            "+-------+-------+\n"
+            "| A\t\t| B\t\t|\n"
+            "+=======+=======+\n"
+            "| x\t\t| y\t\t|\n"
+            "+-------+-------+"
+        ),
+    ),
     (
         "simple-table-combining-marks-right",
         (

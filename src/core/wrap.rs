@@ -202,21 +202,51 @@ pub fn format_markdown_table(source: &str, options: FormatOptions) -> String {
 }
 
 pub fn format_markdown_pandoc_table(source: &str, options: FormatOptions) -> String {
-    if let Some(formatted) = format_markdown_multiline_table(source, options) {
+    let expanded = expand_pandoc_table_tabs(source);
+    let table_source = expanded.as_ref();
+    if let Some(formatted) = format_markdown_multiline_table(table_source, options) {
         return formatted;
     }
-    if let Some(formatted) = format_markdown_grid_table(source, options) {
+    if let Some(formatted) = format_markdown_grid_table(table_source, options) {
         return formatted;
     }
 
-    let lines = markdown_line_bodies(source);
+    let lines = markdown_line_bodies(table_source);
     if lines.len() < 2 {
         return source.to_owned();
     }
     let Some(columns) = pandoc_separator_columns(lines[1]) else {
         return source.to_owned();
     };
-    format_pandoc_table_lines(source, &lines, columns, 0..1, options)
+    format_pandoc_table_lines(table_source, &lines, columns, 0..1, options)
+}
+
+fn expand_pandoc_table_tabs(source: &str) -> Cow<'_, str> {
+    if !source.contains('\t') {
+        return Cow::Borrowed(source);
+    }
+    // Match Pandoc's tabFilter with its default four-character tab stops.
+    // It counts characters here, then splits table cells by display width.
+    let mut out = String::with_capacity(source.len());
+    let mut column = 0usize;
+    for ch in source.chars() {
+        match ch {
+            '\t' => {
+                let padding = 4 - column % 4;
+                out.push_str(&" ".repeat(padding));
+                column += padding;
+            }
+            '\r' | '\n' => {
+                out.push(ch);
+                column = 0;
+            }
+            _ => {
+                out.push(ch);
+                column += 1;
+            }
+        }
+    }
+    Cow::Owned(out)
 }
 
 fn format_markdown_multiline_table(source: &str, options: FormatOptions) -> Option<String> {

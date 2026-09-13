@@ -2615,6 +2615,40 @@ fn markdown_pandoc_headerless_tables_keep_their_borders_and_following_blocks() {
 }
 
 #[test]
+fn markdown_pandoc_tables_expand_tabs_before_splitting_cells() {
+    let cases = [
+        ("A\tB\n---\t---\nx\ty\n", "A   B\n--- ---\nx   y\n"),
+        ("A\tB\n--- ---\nx\ty\n", "A   B\n--- ---\nx   y\n"),
+        (
+            "A\t\tB\n---\t\t---\nx\t\ty\n",
+            "A       B\n---     ---\nx       y\n",
+        ),
+        ("---\t---\na\tb\n---\t---\n", "--- ---\na   b\n--- ---\n"),
+        (
+            "------------\nA\tB\n---\t---\nx\ty\n\na\tb\n------------\n",
+            "------------\nA   B\n--- ---\nx   y\n\na   b\n------------\n",
+        ),
+        (
+            "+-------+-------+\n| A\t\t| B\t\t|\n+=======+=======+\n| x\t\t| y\t\t|\n+-------+-------+\n",
+            "+-------+-------+\n| A     | B     |\n+=======+=======+\n| x     | y     |\n+-------+-------+\n",
+        ),
+    ];
+    for (input, expected) in cases {
+        for newline in ["\n", "\r\n"] {
+            let input = input.replace('\n', newline);
+            let expected = expected.replace('\n', newline);
+            let args = ["format", "--stdin-file-path", "input.qmd"];
+            let (status, stdout, stderr) = run_stdin(&args, &input);
+            assert_eq!(status, 0, "{stderr}");
+            assert_eq!(stdout, expected, "input: {input:?}");
+            let (status, second, stderr) = run_stdin(&args, &stdout);
+            assert_eq!(status, 0, "{stderr}");
+            assert_eq!(second, stdout, "table formatting must be idempotent");
+        }
+    }
+}
+
+#[test]
 fn markdown_pandoc_tables_preserve_alignment_and_widths() {
     let cases = [
         (
