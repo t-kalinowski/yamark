@@ -180,6 +180,29 @@ Markdown uses an HTML comment:
 A whole-file skip is useful for generated files or files whose layout is
 intentionally outside Yamark's scope.
 
+## Preserve intentional table widths
+
+Yamark normally fits table columns to their contents. Keep a table's authored
+widths while still formatting its contents:
+
+```markdown
+<!-- fmt: table-widths=preserve scope=next -->
++----------+------------------+
+| Name     | Description      |
++==========+==================+
+| A        | Short text       |
++----------+------------------+
+```
+
+Use `scope=file` to preserve widths throughout the document, or
+`scope=from-here` for subsequent tables. A later
+`table-widths=fit scope=from-here` resumes fitting widths. Both modes retain
+column alignment. Fitting widths can change the rendered proportions of
+Pandoc tables; preserving widths can retain excessive or cramped padding.
+
+For Markdown inside YAML, Python, or R, the same option can accompany the
+target marker: `# fmt: markdown table-widths=preserve`.
+
 ## Set file-specific Markdown options
 
 Use `scope=file` when the file should have a different Markdown policy from the

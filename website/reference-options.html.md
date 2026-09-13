@@ -14,6 +14,7 @@ give the exact syntax for each surface.
 | Behavior | [Directive](reference-directives.qmd#markdown-targets-and-settings) | [Front matter](#document-markdown-options) | [`yamark.toml`](reference-config.qmd#format) | [Command line](cli-help.qmd#yamark-format) | Default |
 | --- | --- | --- | --- | --- | --- |
 | Prose wrapping | `wrap=` | `editor_options.markdown.wrap` | `[format].wrap` | `--wrap` | Column 72 |
+| Table widths | `table-widths=` | `editor_options.markdown.table-widths` | `[format].table_widths` | `--table-widths` | `fit` |
 | Canonical spelling | `canonical=` or `canonical` | `editor_options.markdown.canonical` | - | `--canonical` | Off |
 | Footnote definitions | `footnotes=` | `editor_options.markdown.footnotes` | - | `--preserve-footnotes` | Format |
 | Horizontal-rule marker | - | - | `[format].markdown_horizontal_rule` | - | `---` |
@@ -30,6 +31,40 @@ give the exact syntax for each surface.
 
 `sentence:<n>` is a Yamark-specific extension. RStudio's visual writer does not
 recognize the combined value.
+
+### Table widths
+
+`fit` sizes supported pipe, simple, grid, and multiline table columns from
+their contents, with consistent padding. It can shrink excessive widths or
+expand cramped columns. Both modes preserve column alignment and multiline
+cell breaks.
+
+`preserve` retains the source widths while still formatting cell contents.
+For Pandoc tables, this keeps the borders and gaps that determine widths. For
+pipe tables, it keeps separator lengths and row widths, even when the original
+rows are not aligned with one another.
+
+Pandoc can use source widths to determine rendered column proportions and
+wrapping. Choose `preserve` when those widths are intentional:
+
+```markdown
+<!-- fmt: table-widths=preserve scope=next -->
++----------+------------------+
+| Name     | Description      |
++==========+==================+
+| A        | Short text       |
++----------+------------------+
+```
+
+Use `scope=file` for a document-wide choice or `scope=from-here` for subsequent
+tables. A later `table-widths=fit scope=from-here` resumes fitting widths.
+Without an explicit scope, this option follows the usual Markdown directive
+default of `scope=file`.
+
+The setting also works in front matter, `yamark.toml`, and the command line.
+Explicit renderer settings such as Quarto's `tbl-colwidths` remain unchanged.
+`fmt: skip` preserves the entire table when exact source layout matters.
+Unsupported table structures remain unchanged in either mode.
 
 ### Canonical and footnote values
 
@@ -90,6 +125,7 @@ editor_options:
     wrap: sentence:72
     canonical: true
     footnotes: preserve
+    table-widths: preserve
 ---
 This is __strong__. This is _emphasis_.
 ```
@@ -97,6 +133,7 @@ This is __strong__. This is _emphasis_.
 | Key | Accepted values |
 | --- | --- |
 | `wrap` | `none`, `paragraph`, `sentence`, `sentence:<n>`, or a positive integer column. |
+| `table-widths` | `fit` or `preserve`. |
 | `canonical` | `true`, `false`, `yes`, `no`, `1`, or `0`. |
 | `footnotes` | `wrap`, `format`, `preserve`, `none`, `true`, `false`, `yes`, `no`, `1`, or `0`. |
 
@@ -117,9 +154,9 @@ options.
 
 Markdown settings are applied in this order:
 
-1. Command defaults and flags establish the base settings. `[format].wrap`
-   replaces the default wrap setting, but an explicit `--wrap` replaces the
-   config value.
+1. Command defaults and config establish the base settings. Explicit `--wrap`
+   and `--table-widths` values override their corresponding `[format]` config
+   values.
 2. Document front matter overrides the corresponding base Markdown settings
    for the document body and its nested Markdown regions.
 3. Directives then override the corresponding settings within their scope.

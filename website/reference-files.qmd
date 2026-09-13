@@ -96,9 +96,9 @@ projection.
 | Source fences | Delegates | Can run embedded formatters for Python, R, JSON, GraphQL, CSS, HTML, JavaScript, TypeScript, and related aliases. |
 | Long Quarto fence openings | Formats when safe | Promotes simple comma-separated options such as `echo=FALSE` to `#| echo: false` lines for a supported fence when wrapping is not `none` and the opening exceeds the configured column, or 72 in `paragraph` and `sentence` modes. For a delegated language, the embedded formatter must succeed; a missing, failed, or disabled formatter preserves the original opening. |
 | Quarto source fences with `#| fmt: skip` | Preserves | Leaves the fenced chunk unchanged when the directive appears anywhere in the initial consecutive `#|` option block. |
-| Document Markdown options | Reads | Applies `editor_options.markdown.{wrap,canonical,footnotes}` to the body and nested Markdown that follows. |
-| GFM pipe tables | Formats | Aligns supported tables by display width. Git clean/smudge filters use compact pipe-table output. |
-| Pandoc tables | Formats when supported | Normalizes supported simple, grid, and multiline tables while preserving column alignment, widths, and multiline cell breaks. |
+| Document Markdown options | Reads | Applies `editor_options.markdown.{wrap,canonical,footnotes,table-widths}` to the body and nested Markdown that follows. |
+| GFM pipe tables | Formats | Fits supported tables by display width while retaining alignment. `table-widths=preserve` retains separator lengths and source row widths. Git clean/smudge filters otherwise use compact pipe-table output. |
+| Pandoc tables | Formats when supported | Fits supported simple, grid, and multiline tables to their contents while preserving column alignment and multiline cell breaks. `table-widths=preserve` retains source widths. |
 | Definition lists | Formats when supported | Normalizes marker spacing and wraps definitions. |
 | Display math | Preserves | Keeps own-line `$$` display math blocks byte-for-byte. |
 | Raw HTML, TeX, Hugo shortcodes, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |

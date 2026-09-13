@@ -23,6 +23,7 @@ markdown_horizontal_rule = "***"
 | Key | Type and values | Effect when present |
 | --- | --- | --- |
 | `wrap` | String: `none`, `paragraph`, `sentence`, `sentence:<n>`, or a positive integer. | Sets Markdown wrapping. An explicit `--wrap` value overrides it. |
+| `table_widths` | String: `"fit"` or `"preserve"`. | Sizes Markdown table columns from their contents by default, or retains source widths. An explicit `--table-widths` overrides it; document settings and scoped directives override that base setting. |
 | `compact` | Boolean. | Enables or disables eligible YAML block-to-flow compaction. `--compact` still enables compact mode when this is `false`. |
 | `markdown_horizontal_rule` | String: `"---"` or `"***"`. | Chooses the marker Yamark emits for normalized Markdown horizontal rules. |
 

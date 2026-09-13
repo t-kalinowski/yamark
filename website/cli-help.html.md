@@ -78,6 +78,7 @@ Run `yamark &lt;COMMAND&gt; --help` for command-level help.
       <span style='color: #00BBBB; font-weight: bold;'>--stdin-file-path</span><span style='color: #555555;'> &lt;PATH&gt;</span>
       <span style='color: #00BBBB; font-weight: bold;'>--config</span><span style='color: #555555;'> &lt;PATH&gt;</span>
       <span style='color: #00BBBB; font-weight: bold;'>--wrap</span><span style='color: #555555;'> &lt;WRAP&gt;</span>                  [default: 72]
+      <span style='color: #00BBBB; font-weight: bold;'>--table-widths</span><span style='color: #555555;'> &lt;TABLE_WIDTHS&gt;</span>  Table widths: fit contents or preserve source widths [default: fit]
       <span style='color: #00BBBB; font-weight: bold;'>--canonical</span>
       <span style='color: #00BBBB; font-weight: bold;'>--preserve-footnotes</span>
       <span style='color: #00BBBB; font-weight: bold;'>--line-width</span><span style='color: #555555;'> &lt;LINE_WIDTH&gt;</span>      [default: 80]
