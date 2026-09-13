@@ -32,6 +32,21 @@ manual:
     ),
     ("crlf", "items: [a,b,c]\r\n"),
     (
+        "quoted-decoder-escapes",
+        r'''value: "\0\a\b\t\n\v\f\r\e\"\/\\\xE9\u00E9\U0001F600"
+single: 'Café isn''t ASCII'
+flow: ["\u0031", "\u0074rue", "\u0020space", 'it''s quoted']
+''',
+    ),
+    (
+        "quoted-decoder-multiline",
+        "single: 'first\n  second'\ndouble: \"first\\\n  second\"\nitems: [a,b]\n",
+    ),
+    (
+        "quoted-decoder-crlf-continuation",
+        "value: \"first\\\r\n  second\"\r\nitems: [a,b]\r\n",
+    ),
+    (
         "literal-block",
         """script: |
   echo "do not fold this"

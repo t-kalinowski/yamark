@@ -3410,31 +3410,20 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         if !self.source.slice(metadata.content).trim_ascii().is_empty() {
             self.reject_same_line_yaml_directive(trailing_comment)?;
         }
-        let target = if let Some(target) =
-            scalar_content_flow_collection_target(self.source, metadata.content)
-        {
-            target
-        } else {
-            DirectiveTargetKind::YamlScalar
-        };
-        let state = self.engine.state_for_yaml_node(&mut self.doc, target);
-        let template_spans_possible = self.template_spans_possible_for_state(state);
-        if let Some(id) = parse_flow_collection(
-            self.source,
-            &mut self.ast,
-            &mut self.flow_collection_nodes,
-            state,
-            &self.doc.state(state).template_delimiters,
-            template_spans_possible,
-            span,
-            value,
-            metadata.content,
-            trailing_comment,
-        ) {
-            self.validate_flow_collection_directive_target(state, value)?;
-            self.plan_parsed_yaml_flow_nodes();
-            return Ok(id);
+        if scalar_content_flow_collection_target(self.source, metadata.content).is_some() {
+            return self.parse_flow_collection_block(
+                FlowCollectionBlock {
+                    span,
+                    value,
+                    collection: metadata.content,
+                    trailing_comment,
+                },
+                Vec::new(),
+            );
         }
+        let state = self
+            .engine
+            .state_for_yaml_node(&mut self.doc, DirectiveTargetKind::YamlScalar);
         self.validate_inline_scalar_directive_target(state, value)?;
         if metadata.content.is_empty() && (metadata.tag.is_some() || metadata.anchor.is_some()) {
             value = metadata.content;
