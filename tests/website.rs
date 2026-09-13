@@ -339,7 +339,7 @@ fn github_pages_workflow_publishes_website() {
     assert!(pages.contains("contents: read"));
     assert!(pages.contains("pages: write"));
     assert!(pages.contains("id-token: write"));
-    assert!(pages.contains("actions/configure-pages@v5"));
+    assert!(pages.contains("actions/configure-pages@v6"));
     assert!(pages.contains("quarto-dev/quarto-actions/setup@v2"));
     for package in ["jsonlite", "knitr", "rmarkdown", "htmltools", "fansi"] {
         assert!(
@@ -350,9 +350,9 @@ fn github_pages_workflow_publishes_website() {
     assert!(pages.contains("cargo build --release --bin yamark"));
     assert!(pages.contains("YAMARK_BIN="));
     assert!(pages.contains("quarto render website"));
-    assert!(pages.contains("actions/upload-pages-artifact@v3"));
+    assert!(pages.contains("actions/upload-pages-artifact@v5"));
     assert!(pages.contains("path: website/_site"));
-    assert!(pages.contains("actions/deploy-pages@v4"));
+    assert!(pages.contains("actions/deploy-pages@v5"));
 }
 
 #[test]
@@ -1596,8 +1596,8 @@ fn website_showcase_generates_after_examples_with_yamark() {
     assert!(helper.contains("yamark_bin"));
 
     for command in [
-        "uv tool install ruff==0.16.1",
-        "npm install --global prettier@3.8.3",
+        "uv tool install ruff==0.16.7",
+        "npm install --global prettier@3.9.6",
     ] {
         assert!(
             pages.contains(command),

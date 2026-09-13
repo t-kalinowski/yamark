@@ -23,7 +23,8 @@ uv tool install yamark
 The examples below use an installed `yamark` command. To keep running
 from PyPI without installing it, replace `yamark` with `uvx yamark`.
 
-To build from a checkout, install Rust 1.88 or newer and run:
+The checkout pins Rust 1.98.1. Building from source requires Rust 1.98.1 or newer.
+To build from a checkout, run:
 
 ```sh
 cargo install --path .

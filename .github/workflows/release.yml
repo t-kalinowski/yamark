@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check tag matches package versions
         run: |
@@ -89,12 +89,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.88"
+          toolchain: "1.98.1"
           targets: ${{ matrix.target }}
 
       - name: Build
@@ -120,7 +120,7 @@ jobs:
           Compress-Archive -Path $bundle -DestinationPath "dist/$bundle.zip"
 
       - name: Upload archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: yamark-${{ github.ref_name }}-${{ matrix.asset }}
           path: dist/*
@@ -154,19 +154,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
-          maturin-version: v1.14.1
-          rust-toolchain: "1.88"
+          maturin-version: v1.15.0
+          rust-toolchain: "1.98.1"
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
           args: --release --locked --compatibility pypi --out dist
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10
 
       - name: Install wheel
         run: uv tool install --no-index --find-links dist yamark
@@ -183,7 +183,7 @@ jobs:
           & $yamark --help
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-wheel-${{ matrix.asset }}
           path: dist/*.whl
@@ -196,18 +196,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build source distribution
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
-          maturin-version: v1.14.1
-          rust-toolchain: "1.88"
+          maturin-version: v1.15.0
+          rust-toolchain: "1.98.1"
           args: --out dist
 
       - name: Upload source distribution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-sdist
           path: dist/*.tar.gz
@@ -222,10 +222,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: yamark-${{ github.ref_name }}-*
           path: dist
@@ -252,7 +252,7 @@ jobs:
 
     steps:
       - name: Download Python distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: python-*
           path: dist

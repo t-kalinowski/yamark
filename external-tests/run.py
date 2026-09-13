@@ -2,9 +2,9 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   "py-yaml12>=0.1.0",
-#   "pytest>=8.0.0",
-#   "pytest-xdist>=3.0.0",
+#   "py-yaml12>=0.2.0",
+#   "pytest>=9.1.1",
+#   "pytest-xdist>=3.8.0",
 # ]
 # ///
 #
@@ -45,7 +45,6 @@ from pathlib import Path
 
 import pytest
 
-
 RUNNER_DESCRIPTION = """Run Yamark's external public CLI test suites.
 
 Default fast path: discover external-tests/**/test_*.py and run them with pytest.
@@ -61,7 +60,9 @@ def main(argv: list[str]) -> int:
     external_tests_root = Path(__file__).resolve().parent
 
     suite_roots = discover_suite_roots(external_tests_root, args.suite)
-    set_pythonpath(external_tests_root, extra_test_dirs=pythonpath_test_directories(suite_roots))
+    set_pythonpath(
+        external_tests_root, extra_test_dirs=pythonpath_test_directories(suite_roots)
+    )
 
     if args.yamark_bin is None:
         build_debug_binary(repo_root)
@@ -201,7 +202,11 @@ def _normalize_test_file(path: Path) -> Path:
 def set_pythonpath(external_tests_root: Path, extra_test_dirs: list[Path]) -> None:
     existing = os.environ.get("PYTHONPATH", "")
     paths = []
-    for path in [str(external_tests_root), *(str(p) for p in extra_test_dirs), existing]:
+    for path in [
+        str(external_tests_root),
+        *(str(p) for p in extra_test_dirs),
+        existing,
+    ]:
         if not path:
             continue
         if path not in paths:
