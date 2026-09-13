@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use memchr::memchr2;
+use crate::core::lines::text_lines;
 
 pub const MAX_SOURCE_SPAN_OFFSET: usize = u32::MAX as usize - 1;
 
@@ -162,37 +162,32 @@ impl SourceBuffer {
             .starts_with('\u{feff}')
             .then_some(Span::new(0, '\u{feff}'.len_utf8()));
         let mut lines = Vec::new();
-        let mut cursor = 0usize;
-        let bytes = text.as_bytes();
         let mut counts = [0usize; 3];
-
-        while cursor < text.len() {
-            let start = cursor;
-            cursor = memchr2(b'\r', b'\n', &bytes[cursor..])
-                .map(|offset| cursor + offset)
-                .unwrap_or(text.len());
-            let text_end = cursor;
-            let ending = if cursor == text.len() {
-                LineEnding::None
-            } else if bytes[cursor] == b'\r'
-                && cursor + 1 < text.len()
-                && bytes[cursor + 1] == b'\n'
-            {
-                cursor += 2;
-                counts[1] += 1;
-                LineEnding::Crlf
-            } else if bytes[cursor] == b'\r' {
-                cursor += 1;
-                counts[2] += 1;
-                LineEnding::Cr
-            } else {
-                cursor += 1;
-                counts[0] += 1;
-                LineEnding::Lf
+        for line in text_lines(&text) {
+            let ending = match line.newline {
+                "\n" => {
+                    counts[0] += 1;
+                    LineEnding::Lf
+                }
+                "\r\n" => {
+                    counts[1] += 1;
+                    LineEnding::Crlf
+                }
+                "\r" => {
+                    counts[2] += 1;
+                    LineEnding::Cr
+                }
+                _ => LineEnding::None,
             };
             lines.push(Line {
-                full: SourceSpan::new(Span::new(start, cursor)),
-                text: SourceSpan::new(Span::new(start, text_end)),
+                full: SourceSpan::new(Span::new(
+                    line.body_start,
+                    line.body_start + line.full.len(),
+                )),
+                text: SourceSpan::new(Span::new(
+                    line.body_start,
+                    line.body_start + line.body.len(),
+                )),
                 ending,
             });
         }

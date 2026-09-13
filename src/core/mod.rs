@@ -3,6 +3,7 @@ pub mod document;
 pub mod emit;
 #[cfg(feature = "format-trace")]
 pub(crate) mod format_trace;
+mod lines;
 pub mod markdown;
 pub mod markdown_marker;
 pub mod parser;

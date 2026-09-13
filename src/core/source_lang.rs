@@ -7,6 +7,7 @@ use crate::core::directives::{
 use crate::core::document::{
     Document, DocumentKind, EmitPlan, FormatOptions, Node, NodeKind, SourceNodeKind, SourceText,
 };
+use crate::core::lines::text_lines as source_lines;
 use crate::core::source::{LineEnding, SourceBuffer, SourceSpan, Span};
 use crate::diagnostic::Result;
 use unicode_width::UnicodeWidthStr;
@@ -700,7 +701,6 @@ fn parse_generated_embedded_yaml(
 
 pub(crate) fn restore_comment_prefix(source: &str, prefix: &str) -> String {
     source_lines(source)
-        .into_iter()
         .map(|line| {
             let prefix = if line.body.is_empty() {
                 prefix.trim_end()
@@ -759,7 +759,6 @@ fn yaml_options_with_reduced_width(
 
 fn common_body_indent(source: &str) -> String {
     let mut indents = source_lines(source)
-        .into_iter()
         .filter(|line| !line.body.trim().is_empty())
         .map(|line| line_indent(line.body));
     let Some(mut common) = indents.next() else {
@@ -856,7 +855,6 @@ pub(crate) fn dedent_body(source: &str, indent: &str) -> String {
         return source.to_owned();
     }
     source_lines(source)
-        .into_iter()
         .map(|line| {
             let body = line.body.strip_prefix(indent).unwrap_or(line.body);
             format!("{}{}", body, line.newline)
@@ -869,7 +867,6 @@ fn reindent_body(source: &str, indent: &str) -> String {
         return source.to_owned();
     }
     source_lines(source)
-        .into_iter()
         .map(|line| {
             if line.body.is_empty() {
                 line.newline.to_owned()
@@ -1222,41 +1219,6 @@ fn opening_line_body_start(
         });
     }
     None
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SourceLine<'a> {
-    body: &'a str,
-    newline: &'a str,
-    body_start: usize,
-}
-
-fn source_lines(source: &str) -> Vec<SourceLine<'_>> {
-    let bytes = source.as_bytes();
-    let mut lines = Vec::new();
-    let mut start = 0usize;
-    while start < source.len() {
-        let mut end = start;
-        while end < source.len() && !matches!(bytes[end], b'\r' | b'\n') {
-            end += 1;
-        }
-        let (full_end, newline) = if end == source.len() {
-            (end, "")
-        } else if bytes[end] == b'\r' && end + 1 < source.len() && bytes[end + 1] == b'\n' {
-            (end + 2, "\r\n")
-        } else if bytes[end] == b'\r' {
-            (end + 1, "\r")
-        } else {
-            (end + 1, "\n")
-        };
-        lines.push(SourceLine {
-            body: &source[start..end],
-            newline,
-            body_start: start,
-        });
-        start = full_end;
-    }
-    lines
 }
 
 fn find_r_multiline_string(

@@ -1,4 +1,5 @@
 use crate::core::document::{FormatOptions, MarkdownWrap};
+use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -152,7 +153,6 @@ pub fn format_markdown_table(source: &str, options: FormatOptions) -> String {
     let newline = final_newline(source);
     let join_newline = newline_for_join(newline, options);
     let mut rows = markdown_line_bodies(source)
-        .into_iter()
         .map(split_pipe_row)
         .collect::<Vec<_>>();
     if rows.len() < 2 || rows.iter().any(Vec::is_empty) {
@@ -214,7 +214,7 @@ pub fn format_markdown_pandoc_table(source: &str, options: FormatOptions) -> Str
 
     let newline = final_newline(source);
     let join_newline = newline_for_join(newline, options);
-    let lines = markdown_line_bodies(source);
+    let lines = markdown_line_bodies(source).collect::<Vec<_>>();
     if lines.len() < 2 {
         return source.to_owned();
     }
@@ -276,7 +276,7 @@ pub fn format_markdown_pandoc_table(source: &str, options: FormatOptions) -> Str
 fn format_markdown_multiline_table(source: &str, options: FormatOptions) -> Option<String> {
     let newline = final_newline(source);
     let join_newline = newline_for_join(newline, options);
-    let lines = markdown_line_bodies(source);
+    let lines = markdown_line_bodies(source).collect::<Vec<_>>();
     if lines.len() < 4 {
         return None;
     }
@@ -405,7 +405,7 @@ fn pandoc_separator_token_line(line: &str) -> bool {
 fn format_markdown_grid_table(source: &str, options: FormatOptions) -> Option<String> {
     let newline = final_newline(source);
     let join_newline = newline_for_join(newline, options);
-    let lines = markdown_line_bodies(source);
+    let lines = markdown_line_bodies(source).collect::<Vec<_>>();
     if lines.len() < 3 {
         return None;
     }
@@ -549,7 +549,7 @@ pub(crate) fn markdown_list_format_supported(source: &str, options: FormatOption
 }
 
 fn try_format_markdown_list(source: &str, options: FormatOptions) -> Option<String> {
-    let lines = markdown_lines(source);
+    let lines = markdown_lines(source).collect::<Vec<_>>();
     if list_needs_rich_format(&lines) {
         try_format_rich_markdown_list(&lines, options)
     } else {
@@ -842,7 +842,7 @@ pub(crate) fn markdown_definition_list_format_supported(
 }
 
 fn try_format_markdown_definition_list(source: &str, options: FormatOptions) -> Option<String> {
-    let lines = markdown_lines(source);
+    let lines = markdown_lines(source).collect::<Vec<_>>();
     let mut out = String::new();
     let mut index = 0usize;
     while index < lines.len() {
@@ -955,10 +955,9 @@ fn try_format_rich_markdown_blockquote(source: &str, options: FormatOptions) -> 
     if !blockquote_needs_rich_format(source) {
         return None;
     }
-    let lines = markdown_lines(source);
     let mut indent = None::<&str>;
     let mut nested = String::new();
-    for line in &lines {
+    for line in markdown_lines(source) {
         let body = line.body;
         let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
         if indent_len > 3 {
@@ -999,7 +998,7 @@ fn try_format_rich_markdown_blockquote(source: &str, options: FormatOptions) -> 
 }
 
 fn blockquote_needs_rich_format(source: &str) -> bool {
-    markdown_lines(source).into_iter().any(|line| {
+    markdown_lines(source).any(|line| {
         let body = line.body;
         let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
         if indent_len > 3 {
@@ -1030,7 +1029,6 @@ fn rich_child_block_start(trimmed: &str) -> bool {
 fn format_nested_blockquote_markers(source: &str, options: FormatOptions) -> Option<String> {
     if matches!(options.markdown_wrap, MarkdownWrap::None) {
         return markdown_lines(source)
-            .into_iter()
             .map(|line| {
                 let body = line.body;
                 let newline = line.newline;
@@ -1097,9 +1095,7 @@ fn nested_blockquote_parts(body: &str) -> Option<(&str, usize, &str)> {
 }
 
 fn has_nested_blockquote_marker(source: &str) -> bool {
-    markdown_line_bodies(source)
-        .into_iter()
-        .any(|line| blockquote_marker_depth(line) > 1)
+    markdown_line_bodies(source).any(|line| blockquote_marker_depth(line) > 1)
 }
 
 fn blockquote_marker_depth(line: &str) -> usize {
@@ -1127,7 +1123,6 @@ pub fn format_markdown_fragment(source: &str, options: FormatOptions) -> String 
 
 fn normalize_inline_whitespace_preserving_lines(source: &str) -> String {
     markdown_lines(source)
-        .into_iter()
         .map(|line| {
             let body = line.body;
             let newline = line.newline;
@@ -1245,9 +1240,7 @@ fn markdown_hard_break_line_content(line: &str) -> (&str, Option<MarkdownHardBre
 }
 
 fn has_hard_break(source: &str) -> bool {
-    markdown_line_bodies(source)
-        .into_iter()
-        .any(|line| line.ends_with("  ") || line.ends_with('\\'))
+    markdown_line_bodies(source).any(|line| line.ends_with("  ") || line.ends_with('\\'))
 }
 
 fn single_line_body(source: &str) -> bool {
@@ -1256,11 +1249,9 @@ fn single_line_body(source: &str) -> bool {
 
 fn formatted_introduces_markdown_block_start(source: &str) -> bool {
     let (body, _) = strip_final_newline(source);
-    let lines = markdown_line_bodies(body);
-    if lines.is_empty() {
-        return false;
-    }
-    lines.into_iter().skip(1).any(markdown_block_start_line)
+    markdown_line_bodies(body)
+        .skip(1)
+        .any(markdown_block_start_line)
 }
 
 fn escape_first_markdown_block_start(source: &mut String) {
@@ -1439,8 +1430,8 @@ fn footnote_definition(source: &str) -> bool {
 
 fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<String> {
     let (body, newline) = strip_final_newline(source);
-    let lines = markdown_line_bodies(body);
-    let first_line = *lines.first()?;
+    let mut lines = markdown_line_bodies(body);
+    let first_line = lines.next()?;
     let indent = first_line.bytes().take_while(|byte| *byte == b' ').count();
     if indent > 3 {
         return None;
@@ -1461,7 +1452,7 @@ fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<Stri
     let mut block_continuation_lines = Vec::new();
     let mut saw_blank_line = false;
     pieces.push(first_content);
-    for line in lines.into_iter().skip(1) {
+    for line in lines {
         if line.trim().is_empty() {
             saw_blank_line = true;
             block_continuation_lines.push(Some(""));
@@ -4260,46 +4251,8 @@ fn display_width(source: &str) -> usize {
     UnicodeWidthStr::width(source)
 }
 
-#[derive(Debug, Clone, Copy)]
-struct MarkdownLine<'a> {
-    full: &'a str,
-    body: &'a str,
-    newline: &'a str,
-}
-
-fn markdown_lines(source: &str) -> Vec<MarkdownLine<'_>> {
-    let mut lines = Vec::new();
-    let bytes = source.as_bytes();
-    let mut start = 0usize;
-    while start < source.len() {
-        let mut end = start;
-        while end < source.len() && !matches!(bytes[end], b'\r' | b'\n') {
-            end += 1;
-        }
-        let (full_end, newline) = if end == source.len() {
-            (end, "")
-        } else if bytes[end] == b'\r' && end + 1 < source.len() && bytes[end + 1] == b'\n' {
-            (end + 2, "\r\n")
-        } else if bytes[end] == b'\r' {
-            (end + 1, "\r")
-        } else {
-            (end + 1, "\n")
-        };
-        lines.push(MarkdownLine {
-            full: &source[start..full_end],
-            body: &source[start..end],
-            newline,
-        });
-        start = full_end;
-    }
-    lines
-}
-
-fn markdown_line_bodies(source: &str) -> Vec<&str> {
-    markdown_lines(source)
-        .into_iter()
-        .map(|line| line.body)
-        .collect()
+fn markdown_line_bodies(source: &str) -> impl Iterator<Item = &str> {
+    markdown_lines(source).map(|line| line.body)
 }
 
 fn strip_final_newline(source: &str) -> (&str, &str) {
