@@ -15,6 +15,7 @@ use crate::core::yaml_model::{
     YamlScalarSemantic, YamlScalarStyle, YamlSequence, YamlSequenceItem, YamlTrivia,
     YamlTriviaKind,
 };
+use crate::core::yaml_scalar::{self, DecodePolicy, decode_quoted_chars};
 use crate::core::yaml_scan::{YamlLineScan, scan_yaml_lines, scan_yaml_lines_basic};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
@@ -6220,88 +6221,7 @@ fn render_quoted_literal_scalar_with_layout(
 }
 
 fn decode_quoted_scalar(raw: &str) -> Option<String> {
-    if raw.starts_with('"') {
-        decode_double_quoted_scalar(raw)
-    } else if raw.starts_with('\'') {
-        decode_single_quoted_scalar(raw)
-    } else {
-        None
-    }
-}
-
-fn decode_single_quoted_scalar(raw: &str) -> Option<String> {
-    let inner = raw.strip_prefix('\'')?.strip_suffix('\'')?;
-    let mut out = String::new();
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\'' {
-            if chars.next() == Some('\'') {
-                out.push('\'');
-            } else {
-                return None;
-            }
-        } else {
-            out.push(ch);
-        }
-    }
-    Some(out)
-}
-
-fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
-    let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
-    let mut out = String::new();
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            if matches!(ch, '\r' | '\n') {
-                return None;
-            }
-            out.push(ch);
-            continue;
-        }
-        let escaped = chars.next()?;
-        match escaped {
-            '0' => out.push('\0'),
-            'a' => out.push('\u{0007}'),
-            'b' => out.push('\u{0008}'),
-            't' | '\t' => out.push('\t'),
-            'n' => out.push('\n'),
-            'v' => out.push('\u{000b}'),
-            'f' => out.push('\u{000c}'),
-            'r' => out.push('\r'),
-            'e' => out.push('\u{001b}'),
-            '"' => out.push('"'),
-            '/' => out.push('/'),
-            '\\' => out.push('\\'),
-            'x' => out.push(decode_hex_escape(&mut chars, 2)?),
-            'u' => out.push(decode_hex_escape(&mut chars, 4)?),
-            'U' => out.push(decode_hex_escape(&mut chars, 8)?),
-            '\n' => {
-                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                    chars.next();
-                }
-            }
-            '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                    chars.next();
-                }
-            }
-            _ => return None,
-        }
-    }
-    Some(out)
-}
-
-fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, digits: usize) -> Option<char> {
-    let mut value = 0u32;
-    for _ in 0..digits {
-        value = value.checked_mul(16)?;
-        value += chars.next()?.to_digit(16)?;
-    }
-    char::from_u32(value)
+    yaml_scalar::decode_quoted(raw, DecodePolicy::Format)
 }
 
 fn render_folded_prose_scalar(
@@ -8102,13 +8022,7 @@ fn decoded_quoted_explicit_string_width(raw: &str, flow_context: bool) -> Option
 
 fn decoded_quoted_explicit_core_width(raw: &str, tag: Option<&str>) -> Option<usize> {
     let mut state = DecodedCoreScalarState::new();
-    if raw.starts_with('"') {
-        decode_double_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else if raw.starts_with('\'') {
-        decode_single_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else {
-        return None;
-    }
+    decode_quoted_chars(raw, DecodePolicy::Width, |ch| state.push(ch))?;
     match tag {
         Some("!!bool") => state.normalized_bool_width(),
         Some("!!null") => state.normalized_null_width(),
@@ -8123,13 +8037,7 @@ fn decoded_quoted_string_width_state(
     flow_context: bool,
 ) -> Option<DecodedStringWidthState> {
     let mut state = DecodedStringWidthState::new(flow_context);
-    if raw.starts_with('"') {
-        decode_double_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else if raw.starts_with('\'') {
-        decode_single_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else {
-        return None;
-    }
+    decode_quoted_chars(raw, DecodePolicy::Width, |ch| state.push(ch))?;
     Some(state)
 }
 
@@ -8535,58 +8443,6 @@ fn plain_scalar_unsafe_start_byte(byte: u8) -> bool {
             | b'\''
             | b'%'
     )
-}
-
-fn decode_single_quoted_scalar_chars(raw: &str, mut push: impl FnMut(char)) -> Option<()> {
-    let inner = raw.strip_prefix('\'')?.strip_suffix('\'')?;
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\'' {
-            if chars.next() == Some('\'') {
-                push('\'');
-            } else {
-                return None;
-            }
-        } else {
-            push(ch);
-        }
-    }
-    Some(())
-}
-
-fn decode_double_quoted_scalar_chars(raw: &str, mut push: impl FnMut(char)) -> Option<()> {
-    let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
-    let mut chars = inner.chars();
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            if matches!(ch, '\r' | '\n') {
-                return None;
-            }
-            push(ch);
-            continue;
-        }
-        let escaped = chars.next()?;
-        let decoded = match escaped {
-            '0' => '\0',
-            'a' => '\u{0007}',
-            'b' => '\u{0008}',
-            't' | '\t' => '\t',
-            'n' => '\n',
-            'v' => '\u{000b}',
-            'f' => '\u{000c}',
-            'r' => '\r',
-            'e' => '\u{001b}',
-            '"' => '"',
-            '/' => '/',
-            '\\' => '\\',
-            'x' => decode_hex_escape(&mut chars, 2)?,
-            'u' => decode_hex_escape(&mut chars, 4)?,
-            'U' => decode_hex_escape(&mut chars, 8)?,
-            _ => return None,
-        };
-        push(decoded);
-    }
-    Some(())
 }
 
 fn double_quote_char_metrics(ch: char) -> (usize, usize) {
@@ -10881,7 +10737,7 @@ fn escaped_double_quoted_scalar_block_from_value(
     let block = quoted_scalar_block_from_value(source, line, end, value_start, span_start)?;
     let metadata = scalar_metadata(source, block.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    decode_double_quoted_scalar(raw)?;
+    decode_quoted_scalar(raw)?;
     Some(block)
 }
 

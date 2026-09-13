@@ -13,6 +13,7 @@ pub mod wrap;
 pub mod yaml;
 pub(crate) mod yaml_equivalence;
 pub mod yaml_model;
+mod yaml_scalar;
 pub mod yaml_scan;
 
 pub use document::{

@@ -1,3 +1,4 @@
+use crate::core::yaml_scalar::{self, DecodePolicy};
 use std::borrow::Cow;
 use std::ops::Range;
 
@@ -783,94 +784,18 @@ fn decode_quoted_scalar(raw: &str) -> Option<Cow<'_, str>> {
         if !inner.contains(['\\', '\r', '\n']) {
             Some(Cow::Borrowed(inner))
         } else {
-            decode_double_quoted_scalar(raw).map(Cow::Owned)
+            yaml_scalar::decode_quoted(raw, DecodePolicy::Validation).map(Cow::Owned)
         }
     } else if raw.starts_with('\'') {
         let inner = raw.strip_prefix('\'')?.strip_suffix('\'')?;
         if !inner.contains(['\'', '\r', '\n']) {
             Some(Cow::Borrowed(inner))
         } else {
-            decode_single_quoted_scalar(raw).map(Cow::Owned)
+            yaml_scalar::decode_quoted(raw, DecodePolicy::Validation).map(Cow::Owned)
         }
     } else {
         None
     }
-}
-
-fn decode_single_quoted_scalar(raw: &str) -> Option<String> {
-    let inner = raw.strip_prefix('\'')?.strip_suffix('\'')?;
-    let mut out = String::new();
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\'' {
-            if chars.next() == Some('\'') {
-                out.push('\'');
-            } else {
-                return None;
-            }
-        } else if matches!(ch, '\r' | '\n') {
-            return None;
-        } else {
-            out.push(ch);
-        }
-    }
-    Some(out)
-}
-
-fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
-    let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
-    let mut out = String::new();
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            if matches!(ch, '\r' | '\n') {
-                return None;
-            }
-            out.push(ch);
-            continue;
-        }
-        match chars.next()? {
-            '0' => out.push('\0'),
-            'a' => out.push('\u{0007}'),
-            'b' => out.push('\u{0008}'),
-            't' | '\t' => out.push('\t'),
-            'n' => out.push('\n'),
-            'v' => out.push('\u{000b}'),
-            'f' => out.push('\u{000c}'),
-            'r' => out.push('\r'),
-            'e' => out.push('\u{001b}'),
-            '"' => out.push('"'),
-            '/' => out.push('/'),
-            '\\' => out.push('\\'),
-            'x' => out.push(decode_hex_escape(&mut chars, 2)?),
-            'u' => out.push(decode_hex_escape(&mut chars, 4)?),
-            'U' => out.push(decode_hex_escape(&mut chars, 8)?),
-            '\n' => {
-                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                    chars.next();
-                }
-            }
-            '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                    chars.next();
-                }
-            }
-            _ => return None,
-        }
-    }
-    Some(out)
-}
-
-fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, digits: usize) -> Option<char> {
-    let mut value = 0u32;
-    for _ in 0..digits {
-        value = value.checked_mul(16)?;
-        value += chars.next()?.to_digit(16)?;
-    }
-    char::from_u32(value)
 }
 
 fn decode_block_scalar(
