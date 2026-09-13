@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.yaml --verify
+-- stdin
+top: [a,b]
+mapping: [it's quoted]
+-- stdout
+top: [a, b]
+mapping: [it's quoted]
+-- stderr
+-- status
+0

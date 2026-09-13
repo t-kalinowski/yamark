@@ -5061,6 +5061,10 @@ fn emit_yaml_node(
                     continue;
                 };
                 let value_node = ast.node(value);
+                if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
+                    out.push_str(source.slice(Span::new(item.line.start(), value_node.span.end())));
+                    continue;
+                }
                 if yaml_block_collection_has_flow_collapse_hint(value_node)
                     && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
                 {
@@ -5413,6 +5417,10 @@ fn emit_yaml_mapping_pair(
         return Ok(());
     };
     let value_node = ast.node(value);
+    if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
+        out.push_str(source.slice(pair.source));
+        return Ok(());
+    }
     let context = YamlEmitContext {
         source,
         document,
@@ -5542,6 +5550,10 @@ fn emit_yaml_explicit_mapping_pair(
     }
 
     let value_node = ast.node(value);
+    if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
+        out.push_str(source.slice(pair.source));
+        return Ok(());
+    }
     if yaml_block_collection_has_flow_collapse_hint(value_node)
         && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
     {
