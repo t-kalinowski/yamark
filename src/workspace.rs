@@ -94,9 +94,15 @@ enum FileFormatResult {
     },
     Changed {
         diagnostics: Vec<Diagnostic>,
-        output: String,
-        diff_input: Option<String>,
+        change: FileChange,
     },
+}
+
+#[derive(Debug)]
+enum FileChange {
+    Check,
+    Write(String),
+    Diff(String),
 }
 
 pub fn format_source_for_path(
@@ -291,7 +297,7 @@ pub(crate) fn format_paths_with_trace_and_overrides(
         let outcome = result?;
         let mut run = FormatRun::default();
         run.summary.scanned = 1;
-        apply_format_outcome(&mut run, outcome, mode)?;
+        apply_format_outcome(&mut run, outcome)?;
         sort_diagnostics(&mut run.diagnostics);
         return Ok(run);
     }
@@ -304,17 +310,13 @@ pub(crate) fn format_paths_with_trace_and_overrides(
     run.summary.scanned = scanned;
 
     for outcome in outcomes {
-        apply_format_outcome(&mut run, outcome, mode)?;
+        apply_format_outcome(&mut run, outcome)?;
     }
     sort_diagnostics(&mut run.diagnostics);
     Ok(run)
 }
 
-fn apply_format_outcome(
-    run: &mut FormatRun,
-    outcome: IndexedOutcome,
-    mode: FormatMode,
-) -> Result<()> {
+fn apply_format_outcome(run: &mut FormatRun, outcome: IndexedOutcome) -> Result<()> {
     match outcome.result {
         FileFormatResult::Skipped => run.summary.skipped += 1,
         FileFormatResult::Failed(diagnostic) => {
@@ -327,25 +329,19 @@ fn apply_format_outcome(
         }
         FileFormatResult::Changed {
             diagnostics,
-            output,
-            diff_input,
+            change,
         } => {
             run.diagnostics.extend(diagnostics);
             run.summary.formatted += 1;
-            match mode {
-                FormatMode::Write => fs::write(&outcome.path, output).map_err(|err| {
+            match change {
+                FileChange::Write(output) => fs::write(&outcome.path, output).map_err(|err| {
                     YamarkError::from(
                         Diagnostic::error(format!("failed to write file: {err}"))
                             .with_path(&outcome.path),
                     )
                 })?,
-                FormatMode::Check => {}
-                FormatMode::Diff => {
-                    let input = diff_input
-                        .as_deref()
-                        .expect("diff mode keeps original input");
-                    run.diffs.push(simple_diff(&outcome.path, input, &output));
-                }
+                FileChange::Check => {}
+                FileChange::Diff(diff) => run.diffs.push(diff),
             }
         }
     }
@@ -647,8 +643,17 @@ fn format_candidate(
                 {
                     Ok(formatted) if formatted.changed => FileFormatResult::Changed {
                         diagnostics: formatted.diagnostics,
-                        output: formatted.output,
-                        diff_input,
+                        change: match mode {
+                            FormatMode::Check => FileChange::Check,
+                            FormatMode::Write => FileChange::Write(formatted.output),
+                            FormatMode::Diff => FileChange::Diff(simple_diff(
+                                &candidate.path,
+                                diff_input
+                                    .as_deref()
+                                    .expect("diff mode keeps original input"),
+                                &formatted.output,
+                            )),
+                        },
                     },
                     Ok(formatted) => FileFormatResult::Unchanged {
                         diagnostics: formatted.diagnostics,
