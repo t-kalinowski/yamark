@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+# Café{#id}
+
+## 東京{.city}
+
+# [Café](https://example.com){#link}
+
+# `Café`{.code}
+
+# [unfinished [Café](https://example.com){#link}
+
+# [unfinished [a\]b][réf]{#link}
+-- stdout
+# Café {#id}
+
+## 東京 {.city}
+
+# [Café](https://example.com){#link}
+
+# `Café`{.code}
+
+# [unfinished [Café](https://example.com){#link}
+
+# [unfinished [a\]b][réf]{#link}
+-- stderr
+-- status
+0

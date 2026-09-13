@@ -1,6 +1,7 @@
 use crate::core::document::{FormatOptions, MarkdownWrap};
 use crate::core::markdown_marker::markdown_list_marker;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use unicode_width::UnicodeWidthStr;
 
 pub fn format_markdown_paragraph(source: &str, options: FormatOptions) -> String {
@@ -116,11 +117,13 @@ pub fn normalize_heading_content(source: &str) -> String {
 }
 
 fn trailing_attribute_belongs_to_inline(body: &str) -> bool {
+    let mut scan = InlineScan::new(body);
+
     if body.ends_with(char::is_whitespace) {
         return false;
     }
     body.char_indices().any(|(start, _)| {
-        link_or_bracket_token_end(body, start) == Some(body.len())
+        link_or_bracket_token_end(&mut scan, start) == Some(body.len())
             || !escaped_at(body, start) && inline_code_span_end(body, start) == Some(body.len())
     })
 }
@@ -1682,6 +1685,8 @@ fn ascii_ends_with_ignore_case(value: &str, suffix: &str) -> bool {
 }
 
 pub fn canonicalize_inline(source: &str) -> String {
+    let mut scan = InlineScan::new(source);
+
     let mut out = String::with_capacity(source.len());
     let mut index = 0usize;
     while index < source.len() {
@@ -1720,7 +1725,7 @@ pub fn canonicalize_inline(source: &str) -> String {
             index = end;
             continue;
         }
-        if let Some(end) = protected_inline_token_end(source, index) {
+        if let Some(end) = protected_inline_token_end(&mut scan, index) {
             out.push_str(&source[index..end]);
             index = end;
             continue;
@@ -1801,16 +1806,17 @@ fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> 
     None
 }
 
-fn protected_inline_token_end(source: &str, index: usize) -> Option<usize> {
+fn protected_inline_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let source = scan.text;
     let rest = &source[index..];
     if escaped_at(source, index) {
         return None;
     }
-    if let Some(end) = reference_style_link_span_end(source, index) {
+    if let Some(end) = reference_style_link_span_end(scan, index) {
         return Some(end);
     }
     if rest.starts_with("![") || rest.starts_with('[') {
-        return link_or_bracket_token_end(source, index);
+        return link_or_bracket_token_end(scan, index);
     }
     if rest.starts_with('<') {
         return rest.find('>').map(|close| index + close + 1);
@@ -1916,7 +1922,8 @@ fn commonmark_email_domain_label(label: &str) -> bool {
             .is_some_and(|ch| ch.is_ascii_alphanumeric())
 }
 
-fn reference_style_link_span_end(source: &str, index: usize) -> Option<usize> {
+fn reference_style_link_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let source = scan.text;
     let label_start = if source[index..].starts_with("![") {
         index + 2
     } else if source[index..].starts_with('[') {
@@ -1924,12 +1931,12 @@ fn reference_style_link_span_end(source: &str, index: usize) -> Option<usize> {
     } else {
         return None;
     };
-    let label_close = find_balanced_square_close(source, label_start)?;
+    let label_close = scan.square_close(label_start)?;
     let reference_open = label_close + 1;
     if source.as_bytes().get(reference_open) != Some(&b'[') {
         return None;
     }
-    let reference_close = find_balanced_square_close(source, reference_open + 1)?;
+    let reference_close = scan.square_close(reference_open + 1)?;
     Some(reference_close + 1)
 }
 
@@ -1954,6 +1961,8 @@ fn split_pipe_row(line: &str) -> Vec<String> {
     if let Some(rest) = trimmed.strip_suffix('|') {
         trimmed = rest;
     }
+
+    let mut scan = InlineScan::new(trimmed);
     let mut cells = Vec::new();
     let mut cell = String::new();
     let mut escaped = false;
@@ -1961,7 +1970,7 @@ fn split_pipe_row(line: &str) -> Vec<String> {
     while index < trimmed.len() {
         if !escaped
             && protected_spacing_span_can_start(trimmed, index)
-            && let Some(end) = table_cell_protected_span_end(trimmed, index)
+            && let Some(end) = protected_spacing_span_end(&mut scan, index)
         {
             cell.push_str(&trimmed[index..end]);
             index = end;
@@ -1986,10 +1995,6 @@ fn split_pipe_row(line: &str) -> Vec<String> {
     }
     cells.push(normalize_spaces_preserving_protected_spans(cell.trim()).into_owned());
     cells
-}
-
-fn table_cell_protected_span_end(text: &str, index: usize) -> Option<usize> {
-    protected_spacing_span_end(text, index)
 }
 
 fn canonicalize_table_rows(rows: &mut [Vec<String>], options: FormatOptions) {
@@ -2351,6 +2356,8 @@ fn normalize_spaces(source: &str) -> String {
 }
 
 fn normalize_spaces_preserving_protected_spans(source: &str) -> Cow<'_, str> {
+    let mut scan = InlineScan::new(source);
+
     if inline_spacing_is_already_normalized(source) {
         return Cow::Borrowed(source);
     }
@@ -2358,7 +2365,7 @@ fn normalize_spaces_preserving_protected_spans(source: &str) -> Cow<'_, str> {
     let mut pending_space = false;
     let mut index = 0usize;
     while index < source.len() {
-        if let Some(end) = protected_spacing_span_end(source, index) {
+        if let Some(end) = protected_spacing_span_end(&mut scan, index) {
             if pending_space && !out.is_empty() {
                 out.push(' ');
             }
@@ -2401,8 +2408,9 @@ fn inline_spacing_is_already_normalized(source: &str) -> bool {
         && !bytes.windows(2).any(|window| window == b"  ")
 }
 
-fn protected_spacing_span_end(source: &str, index: usize) -> Option<usize> {
-    reference_style_link_span_end(source, index)
+fn protected_spacing_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let source = scan.text;
+    reference_style_link_span_end(scan, index)
         .or_else(|| balanced_brace_span_end(source, index))
         .or_else(|| strikethrough_span_end(source, index))
         .or_else(|| commonmark_autolink_span_end(source, index))
@@ -3109,6 +3117,8 @@ fn format_prefixed_markdown_segment(
 }
 
 fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
+    let mut scan = InlineScan::new(text);
+
     if simple_inline_tokens_supported(text) {
         return Some(simple_inline_tokens(text));
     }
@@ -3129,7 +3139,7 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
             break;
         }
 
-        let end = inline_token_end(text, index)?;
+        let end = inline_token_end(&mut scan, index)?;
         tokens.push(InlineToken::borrowed(&text[index..end]));
         index = end;
     }
@@ -3157,12 +3167,14 @@ fn simple_inline_tokens(text: &str) -> Vec<InlineToken<'_>> {
 }
 
 fn contains_unsupported_inline_construct(text: &str) -> bool {
+    let mut scan = InlineScan::new(text);
+
     let mut index = 0usize;
     while index < text.len() {
         if multiline_brace_span_at(text, index) {
             return true;
         }
-        if let Some(end) = unsupported_scan_protected_token_end(text, index) {
+        if let Some(end) = unsupported_scan_protected_token_end(&mut scan, index) {
             index = end;
             continue;
         }
@@ -3189,7 +3201,8 @@ fn multiline_brace_span_at(text: &str, index: usize) -> bool {
     text[index..index + end].contains(['\n', '\r'])
 }
 
-fn unsupported_scan_protected_token_end(text: &str, index: usize) -> Option<usize> {
+fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let text = scan.text;
     if escaped_at(text, index) {
         return None;
     }
@@ -3220,7 +3233,7 @@ fn unsupported_scan_protected_token_end(text: &str, index: usize) -> Option<usiz
         return latex_command_token_end(text, index);
     }
     if rest.starts_with("![") || rest.starts_with('[') {
-        return link_or_bracket_token_end(text, index);
+        return link_or_bracket_token_end(scan, index);
     }
     if (rest.starts_with("{{<") || rest.starts_with("{{%"))
         && let Some(close) = rest.find("}}")
@@ -3288,6 +3301,8 @@ fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
 }
 
 fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
+    let mut scan = InlineScan::new(source);
+
     if !source.as_bytes().contains(&b'[') {
         return Cow::Borrowed(source);
     }
@@ -3300,14 +3315,14 @@ fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
             index = end;
             continue;
         }
-        if let Some(end) = reference_style_link_span_end(source, index) {
+        if let Some(end) = reference_style_link_span_end(&mut scan, index) {
             out.push_str(&source[index..end]);
             index = end;
             continue;
         }
         if !escaped_at(source, index)
             && (rest.starts_with("![") || rest.starts_with('['))
-            && let Some((end, normalized)) = normalize_link_or_image_at(source, index)
+            && let Some((end, normalized)) = normalize_link_or_image_at(&mut scan, index)
         {
             out.push_str(&normalized);
             index = end;
@@ -3320,10 +3335,11 @@ fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-fn normalize_link_or_image_at(text: &str, start: usize) -> Option<(usize, String)> {
+fn normalize_link_or_image_at(scan: &mut InlineScan<'_>, start: usize) -> Option<(usize, String)> {
+    let text = scan.text;
     let image = text[start..].starts_with("![");
     let label_start = if image { start + 2 } else { start + 1 };
-    let label_close = find_balanced_square_close(text, label_start)?;
+    let label_close = scan.square_close(label_start)?;
     let after_label = label_close + 1;
     if text.as_bytes().get(after_label) != Some(&b'(') {
         return None;
@@ -3361,6 +3377,8 @@ fn normalize_link_or_image_at(text: &str, start: usize) -> Option<(usize, String
 }
 
 fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String> {
+    let mut scan = InlineScan::new(label);
+
     if label.contains(['\n', '\r']) {
         return None;
     }
@@ -3371,7 +3389,7 @@ fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String>
         if !escaped_at(label, index)
             && allow_nested_image
             && rest.starts_with("![")
-            && let Some((end, normalized)) = normalize_link_or_image_at(label, index)
+            && let Some((end, normalized)) = normalize_link_or_image_at(&mut scan, index)
         {
             out.push_str(&normalized);
             index = end;
@@ -3533,12 +3551,13 @@ fn normalize_attribute_token(token: &str) -> String {
     format!("fig-alt=\"{}\"", normalize_spaces(value))
 }
 
-fn inline_token_end(text: &str, start: usize) -> Option<usize> {
+fn inline_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    let text = scan.text;
     // Inline syntax protects its contents; only surrounding whitespace creates
     // a prose wrapping boundary.
     let mut end = start;
     loop {
-        end = inline_token_fragment_end(text, end)?;
+        end = inline_token_fragment_end(scan, end)?;
         if end == text.len()
             || text[end..]
                 .chars()
@@ -3550,7 +3569,8 @@ fn inline_token_end(text: &str, start: usize) -> Option<usize> {
     }
 }
 
-fn inline_token_fragment_end(text: &str, start: usize) -> Option<usize> {
+fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    let text = scan.text;
     let rest = &text[start..];
     if let Some(end) = strikethrough_span_end(text, start) {
         return Some(end);
@@ -3574,7 +3594,7 @@ fn inline_token_fragment_end(text: &str, start: usize) -> Option<usize> {
         return Some(end);
     }
     if rest.starts_with("![") || rest.starts_with('[') {
-        return link_or_bracket_token_end(text, start);
+        return link_or_bracket_token_end(scan, start);
     }
     if rest.starts_with('<')
         && let Some(end) = inline_html_tag_span_end(text, start)
@@ -3613,10 +3633,10 @@ fn inline_token_fragment_end(text: &str, start: usize) -> Option<usize> {
         end += ch.len_utf8();
     }
     while end < text.len() {
-        if escaped_at(text, end) || !reference_bracket_token_at(text, end) {
+        if escaped_at(text, end) || !reference_bracket_token_at(scan, end) {
             break;
         }
-        let Some(reference_end) = link_or_bracket_token_end(text, end) else {
+        let Some(reference_end) = link_or_bracket_token_end(scan, end) else {
             break;
         };
         end = inline_span_end_with_trailing_punctuation(text, reference_end);
@@ -3772,6 +3792,8 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
 }
 
 pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
+    let mut scan = InlineScan::new(source);
+
     if memchr::memchr(b'\\', source.as_bytes()).is_none() && source.is_ascii() {
         return false;
     }
@@ -3800,7 +3822,7 @@ pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
                 index = end;
                 continue;
             }
-            if let Some(end) = raw_semantics_protected_token_end(source, index) {
+            if let Some(end) = raw_semantics_protected_token_end(&mut scan, index) {
                 index = end;
                 continue;
             }
@@ -3817,7 +3839,8 @@ pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
     false
 }
 
-fn raw_semantics_protected_token_end(text: &str, index: usize) -> Option<usize> {
+fn raw_semantics_protected_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let text = scan.text;
     let rest = &text[index..];
     match rest.as_bytes().first()? {
         b'`' => {
@@ -3832,8 +3855,8 @@ fn raw_semantics_protected_token_end(text: &str, index: usize) -> Option<usize> 
             .or_else(|| paired_inline_html_span_end(text, index))
             .or_else(|| inline_html_tag_span_end(text, index))
             .or_else(|| rest.find('>').map(|close| index + close + 1)),
-        b'[' => link_or_bracket_token_end(text, index),
-        b'!' if rest.as_bytes().get(1) == Some(&b'[') => link_or_bracket_token_end(text, index),
+        b'[' => link_or_bracket_token_end(scan, index),
+        b'!' if rest.as_bytes().get(1) == Some(&b'[') => link_or_bracket_token_end(scan, index),
         b'{' if rest.starts_with("{{<") || rest.starts_with("{{%") => {
             rest.find("}}").map(|close| index + close + 2)
         }
@@ -3842,10 +3865,14 @@ fn raw_semantics_protected_token_end(text: &str, index: usize) -> Option<usize> 
     }
 }
 
-fn link_or_bracket_token_end(text: &str, start: usize) -> Option<usize> {
+fn link_or_bracket_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    let text = scan.text;
     let image = text[start..].starts_with("![");
+    if !image && text.as_bytes().get(start) != Some(&b'[') {
+        return None;
+    }
     let label_start = if image { start + 2 } else { start + 1 };
-    let label_close = find_balanced_square_close(text, label_start)?;
+    let label_close = scan.square_close(label_start)?;
     let after_label = label_close + 1;
     if text.as_bytes().get(after_label) == Some(&b'(') {
         normalize_link_label(&text[label_start..label_close], !image)?;
@@ -3858,14 +3885,16 @@ fn link_or_bracket_token_end(text: &str, start: usize) -> Option<usize> {
         return Some(inline_span_end_with_trailing_punctuation(text, end));
     }
     if !image
-        && let Some(end) = reference_style_link_end(text, label_start, label_close, after_label)
+        && let Some(end) = reference_style_link_end(scan, label_start, label_close, after_label)
     {
         return Some(inline_span_end_with_trailing_punctuation(text, end));
     }
     if !image && shortcut_reference_link_token(&text[label_start..label_close]) {
         return Some(inline_span_end_with_trailing_punctuation(text, after_label));
     }
-    if reference_bracket_token_at(text, start) {
+    if text[start..].starts_with("[^")
+        || !image && pandoc_citation_label(&text[label_start..label_close])
+    {
         return Some(after_label);
     }
     None
@@ -3876,31 +3905,33 @@ fn shortcut_reference_link_token(label: &str) -> bool {
 }
 
 fn reference_style_link_end(
-    text: &str,
+    scan: &mut InlineScan<'_>,
     label_start: usize,
     label_close: usize,
     reference_open: usize,
 ) -> Option<usize> {
+    let text = scan.text;
     if text.as_bytes().get(reference_open) != Some(&b'[')
         || text[label_start..label_close].contains(['\n', '\r'])
     {
         return None;
     }
-    let reference_close = find_balanced_square_close(text, reference_open + 1)?;
+    let reference_close = scan.square_close(reference_open + 1)?;
     if text[reference_open + 1..reference_close].contains(['\n', '\r']) {
         return None;
     }
     Some(reference_close + 1)
 }
 
-fn reference_bracket_token_at(text: &str, start: usize) -> bool {
+fn reference_bracket_token_at(scan: &mut InlineScan<'_>, start: usize) -> bool {
+    let text = scan.text;
     if text[start..].starts_with("[^") {
         return true;
     }
     if !text[start..].starts_with('[') || text[start..].starts_with("![") {
         return false;
     }
-    let Some(label_close) = find_balanced_square_close(text, start + 1) else {
+    let Some(label_close) = scan.square_close(start + 1) else {
         return false;
     };
     pandoc_citation_label(&text[start + 1..label_close])
@@ -3959,6 +3990,49 @@ fn citation_key_end(text: &str, mut index: usize) -> Option<usize> {
         index += ch.len_utf8();
     }
     Some(index)
+}
+
+// Ordinary matched labels need no cache. After a failed search, index the
+// remaining bracket pairs once so later openers do not rescan the same suffix.
+struct InlineScan<'a> {
+    text: &'a str,
+    cached_from: Option<usize>,
+    square_closes: HashMap<usize, usize>,
+}
+
+impl<'a> InlineScan<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            text,
+            cached_from: None,
+            square_closes: HashMap::new(),
+        }
+    }
+
+    fn square_close(&mut self, label_start: usize) -> Option<usize> {
+        if self.cached_from.is_some_and(|start| label_start >= start) {
+            return self.square_closes.get(&label_start).copied();
+        }
+        if let Some(close) = find_balanced_square_close(self.text, label_start) {
+            return Some(close);
+        }
+        let mut closes = Vec::new();
+        for (offset, ch) in self.text[label_start..].char_indices().rev() {
+            let index = label_start + offset;
+            if ch == '[' {
+                if let Some(&close) = closes.last() {
+                    self.square_closes.insert(index + 1, close);
+                }
+                if !escaped_at(self.text, index) {
+                    closes.pop();
+                }
+            } else if ch == ']' && !escaped_at(self.text, index) {
+                closes.push(index);
+            }
+        }
+        self.cached_from = Some(label_start);
+        None
+    }
 }
 
 fn find_balanced_square_close(text: &str, mut index: usize) -> Option<usize> {
