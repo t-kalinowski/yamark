@@ -4766,13 +4766,6 @@ pub fn emit_yaml_document_with_stats(
     };
     let mut out = String::with_capacity(ast.range.len());
     let mut stats = YamlEmissionStats::default();
-    let context = YamlEmitContext {
-        source,
-        document,
-        ast,
-        options,
-        plugins,
-    };
     let insert_document_markers = yaml_is_unmarked_flow_mapping_stream(source, ast);
     for root in &ast.roots {
         if insert_document_markers {
@@ -4780,6 +4773,14 @@ pub fn emit_yaml_document_with_stats(
             out.push_str(options.default_line_ending);
         }
         if let Some(node) = root.node {
+            let context = YamlEmitContext {
+                source,
+                document,
+                ast,
+                options,
+                plugins,
+                root: node,
+            };
             emit_yaml_node(&mut out, context, node, None, &mut stats)?;
         }
     }
@@ -4821,6 +4822,7 @@ fn restore_yaml_bom(source: &SourceBuffer, document: &Document, out: &mut String
 
 #[derive(Clone, Copy)]
 struct YamlEmitContext<'a> {
+    root: YamlNodeId,
     source: &'a SourceBuffer,
     document: &'a Document<'a>,
     ast: &'a YamlDocumentAst<'a>,
@@ -4843,6 +4845,7 @@ fn emit_yaml_node(
 ) -> Result<()> {
     stats.emitted_nodes += 1;
     let YamlEmitContext {
+        root,
         source,
         document,
         ast,
@@ -4864,7 +4867,7 @@ fn emit_yaml_node(
     ) = &node.emit
         && let YamlAstKind::Scalar(scalar) = &node.kind
     {
-        let root_line_start = yaml_node_is_root(ast, id) && yaml_output_is_at_line_start(out);
+        let root_line_start = id == root && yaml_output_is_at_line_start(out);
         emit_yaml_rendered_scalar_plan(
             out,
             source,
@@ -4882,7 +4885,7 @@ fn emit_yaml_node(
     if matches!(
         node.emit,
         YamlEmitPlan::Rendered(YamlRenderedKind::CompactCollection)
-    ) && yaml_node_is_root(ast, id)
+    ) && id == root
         && compact_root_collection_allowed(ast, id)
     {
         emit_compact_yaml_node(out, source, document, ast, id)
@@ -5567,6 +5570,7 @@ fn emit_yaml_mapping_value_after_colon(
     stats: &mut YamlEmissionStats,
 ) -> Result<()> {
     let YamlEmitContext {
+        root,
         source,
         document,
         ast,
@@ -6508,7 +6512,7 @@ fn foldable_yaml_prose(source: &str) -> bool {
 
 fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
     let chars = source.char_indices().collect::<Vec<_>>();
-    let breaks = safe_yaml_space_breaks(&chars);
+    let mut breaks = safe_yaml_space_breaks(&chars).into_iter().peekable();
     let mut lines = Vec::new();
     let mut start_byte = 0;
     let mut start_char = 0;
@@ -6516,21 +6520,15 @@ fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
 
     while chars.len().saturating_sub(start_char) > width {
         let target_char = start_char + width;
-        let break_at = breaks
-            .iter()
-            .copied()
-            .take_while(|candidate| candidate.char_index <= target_char)
-            .filter(|candidate| candidate.char_index > start_char)
-            .last()
-            .or_else(|| {
-                breaks
-                    .iter()
-                    .copied()
-                    .find(|candidate| candidate.char_index > start_char)
-            });
-        let Some(break_at) = break_at else {
+        let Some(mut break_at) = breaks.next() else {
             break;
         };
+        while breaks
+            .peek()
+            .is_some_and(|candidate| candidate.char_index <= target_char)
+        {
+            break_at = breaks.next().expect("peeked prose break");
+        }
 
         lines.push(source[start_byte..break_at.byte].to_owned());
         start_byte = break_at.byte + 1;
@@ -8744,6 +8742,7 @@ fn emit_yaml_scalar_after_prefix(
     body_indent: Option<usize>,
 ) -> Result<()> {
     let YamlEmitContext {
+        root,
         source,
         document,
         options,
@@ -9257,10 +9256,6 @@ fn emit_inline_comment(out: &mut String, source: &SourceBuffer, comment: impl In
         out.push(' ');
         out.push_str(source.slice(comment).trim_ascii_end());
     }
-}
-
-fn yaml_node_is_root(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
-    ast.roots.iter().any(|root| root.node == Some(id))
 }
 
 fn yaml_output_is_at_line_start(output: &str) -> bool {

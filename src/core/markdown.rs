@@ -2284,7 +2284,7 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
                 break;
             }
             if blank_line_continues_list_item(source.line_text(next), item_content_indent) {
-                line += 1;
+                line = next;
                 continue;
             }
             break;
