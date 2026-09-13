@@ -310,9 +310,9 @@ fn parse_markdown_with_mode<'src>(
             continue;
         }
 
-        if pandoc_multiline_table_at(source, i, end_line) {
+        if let Some(table_end) = pandoc_multiline_table_end(source, i, end_line) {
             let start = i;
-            i = pandoc_multiline_table_end(source, i, end_line);
+            i = table_end;
             let state = engine.state_for_node(&mut doc, true);
             push_markdown_format_node(
                 source,
@@ -1341,7 +1341,7 @@ fn markdown_line_starts_target(source: &SourceBuffer, line: usize, end: usize) -
             || thematic_break_at(text)
             || quarto_div_opening(text).is_some()
             || pandoc_grid_table_at(source, line, end)
-            || pandoc_multiline_table_at(source, line, end)
+            || pandoc_multiline_table_end(source, line, end).is_some()
             || pipe_table_at(source, line, end)
             || list_item_at(text)
             || blockquote_at(text)
@@ -1411,7 +1411,7 @@ fn paragraph_should_end_before(
         || thematic_break_at(text)
         || quarto_div_opening(text).is_some()
         || pandoc_grid_table_at(source, line, source.lines.len())
-        || pandoc_multiline_table_at(source, line, source.lines.len())
+        || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
         || pipe_table_at(source, line, source.lines.len())
         || list_item_at(text)
         || blockquote_at(text)
@@ -2111,40 +2111,42 @@ fn pandoc_grid_table_next_border(
     None
 }
 
-fn pandoc_multiline_table_at(source: &SourceBuffer, line: usize, end: usize) -> bool {
-    if line + 3 >= end {
-        return false;
+fn pandoc_multiline_table_end(source: &SourceBuffer, line: usize, end: usize) -> Option<usize> {
+    if line + 2 >= end {
+        return None;
     }
     let first = source.line_text(line).trim();
     if pandoc_multiline_outer_separator(first) && !pandoc_table_separator(first) {
-        return pandoc_continuous_bound_multiline_table_at(source, line, end);
+        return pandoc_continuous_bound_multiline_table_end(source, line, end);
     }
     if !pandoc_table_separator(first) {
-        return false;
+        return None;
     }
-    let mut separator_count = 1usize;
+    let mut headerless_end = None;
     let mut i = line + 1;
     while i < end {
         let trimmed = source.line_text(i).trim();
         if pandoc_table_separator(trimmed) {
-            separator_count += 1;
-            if separator_count == 3
-                || (separator_count == 2
-                    && (i + 1 == end || source.line_text(i + 1).trim().is_empty()))
+            if headerless_end.is_some() || i + 1 == end || source.line_text(i + 1).trim().is_empty()
             {
-                return true;
+                return Some(i + 1);
             }
+            headerless_end = Some(i + 1);
         }
         i += 1;
     }
-    false
+    // Pandoc prefers a headed multiline table when a third separator follows;
+    // its body may include blank lines and caption-looking text. Otherwise,
+    // the second separator closes a headerless table, even when a caption or
+    // another block follows it without a blank line.
+    headerless_end
 }
 
-fn pandoc_continuous_bound_multiline_table_at(
+fn pandoc_continuous_bound_multiline_table_end(
     source: &SourceBuffer,
     line: usize,
     end: usize,
-) -> bool {
+) -> Option<usize> {
     let mut saw_header = false;
     let mut saw_inner_separator = false;
     let mut saw_body = false;
@@ -2153,61 +2155,26 @@ fn pandoc_continuous_bound_multiline_table_at(
         let trimmed = source.line_text(i).trim();
         if !saw_inner_separator {
             if trimmed.is_empty() {
-                return false;
+                return None;
             }
             if pandoc_table_separator(trimmed) {
                 if !saw_header {
-                    return false;
+                    return None;
                 }
                 saw_inner_separator = true;
             } else if pandoc_multiline_outer_separator(trimmed) {
-                return false;
+                return None;
             } else {
                 saw_header = true;
             }
         } else if pandoc_multiline_outer_separator(trimmed) {
-            return saw_body;
+            return saw_body.then_some(i + 1);
         } else if !trimmed.is_empty() {
             saw_body = true;
         }
         i += 1;
     }
-    false
-}
-
-fn pandoc_multiline_table_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
-    if pandoc_multiline_outer_separator(source.line_text(line).trim())
-        && !pandoc_table_separator(source.line_text(line).trim())
-    {
-        let mut saw_inner_separator = false;
-        let mut i = line + 1;
-        while i < end {
-            let trimmed = source.line_text(i).trim();
-            if saw_inner_separator && pandoc_multiline_outer_separator(trimmed) {
-                return i + 1;
-            }
-            if pandoc_table_separator(trimmed) {
-                saw_inner_separator = true;
-            }
-            i += 1;
-        }
-        return end;
-    }
-    let mut separator_count = 0usize;
-    let mut i = line;
-    while i < end {
-        if pandoc_table_separator(source.line_text(i).trim()) {
-            separator_count += 1;
-            if separator_count == 3
-                || (separator_count == 2
-                    && (i + 1 == end || source.line_text(i + 1).trim().is_empty()))
-            {
-                return i + 1;
-            }
-        }
-        i += 1;
-    }
-    end
+    None
 }
 
 fn pandoc_multiline_outer_separator(text: &str) -> bool {

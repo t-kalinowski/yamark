@@ -2578,6 +2578,43 @@ fn markdown_pandoc_grid_tables_preserve_unrepresentable_rows() {
 }
 
 #[test]
+fn markdown_pandoc_headerless_tables_keep_their_borders_and_following_blocks() {
+    for newline in ["\n", "\r\n"] {
+        for following in [
+            "",
+            "Table: keep    caption spacing\n\nFirst sentence. Second sentence.\n",
+            ": keep    caption spacing\n\nFirst sentence. Second sentence.\n",
+            "#   Following heading\n\nFirst sentence. Second sentence.\n",
+        ] {
+            for body in ["a  b    c\n", "a  b    c\n        d\n\ne       f\n"] {
+                let input = format!("------  ------\n{body}------  ------\n{following}")
+                    .replace('\n', newline);
+                let expected = input
+                    .replace("a  b    c", "a b     c")
+                    .replace("#   Following heading", "# Following heading")
+                    .replace(
+                        "First sentence. Second sentence.",
+                        &format!("First sentence.{newline}Second sentence."),
+                    );
+                let args = [
+                    "format",
+                    "--stdin-file-path",
+                    "input.qmd",
+                    "--wrap",
+                    "sentence",
+                ];
+                let (status, stdout, stderr) = run_stdin(&args, &input);
+                assert_eq!(status, 0, "{stderr}");
+                assert_eq!(stdout, expected, "input: {input:?}");
+                let (status, second, stderr) = run_stdin(&args, &stdout);
+                assert_eq!(status, 0, "{stderr}");
+                assert_eq!(second, stdout, "table formatting must be idempotent");
+            }
+        }
+    }
+}
+
+#[test]
 fn markdown_pandoc_tables_preserve_alignment_and_widths() {
     let cases = [
         (

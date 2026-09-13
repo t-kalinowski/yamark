@@ -221,7 +221,7 @@ pub fn format_markdown_pandoc_table(source: &str, options: FormatOptions) -> Str
 
 fn format_markdown_multiline_table(source: &str, options: FormatOptions) -> Option<String> {
     let lines = markdown_line_bodies(source);
-    if lines.len() < 4 {
+    if lines.len() < 3 {
         return None;
     }
     let (separator, header) = if pandoc_separator_token_line(lines[0]) {
@@ -2013,6 +2013,9 @@ fn byte_offset_at_display_width(line: &str, width: usize) -> usize {
     let mut current = 0;
     for (offset, ch) in line.char_indices() {
         if current >= width {
+            // Match Pandoc's splitAtWidth, including a combining mark at the
+            // boundary belonging to the next cell. Consuming it here would
+            // move that cell's alignment padding after the mark.
             return offset;
         }
         current += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);

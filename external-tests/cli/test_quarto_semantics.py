@@ -73,6 +73,26 @@ PANDOC_TABLE_CASES = [
         "👩‍💻  Bée  End\n----  ---  ---\none   two  end",
     ),
     (
+        "simple-table-combining-marks-right",
+        (
+            "A           B\n"
+            "-----  ------\n"
+            "cafe\u0301   y\n"
+            "abcdefg\u0301x\n"
+            "abcdefg\u0301\u0308x"
+        ),
+    ),
+    (
+        "simple-table-combining-marks-center",
+        (
+            "A        B\n"
+            "-----  ------\n"
+            "cafe\u0301   y\n"
+            "abcdefg\u0301x\n"
+            "abcdefg\u0301\u0308x"
+        ),
+    ),
+    (
         "grid-table-unequal-widths",
         (
             "+----------+------------------+\n"
@@ -113,6 +133,19 @@ PANDOC_TABLE_CASES = [
             "\n"
             "a           b\n"
             "----------  --------------------"
+        ),
+    ),
+    (
+        "multiline-table-caption-like-body",
+        (
+            "------  ------\n"
+            "a       b\n"
+            "d       e\n"
+            "------  ------\n"
+            "Table: keep    cell spacing\n"
+            "\n"
+            "next    row\n"
+            "------  ------"
         ),
     ),
     (
@@ -380,6 +413,39 @@ def case_blocks(document: object) -> dict[str, object]:
         if case_id is not None:
             cases[case_id].append(canonicalize_quarto_json(block))
     return cases
+
+
+@pytest.mark.parametrize("body", ["a  b    c\n", "a  b    c\n        d\n\ne       f\n"])
+@pytest.mark.parametrize(
+    "following",
+    [
+        "",
+        "Table: keep    caption spacing\n\nFirst sentence. Second sentence.\n",
+        "#   Following heading\n\nFirst sentence. Second sentence.\n",
+    ],
+)
+def test_headerless_table_preserves_quarto_document(body: str, following: str) -> None:
+    source = f"Before.\n\n------  ------\n{body}------  ------\n{following}"
+    with TemporaryDirectory(prefix="yamark-quarto-headerless-") as temp:
+        root = Path(temp)
+        before = render_quarto_json(root, "before", source)
+        result = subprocess.run(
+            [
+                os.environ["YAMARK_BIN"],
+                "format",
+                "--wrap",
+                "sentence",
+                "--stdin-file-path",
+                "input.qmd",
+            ],
+            input=source,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        after = render_quarto_json(root, "after", result.stdout)
+    assert canonicalize_quarto_json(before) == canonicalize_quarto_json(after)
 
 
 @pytest.mark.parametrize("width", WIDTHS)
