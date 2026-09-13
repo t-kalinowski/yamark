@@ -13,21 +13,21 @@ use crate::core::source::{SourceBuffer, Span};
 use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlNodeId, YamlScalar};
 use crate::diagnostic::Result;
 
-pub fn parse_markdown<'src>(
-    source: &'src SourceBuffer,
+pub fn parse_markdown(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_markdown_with_mode(source, range, options, config, MarkdownParseMode::Concrete)
 }
 
-pub(crate) fn parse_markdown_for_formatting<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_markdown_for_formatting(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_markdown_with_mode(
         source,
         range,
@@ -37,12 +37,12 @@ pub(crate) fn parse_markdown_for_formatting<'src>(
     )
 }
 
-pub(crate) fn parse_markdown_for_validation<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_markdown_for_validation(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_markdown_with_mode(
         source,
         range,
@@ -52,12 +52,12 @@ pub(crate) fn parse_markdown_for_validation<'src>(
     )
 }
 
-pub(crate) fn parse_markdown_for_concrete_validation<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_markdown_for_concrete_validation(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_markdown_with_mode(
         source,
         range,
@@ -81,13 +81,13 @@ impl MarkdownParseMode {
     }
 }
 
-fn parse_markdown_with_mode<'src>(
-    source: &'src SourceBuffer,
+fn parse_markdown_with_mode(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
     mode: MarkdownParseMode,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     let mut options = options;
     if !matches!(
         source.dominant_line_ending,
@@ -809,13 +809,13 @@ fn parse_markdown_with_mode<'src>(
     Ok(doc)
 }
 
-fn parse_nested_yaml<'src>(
-    source: &'src SourceBuffer,
+fn parse_nested_yaml(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
     mode: MarkdownParseMode,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     match mode {
         MarkdownParseMode::Concrete => {
             crate::core::yaml::parse_yaml(source, range, options, config)
@@ -842,9 +842,9 @@ pub(crate) enum MarkdownBlockFormatKind {
     Blockquote,
 }
 
-pub(crate) fn apply_file_scope_delta_to_markdown_document<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+pub(crate) fn apply_file_scope_delta_to_markdown_document(
+    source: &SourceBuffer,
+    doc: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -859,9 +859,9 @@ pub(crate) fn apply_file_scope_delta_to_markdown_document<'src>(
     )
 }
 
-pub(crate) fn apply_file_scope_delta_to_markdown_document_for_validation<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+pub(crate) fn apply_file_scope_delta_to_markdown_document_for_validation(
+    source: &SourceBuffer,
+    doc: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -876,9 +876,9 @@ pub(crate) fn apply_file_scope_delta_to_markdown_document_for_validation<'src>(
     )
 }
 
-pub(crate) fn apply_file_scope_delta_to_markdown_document_for_concrete_validation<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+pub(crate) fn apply_file_scope_delta_to_markdown_document_for_concrete_validation(
+    source: &SourceBuffer,
+    doc: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -893,59 +893,31 @@ pub(crate) fn apply_file_scope_delta_to_markdown_document_for_concrete_validatio
     )
 }
 
-fn apply_file_scope_delta_to_markdown_document_with_mode<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+fn apply_file_scope_delta_to_markdown_document_with_mode(
+    source: &SourceBuffer,
+    doc: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
     mode: MarkdownParseMode,
 ) -> Result<()> {
     let owned_source = doc.source.take();
-    if let Some(owned_source) = owned_source {
-        let placeholder = Document::new(doc.kind, doc.range);
-        let mut owned_doc = std::mem::replace(doc, placeholder).retag_source_lifetime();
-        owned_doc.source = None;
-        let (owned_doc, result) = replan_markdown_document_with_delta(
-            &owned_source,
-            owned_doc,
-            delta,
-            options,
-            config,
-            mode,
-        );
-        let mut output_doc = owned_doc.retag_source_lifetime();
-        output_doc.source = Some(owned_source);
-        *doc = output_doc;
-        return result;
-    }
-
-    let placeholder = Document::new(doc.kind, doc.range);
-    let doc_value = std::mem::replace(doc, placeholder);
-    let (doc_value, result) =
-        replan_markdown_document_with_delta(source, doc_value, delta, options, config, mode);
-    *doc = doc_value;
+    doc.patch_all_states(delta.clone());
+    let result = patch_nested_documents_after_file_scope_delta(
+        owned_source.as_ref().unwrap_or(source),
+        doc,
+        delta,
+        options,
+        config,
+        mode,
+    );
+    doc.source = owned_source;
     result
 }
 
-fn replan_markdown_document_with_delta<'src>(
-    source: &'src SourceBuffer,
-    mut doc: Document<'src>,
-    delta: &DirectiveDelta,
-    options: FormatOptions,
-    config: &Config,
-    mode: MarkdownParseMode,
-) -> (Document<'src>, Result<()>) {
-    doc.patch_all_states(delta.clone());
-    let result = patch_nested_documents_after_file_scope_delta(
-        source, &mut doc, delta, options, config, mode,
-    );
-    (doc, result)
-}
-
-fn patch_nested_documents_after_file_scope_delta<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+fn patch_nested_documents_after_file_scope_delta(
+    source: &SourceBuffer,
+    doc: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -999,9 +971,9 @@ fn patch_nested_documents_after_file_scope_delta<'src>(
     Ok(())
 }
 
-fn apply_file_scope_delta_to_nested_document<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+fn apply_file_scope_delta_to_nested_document(
+    source: &SourceBuffer,
+    doc: &mut Document,
     nested: usize,
     delta: &DirectiveDelta,
     options: FormatOptions,
@@ -1047,33 +1019,33 @@ fn config_for_directive_state(config: &Config, state: &DirectiveState) -> Config
     config
 }
 
-fn plan_markdown_heading<'src>(
-    source: &'src SourceBuffer,
+fn plan_markdown_heading(
+    source: &SourceBuffer,
     span: Span,
     marker: Span,
     content: Span,
     state: &DirectiveState,
-) -> EmitPlan<'src> {
+) -> EmitPlan {
     if contains_markdown_template_span(source.slice(span), &state.template_delimiters) {
         return EmitPlan::Copy;
     }
     EmitPlan::MarkdownHeading { marker, content }
 }
 
-fn plan_markdown_setext_heading<'src>(
-    source: &'src SourceBuffer,
+fn plan_markdown_setext_heading(
+    source: &SourceBuffer,
     span: Span,
     content: Span,
     depth: usize,
     state: &DirectiveState,
-) -> EmitPlan<'src> {
+) -> EmitPlan {
     if contains_markdown_template_span(source.slice(span), &state.template_delimiters) {
         return EmitPlan::Copy;
     }
     EmitPlan::MarkdownSetextHeading { content, depth }
 }
 
-fn plan_markdown_thematic_break<'src>() -> EmitPlan<'src> {
+fn plan_markdown_thematic_break() -> EmitPlan {
     EmitPlan::MarkdownThematicBreak
 }
 
@@ -1179,7 +1151,7 @@ fn validate_markdown_format_target(
     Ok(())
 }
 
-fn markdown_format_emit_plan<'src>(kind: MarkdownBlockFormatKind) -> EmitPlan<'src> {
+fn markdown_format_emit_plan(kind: MarkdownBlockFormatKind) -> EmitPlan {
     match kind {
         MarkdownBlockFormatKind::Paragraph => EmitPlan::MarkdownParagraph,
         MarkdownBlockFormatKind::Table => EmitPlan::MarkdownTable,
@@ -2254,7 +2226,7 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
                 break;
             }
             if blank_line_continues_list_item(source.line_text(next), item_content_indent) {
-                line += 1;
+                line = next;
                 continue;
             }
             break;
@@ -3140,7 +3112,7 @@ fn front_matter_markdown_delta(
 
 fn front_matter_markdown_delta_at_path(
     source: &SourceBuffer,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     path: &[&str],
 ) -> Option<DirectiveDelta> {
     let root = ast.roots.iter().find_map(|root| root.node)?;
@@ -3165,7 +3137,7 @@ fn front_matter_markdown_delta_at_path(
 
 fn yaml_mapping_value_at_path(
     source: &SourceBuffer,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     mut node: YamlNodeId,
     path: &[&str],
 ) -> Option<YamlNodeId> {
@@ -3177,7 +3149,7 @@ fn yaml_mapping_value_at_path(
 
 fn yaml_mapping_value_for_key(
     source: &SourceBuffer,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     node: YamlNodeId,
     key: &str,
 ) -> Option<YamlNodeId> {
@@ -3204,7 +3176,7 @@ fn yaml_mapping_value_for_key(
 
 fn yaml_mapping_scalar_pairs(
     source: &SourceBuffer,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     node: YamlNodeId,
 ) -> Vec<(String, String)> {
     match &ast.node(node).kind {
@@ -3245,7 +3217,7 @@ fn yaml_block_mapping_key<'a>(
 
 fn yaml_node_scalar_text(
     source: &SourceBuffer,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     node: YamlNodeId,
 ) -> Option<String> {
     let YamlAstKind::Scalar(scalar) = &ast.node(node).kind else {
@@ -3254,7 +3226,7 @@ fn yaml_node_scalar_text(
     Some(front_matter_scalar_value(source, scalar))
 }
 
-fn front_matter_scalar_value(source: &SourceBuffer, scalar: &YamlScalar<'_>) -> String {
+fn front_matter_scalar_value(source: &SourceBuffer, scalar: &YamlScalar) -> String {
     let value = source.slice(scalar.value).trim();
     front_matter_unquoted_text(value).trim().to_owned()
 }

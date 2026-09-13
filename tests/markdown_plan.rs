@@ -163,8 +163,8 @@ fn embedded_markdown_string_emit_consumes_nested_document_plan() {
 }
 
 #[test]
-fn embedded_source_fragments_are_source_lifetime_spans() {
-    fn fragment<'src>(source: &'src SourceBuffer, span: SourceSpan<'src>) -> &'src str {
+fn embedded_source_fragments_borrow_the_supplied_buffer() {
+    fn fragment(source: &SourceBuffer, span: SourceSpan) -> &str {
         span.as_str(source)
     }
 

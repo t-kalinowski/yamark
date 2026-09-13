@@ -7,6 +7,7 @@ use crate::core::directives::{
 use crate::core::document::{
     Document, DocumentKind, EmitPlan, FormatOptions, Node, NodeKind, SourceNodeKind, SourceText,
 };
+use crate::core::lines::text_lines as source_lines;
 use crate::core::source::{LineEnding, SourceBuffer, SourceSpan, Span};
 use crate::diagnostic::Result;
 use unicode_width::UnicodeWidthStr;
@@ -21,13 +22,13 @@ pub enum SourceLanguage {
     R,
 }
 
-pub fn parse_source_language<'src>(
-    source: &'src SourceBuffer,
+pub fn parse_source_language(
+    source: &SourceBuffer,
     range: Span,
     language: SourceLanguage,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_source_language_with_mode(
         source,
         range,
@@ -38,13 +39,13 @@ pub fn parse_source_language<'src>(
     )
 }
 
-pub(crate) fn parse_source_language_for_formatting<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_source_language_for_formatting(
+    source: &SourceBuffer,
     range: Span,
     language: SourceLanguage,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_source_language_with_mode(
         source,
         range,
@@ -55,13 +56,13 @@ pub(crate) fn parse_source_language_for_formatting<'src>(
     )
 }
 
-pub(crate) fn parse_source_language_for_validation<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_source_language_for_validation(
+    source: &SourceBuffer,
     range: Span,
     language: SourceLanguage,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_source_language_with_mode(
         source,
         range,
@@ -85,14 +86,14 @@ enum EmbeddedMarkdownTemplateMode {
     PythonFString,
 }
 
-fn parse_source_language_with_mode<'src>(
-    source: &'src SourceBuffer,
+fn parse_source_language_with_mode(
+    source: &SourceBuffer,
     range: Span,
     language: SourceLanguage,
     options: FormatOptions,
     config: &Config,
     mode: EmbeddedMarkdownParseMode,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     let kind = match language {
         SourceLanguage::Python => DocumentKind::Python,
         SourceLanguage::R => DocumentKind::R,
@@ -390,9 +391,9 @@ fn source_line_starts_target(
             || find_markdown_string_candidate(source, line, end, language).is_some())
 }
 
-fn patch_source_nodes_after_file_scope_delta<'src>(
-    source: &'src SourceBuffer,
-    doc: &mut Document<'src>,
+fn patch_source_nodes_after_file_scope_delta(
+    source: &SourceBuffer,
+    doc: &mut Document,
     options: FormatOptions,
     config: &Config,
     delta: &DirectiveDelta,
@@ -465,14 +466,14 @@ fn source_node_uses_known_template_delimiters(source: &SourceBuffer, node: &Node
     }
 }
 
-fn plan_comment_markdown<'src>(
-    source: &'src SourceBuffer,
+fn plan_comment_markdown(
+    source: &SourceBuffer,
     span: Span,
     options: FormatOptions,
     config: &Config,
     mode: EmbeddedMarkdownParseMode,
-) -> Result<(SourceText<'src>, Document<'static>)> {
-    let mut prefix = None::<(String, SourceText<'src>)>;
+) -> Result<(SourceText, Document)> {
+    let mut prefix = None::<(String, SourceText)>;
     let mut body = String::new();
     for line in source_lines(source.slice(span)) {
         let Some((line_prefix, content)) = split_comment_line(line.body) else {
@@ -527,14 +528,14 @@ fn plan_comment_markdown<'src>(
     Ok((prefix, nested))
 }
 
-fn plan_hashpipe_yaml<'src>(
-    source: &'src SourceBuffer,
+fn plan_hashpipe_yaml(
+    source: &SourceBuffer,
     span: Span,
     options: FormatOptions,
     config: &Config,
     mode: EmbeddedMarkdownParseMode,
-) -> Result<(SourceText<'src>, Document<'static>)> {
-    let mut prefix = None::<(String, SourceText<'src>)>;
+) -> Result<(SourceText, Document)> {
+    let mut prefix = None::<(String, SourceText)>;
     let mut body = String::new();
     for line in source_lines(source.slice(span)) {
         let Some((line_prefix, content)) = split_hashpipe_comment_line(line.body) else {
@@ -583,13 +584,13 @@ fn plan_hashpipe_yaml<'src>(
     Ok((prefix, nested))
 }
 
-fn plan_string_markdown<'src>(
-    source: &'src SourceBuffer,
+fn plan_string_markdown(
+    source: &SourceBuffer,
     literal: LiteralCandidate,
     options: FormatOptions,
     config: &Config,
     mode: EmbeddedMarkdownParseMode,
-) -> Result<(Document<'static>, SourceSpan<'src>, SourceSpan<'src>)> {
+) -> Result<(Document, SourceSpan, SourceSpan)> {
     let body_text = source.slice(literal.body);
     let body_text = body_without_delimiter_padding(body_text);
     let indent = common_body_indent(body_text);
@@ -607,10 +608,7 @@ fn plan_string_markdown<'src>(
     Ok((nested, indent_span, closing_indent))
 }
 
-fn external_plugin_string_indent<'src>(
-    source: &'src SourceBuffer,
-    literal: LiteralCandidate,
-) -> SourceSpan<'src> {
+fn external_plugin_string_indent(source: &SourceBuffer, literal: LiteralCandidate) -> SourceSpan {
     let body_text = source.slice(literal.body);
     let body_text = body_without_delimiter_padding(body_text);
     let indent = common_body_indent(body_text);
@@ -623,7 +621,7 @@ fn parse_generated_embedded_markdown(
     config: &Config,
     mode: EmbeddedMarkdownParseMode,
     template_mode: EmbeddedMarkdownTemplateMode,
-) -> Result<Document<'static>> {
+) -> Result<Document> {
     let generated_source = SourceBuffer::new(body);
     let mut embedded_config = config.clone();
     let template_delimiters = match template_mode {
@@ -639,7 +637,7 @@ fn parse_generated_embedded_markdown(
             python_f_string_template_delimiters();
     }
     let range = Span::new(0, generated_source.as_str().len());
-    let nested = match mode {
+    let mut nested = match mode {
         EmbeddedMarkdownParseMode::Concrete => crate::core::markdown::parse_markdown(
             &generated_source,
             range,
@@ -663,7 +661,6 @@ fn parse_generated_embedded_markdown(
             )?
         }
     };
-    let mut nested = nested.retag_source_lifetime();
     nested.source = Some(generated_source);
     Ok(nested)
 }
@@ -680,10 +677,10 @@ fn parse_generated_embedded_yaml(
     options: FormatOptions,
     config: &Config,
     mode: EmbeddedMarkdownParseMode,
-) -> Result<Document<'static>> {
+) -> Result<Document> {
     let generated_source = SourceBuffer::new(body);
     let range = Span::new(0, generated_source.as_str().len());
-    let nested = match mode {
+    let mut nested = match mode {
         EmbeddedMarkdownParseMode::Concrete => {
             crate::core::yaml::parse_yaml(&generated_source, range, options, config)?
         }
@@ -698,14 +695,12 @@ fn parse_generated_embedded_yaml(
             0,
         )?,
     };
-    let mut nested = nested.retag_source_lifetime();
     nested.source = Some(generated_source);
     Ok(nested)
 }
 
 pub(crate) fn restore_comment_prefix(source: &str, prefix: &str) -> String {
     source_lines(source)
-        .into_iter()
         .map(|line| {
             let prefix = if line.body.is_empty() {
                 prefix.trim_end()
@@ -764,7 +759,6 @@ fn yaml_options_with_reduced_width(
 
 fn common_body_indent(source: &str) -> String {
     let mut indents = source_lines(source)
-        .into_iter()
         .filter(|line| !line.body.trim().is_empty())
         .map(|line| line_indent(line.body));
     let Some(mut common) = indents.next() else {
@@ -779,12 +773,12 @@ fn common_body_indent(source: &str) -> String {
     common
 }
 
-fn common_body_indent_span<'src>(
-    source: &'src SourceBuffer,
+fn common_body_indent_span(
+    source: &SourceBuffer,
     body: Span,
     body_text: &str,
     indent_len: usize,
-) -> SourceSpan<'src> {
+) -> SourceSpan {
     if indent_len == 0 {
         return SourceSpan::empty(body.start);
     }
@@ -801,10 +795,7 @@ fn common_body_indent_span<'src>(
     SourceSpan::empty(body.start)
 }
 
-fn closing_delimiter_indent<'src>(
-    source: &'src SourceBuffer,
-    literal: LiteralCandidate,
-) -> SourceSpan<'src> {
+fn closing_delimiter_indent(source: &SourceBuffer, literal: LiteralCandidate) -> SourceSpan {
     let closing_line = source.line_at_byte(literal.closing.start);
     SourceSpan::new(Span::new(
         source.lines[closing_line].text.start(),
@@ -864,7 +855,6 @@ pub(crate) fn dedent_body(source: &str, indent: &str) -> String {
         return source.to_owned();
     }
     source_lines(source)
-        .into_iter()
         .map(|line| {
             let body = line.body.strip_prefix(indent).unwrap_or(line.body);
             format!("{}{}", body, line.newline)
@@ -877,7 +867,6 @@ fn reindent_body(source: &str, indent: &str) -> String {
         return source.to_owned();
     }
     source_lines(source)
-        .into_iter()
         .map(|line| {
             if line.body.is_empty() {
                 line.newline.to_owned()
@@ -1230,41 +1219,6 @@ fn opening_line_body_start(
         });
     }
     None
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SourceLine<'a> {
-    body: &'a str,
-    newline: &'a str,
-    body_start: usize,
-}
-
-fn source_lines(source: &str) -> Vec<SourceLine<'_>> {
-    let bytes = source.as_bytes();
-    let mut lines = Vec::new();
-    let mut start = 0usize;
-    while start < source.len() {
-        let mut end = start;
-        while end < source.len() && !matches!(bytes[end], b'\r' | b'\n') {
-            end += 1;
-        }
-        let (full_end, newline) = if end == source.len() {
-            (end, "")
-        } else if bytes[end] == b'\r' && end + 1 < source.len() && bytes[end + 1] == b'\n' {
-            (end + 2, "\r\n")
-        } else if bytes[end] == b'\r' {
-            (end + 1, "\r")
-        } else {
-            (end + 1, "\n")
-        };
-        lines.push(SourceLine {
-            body: &source[start..end],
-            newline,
-            body_start: start,
-        });
-        start = full_end;
-    }
-    lines
 }
 
 fn find_r_multiline_string(

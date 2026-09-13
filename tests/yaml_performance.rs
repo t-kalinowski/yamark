@@ -7,9 +7,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yamark::config::Config;
-use yamark::core::document::{FileKind, FormatOptions};
-use yamark::core::parser::format_source_report;
-use yamark::core::source::{Line, SourceSpan, Span};
+use yamark::core::document::{DocumentKind, FileKind, FormatOptions};
+use yamark::core::parser::{format_source_report, parse_source};
+use yamark::core::source::{Line, SourceBuffer, SourceSpan, Span};
 use yamark::core::yaml_model::YamlAstNode;
 use yamark::plugins::PluginRegistry;
 use yamark::workspace::project_source_to_yaml;
@@ -26,6 +26,30 @@ thread_local! {
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
+
+#[test]
+fn root_flow_recognition_retains_the_parsed_nodes() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = format!("[{}]\n", vec!["[]"; 512].join(","));
+    let source = SourceBuffer::new(input);
+    let config = Config::default();
+    ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let document = parse_source(
+        &source,
+        Span::new(0, source.as_str().len()),
+        DocumentKind::Yaml,
+        FormatOptions::default(),
+        &config,
+    );
+    set_count_thread_allocations(false);
+    assert_eq!(document.unwrap().yaml.unwrap().nodes.len(), 513);
+    assert!(
+        ALLOCATED_BYTES.load(Ordering::Relaxed) <= 3 * 513 * size_of::<YamlAstNode>(),
+        "root flow parsing allocated {} bytes",
+        ALLOCATED_BYTES.load(Ordering::Relaxed)
+    );
+}
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -60,21 +84,21 @@ fn count_thread_allocations() -> bool {
 #[test]
 fn yaml_ast_node_layout_stays_semantic_only() {
     assert_eq!(
-        size_of::<SourceSpan<'_>>(),
+        size_of::<SourceSpan>(),
         8,
         "SourceSpan is {} bytes",
-        size_of::<SourceSpan<'_>>()
+        size_of::<SourceSpan>()
     );
     assert_eq!(
-        size_of::<Option<SourceSpan<'_>>>(),
+        size_of::<Option<SourceSpan>>(),
         8,
         "Option<SourceSpan> is {} bytes",
-        size_of::<Option<SourceSpan<'_>>>()
+        size_of::<Option<SourceSpan>>()
     );
     assert!(
-        size_of::<SourceSpan<'_>>() < size_of::<Span>(),
+        size_of::<SourceSpan>() < size_of::<Span>(),
         "SourceSpan is {} bytes; Span is {} bytes",
-        size_of::<SourceSpan<'_>>(),
+        size_of::<SourceSpan>(),
         size_of::<Span>()
     );
     assert!(

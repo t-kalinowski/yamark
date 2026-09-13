@@ -15,6 +15,7 @@ use crate::core::yaml_model::{
     YamlScalarSemantic, YamlScalarStyle, YamlSequence, YamlSequenceItem, YamlTrivia,
     YamlTriviaKind,
 };
+use crate::core::yaml_scalar::{self, DecodePolicy, decode_quoted_chars};
 use crate::core::yaml_scan::{YamlLineScan, scan_yaml_lines, scan_yaml_lines_basic};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
@@ -22,30 +23,30 @@ use memchr::{memchr, memchr2};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-pub fn parse_yaml<'src>(
-    source: &'src SourceBuffer,
+pub fn parse_yaml(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_yaml_impl(source, range, options, config, YamlParseMode::CONCRETE)
 }
 
-pub(crate) fn parse_yaml_for_formatting<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_yaml_for_formatting(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_yaml_impl(source, range, options, config, YamlParseMode::FORMATTING)
 }
 
-pub(crate) fn parse_yaml_for_formatting_with_trace<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_yaml_for_formatting_with_trace(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_yaml_impl(
         source,
         range,
@@ -55,13 +56,13 @@ pub(crate) fn parse_yaml_for_formatting_with_trace<'src>(
     )
 }
 
-pub(crate) fn parse_yaml_for_validation<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_yaml_for_validation(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
     node_capacity_hint: usize,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_yaml_impl(
         source,
         range,
@@ -71,12 +72,12 @@ pub(crate) fn parse_yaml_for_validation<'src>(
     )
 }
 
-pub(crate) fn parse_yaml_for_concrete_validation<'src>(
-    source: &'src SourceBuffer,
+pub(crate) fn parse_yaml_for_concrete_validation(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     parse_yaml_impl(
         source,
         range,
@@ -125,13 +126,13 @@ impl YamlParseMode {
     }
 }
 
-fn parse_yaml_impl<'src>(
-    source: &'src SourceBuffer,
+fn parse_yaml_impl(
+    source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
     config: &Config,
     mode: YamlParseMode,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     crate::core::parser::validate_compact_source_range(range)?;
     let mut options = options;
     if !matches!(
@@ -165,11 +166,7 @@ fn parse_yaml_impl<'src>(
     Ok(doc)
 }
 
-fn preserved_yaml_document<'src>(
-    range: Span,
-    options: FormatOptions,
-    scan: &YamlLineScan,
-) -> Document<'src> {
+fn preserved_yaml_document(range: Span, options: FormatOptions, scan: &YamlLineScan) -> Document {
     let mut doc = Document::new(DocumentKind::Yaml, range);
     doc.options = options;
     doc.trace.source_scans = scan.source_scans;
@@ -179,9 +176,9 @@ fn preserved_yaml_document<'src>(
     doc
 }
 
-pub(crate) fn apply_file_scope_delta_to_yaml_document<'src>(
-    source: &'src SourceBuffer,
-    document: &mut Document<'src>,
+pub(crate) fn apply_file_scope_delta_to_yaml_document(
+    source: &SourceBuffer,
+    document: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -191,9 +188,9 @@ pub(crate) fn apply_file_scope_delta_to_yaml_document<'src>(
     )
 }
 
-pub(crate) fn apply_file_scope_delta_to_yaml_document_for_validation<'src>(
-    source: &'src SourceBuffer,
-    document: &mut Document<'src>,
+pub(crate) fn apply_file_scope_delta_to_yaml_document_for_validation(
+    source: &SourceBuffer,
+    document: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -203,9 +200,9 @@ pub(crate) fn apply_file_scope_delta_to_yaml_document_for_validation<'src>(
     )
 }
 
-fn apply_file_scope_delta_to_yaml_document_with_mode<'src>(
-    source: &'src SourceBuffer,
-    document: &mut Document<'src>,
+fn apply_file_scope_delta_to_yaml_document_with_mode(
+    source: &SourceBuffer,
+    document: &mut Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
@@ -213,32 +210,28 @@ fn apply_file_scope_delta_to_yaml_document_with_mode<'src>(
 ) -> Result<()> {
     let owned_source = document.source.take();
     let placeholder = Document::new(DocumentKind::Yaml, document.range);
-    let mut doc = std::mem::replace(document, placeholder);
-    doc.source = None;
-    if let Some(owned_source) = owned_source {
-        let doc = doc.retag_source_lifetime();
-        let (doc, result) =
-            replan_yaml_document_with_delta(&owned_source, doc, delta, options, config, plan_emits);
-        let mut doc = doc.retag_source_lifetime();
-        doc.source = Some(owned_source);
-        *document = doc;
-        return result;
-    }
-
-    let (doc, result) =
-        replan_yaml_document_with_delta(source, doc, delta, options, config, plan_emits);
+    let doc = std::mem::replace(document, placeholder);
+    let (mut doc, result) = replan_yaml_document_with_delta(
+        owned_source.as_ref().unwrap_or(source),
+        doc,
+        delta,
+        options,
+        config,
+        plan_emits,
+    );
+    doc.source = owned_source;
     *document = doc;
     result
 }
 
-fn replan_yaml_document_with_delta<'src>(
-    plan_source: &'src SourceBuffer,
-    mut doc: Document<'src>,
+fn replan_yaml_document_with_delta(
+    plan_source: &SourceBuffer,
+    mut doc: Document,
     delta: &DirectiveDelta,
     options: FormatOptions,
     config: &Config,
     plan_emits: bool,
-) -> (Document<'src>, Result<()>) {
+) -> (Document, Result<()>) {
     doc.patch_all_states(delta.clone());
     let Some(ast) = doc.yaml.take() else {
         return (doc, Ok(()));
@@ -256,6 +249,7 @@ fn replan_yaml_document_with_delta<'src>(
         end: 0,
         held_trivia: Vec::new(),
         flow_collection_nodes: Vec::new(),
+        recognized_flow: None,
         default_template_openers_present: source_contains_any_template_opener(
             plan_source.as_str(),
             &config.template_delimiters,
@@ -289,6 +283,7 @@ fn replan_yaml_document_with_delta<'src>(
         end: _,
         held_trivia: _,
         flow_collection_nodes: _,
+        recognized_flow: _,
         default_template_openers_present: _,
         template_spans_possible_by_state: _,
         collect_trace: _,
@@ -638,15 +633,16 @@ struct YamlParser<'src, 'cfg> {
     source: &'src SourceBuffer,
     options: FormatOptions,
     config: &'cfg Config,
-    doc: Document<'src>,
-    ast: YamlDocumentAst<'src>,
+    doc: Document,
+    ast: YamlDocumentAst,
     engine: DirectiveEngine,
     file_scope_delta: DirectiveDelta,
     start: usize,
     line: usize,
     end: usize,
-    held_trivia: Vec<YamlTrivia<'src>>,
+    held_trivia: Vec<YamlTrivia>,
     flow_collection_nodes: Vec<YamlNodeId>,
+    recognized_flow: Option<RecognizedFlowCollection>,
     default_template_openers_present: bool,
     template_spans_possible_by_state: RefCell<Vec<Option<bool>>>,
     collect_trace: bool,
@@ -690,6 +686,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             end: end_line,
             held_trivia: Vec::new(),
             flow_collection_nodes: Vec::new(),
+            recognized_flow: None,
             default_template_openers_present: source_contains_any_template_opener(
                 source.as_str(),
                 &config.template_delimiters,
@@ -700,7 +697,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         }
     }
 
-    fn parse(mut self) -> Result<Document<'src>> {
+    fn parse(mut self) -> Result<Document> {
         while self.line < self.end || !self.held_trivia.is_empty() {
             let leading = self.take_leading_trivia()?;
             if self.doc.skip_file {
@@ -816,7 +813,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         }
     }
 
-    fn push_planned_yaml_node(&mut self, node: YamlAstNode<'src>) -> YamlNodeId {
+    fn push_planned_yaml_node(&mut self, node: YamlAstNode) -> YamlNodeId {
         let id = self.ast.push_node(node);
         if self.plan_emits {
             self.plan_yaml_node_emit(id);
@@ -840,7 +837,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.ast.node_mut(id).emit = plan;
     }
 
-    fn yaml_node_should_preserve_uncached(&self, node: &YamlAstNode<'_>) -> bool {
+    fn yaml_node_should_preserve_uncached(&self, node: &YamlAstNode) -> bool {
         yaml_node_should_preserve_uncached_with_template_possible(
             self.source,
             &self.doc,
@@ -1055,9 +1052,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn apply_document_marker_to_roots(
         &mut self,
-        roots: &mut Vec<YamlRoot<'src>>,
-        pending_start: &mut Option<SourceSpan<'src>>,
-        marker: SourceSpan<'src>,
+        roots: &mut Vec<YamlRoot>,
+        pending_start: &mut Option<SourceSpan>,
+        marker: SourceSpan,
     ) {
         match document_marker_kind(self.source.slice(marker)) {
             Some(DocumentMarkerKind::Start) => {
@@ -1115,8 +1112,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn yaml_mapping_value_context_plan(
         &self,
-        key: SourceSpan<'src>,
-        trailing_comment: Option<SourceSpan<'src>>,
+        key: SourceSpan,
+        trailing_comment: Option<SourceSpan>,
         value: Option<YamlNodeId>,
         mapping_indent: usize,
         options: FormatOptions,
@@ -1233,7 +1230,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn yaml_sequence_item_context_plan(
         &self,
-        trailing_comment: Option<SourceSpan<'src>>,
+        trailing_comment: Option<SourceSpan>,
         value: Option<YamlNodeId>,
         value_on_marker_line: bool,
         sequence_indent: usize,
@@ -1356,7 +1353,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn yaml_mapping_child_forced_indent(
         &self,
         value: YamlNodeId,
-        trailing_comment: Option<SourceSpan<'src>>,
+        trailing_comment: Option<SourceSpan>,
         mapping_indent: usize,
         options: FormatOptions,
     ) -> Option<usize> {
@@ -1382,7 +1379,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn yaml_sequence_child_forced_indent(
         &self,
         value: YamlNodeId,
-        trailing_comment: Option<SourceSpan<'src>>,
+        trailing_comment: Option<SourceSpan>,
         sequence_indent: usize,
         options: FormatOptions,
     ) -> Option<usize> {
@@ -1533,8 +1530,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn yaml_scalar_emit_plan(
         &self,
-        scalar: &YamlScalar<'_>,
-        _node: &YamlAstNode<'_>,
+        scalar: &YamlScalar,
+        _node: &YamlAstNode,
         state: &crate::core::directives::DirectiveState,
         options: FormatOptions,
         body_indent: Option<usize>,
@@ -1587,7 +1584,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_block(
         &mut self,
         indent: usize,
-        leading: Vec<YamlTrivia<'src>>,
+        leading: Vec<YamlTrivia>,
         container_is_target: bool,
     ) -> Result<Option<YamlNodeId>> {
         if self.line >= self.end {
@@ -1625,10 +1622,13 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 .map(Some);
         }
 
-        if !line_has_flow_collapse_hint_value(self.source, self.line, self.end)
-            && let Some(block) = unsupported_flow_block_at(self.source, self.line, self.end)
-        {
-            return self.parse_opaque_flow(block, leading);
+        if !line_has_flow_collapse_hint_value(self.source, self.line, self.end) {
+            self.recognized_flow = recognize_flow_collection(self.source, self.line, self.end);
+            if self.recognized_flow.is_none()
+                && let Some(block) = unsupported_flow_block_at(self.source, self.line, self.end)
+            {
+                return self.parse_opaque_flow(block, leading);
+            }
         }
 
         if sequence_line(text, actual_indent).is_some() {
@@ -1666,7 +1666,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.parse_plain_scalar_line(leading).map(Some)
     }
 
-    fn document_marker_inline_content_start(&self, leading: &[YamlTrivia<'_>]) -> Option<usize> {
+    fn document_marker_inline_content_start(&self, leading: &[YamlTrivia]) -> Option<usize> {
         let marker_trivia = leading
             .iter()
             .rev()
@@ -1682,7 +1682,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn parse_document_marker_inline_content(
         &mut self,
-        leading: Vec<YamlTrivia<'src>>,
+        leading: Vec<YamlTrivia>,
         content_start: usize,
     ) -> Result<YamlNodeId> {
         if let Some(scan) = flow_collection_block_from_value(
@@ -1724,7 +1724,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_mapping(
         &mut self,
         indent: usize,
-        first_leading: Vec<YamlTrivia<'src>>,
+        first_leading: Vec<YamlTrivia>,
         container_is_target: bool,
     ) -> Result<YamlNodeId> {
         let state = if container_is_target {
@@ -1801,7 +1801,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_explicit_mapping(
         &mut self,
         indent: usize,
-        first_leading: Vec<YamlTrivia<'src>>,
+        first_leading: Vec<YamlTrivia>,
         container_is_target: bool,
     ) -> Result<YamlNodeId> {
         let state = if container_is_target {
@@ -1872,8 +1872,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_explicit_mapping_pair_at(
         &mut self,
         indent: usize,
-        leading: Vec<YamlTrivia<'src>>,
-    ) -> Result<(YamlMappingPair<'src>, usize)> {
+        leading: Vec<YamlTrivia>,
+    ) -> Result<(YamlMappingPair, usize)> {
         let key_line = self.source.lines[self.line];
         let key_text = self.source.line_text(self.line);
         let marker =
@@ -2170,8 +2170,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_mapping_pair_at(
         &mut self,
         key_start_column: usize,
-        leading: Vec<YamlTrivia<'src>>,
-    ) -> Result<(YamlMappingPair<'src>, usize)> {
+        leading: Vec<YamlTrivia>,
+    ) -> Result<(YamlMappingPair, usize)> {
         let line = self.source.lines[self.line];
         let text = self.source.line_text(self.line);
         let colon = mapping_colon_from(text, key_start_column).expect("mapping pair exists");
@@ -2444,7 +2444,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_sequence(
         &mut self,
         indent: usize,
-        first_leading: Vec<YamlTrivia<'src>>,
+        first_leading: Vec<YamlTrivia>,
     ) -> Result<YamlNodeId> {
         let state = self
             .engine
@@ -3029,7 +3029,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         Ok(Some(id))
     }
 
-    fn parse_plain_scalar_line(&mut self, leading: Vec<YamlTrivia<'src>>) -> Result<YamlNodeId> {
+    fn parse_plain_scalar_line(&mut self, leading: Vec<YamlTrivia>) -> Result<YamlNodeId> {
         let line = self.source.lines[self.line];
         let text = self.source.line_text(self.line);
         let value_start = indentation(text);
@@ -3062,7 +3062,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_flow_collapse_hint_collection(
         &mut self,
         parent_indent: usize,
-        leading: Vec<YamlTrivia<'src>>,
+        leading: Vec<YamlTrivia>,
         hint: FlowCollapseHint,
         container_is_target: bool,
     ) -> Result<YamlNodeId> {
@@ -3102,12 +3102,12 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_opaque_flow(
         &mut self,
         block: Span,
-        leading: Vec<YamlTrivia<'src>>,
+        leading: Vec<YamlTrivia>,
     ) -> Result<Option<YamlNodeId>> {
         self.parse_opaque_flow_node(block, leading).map(Some)
     }
 
-    fn parse_tab_indented_opaque(&mut self, leading: Vec<YamlTrivia<'src>>) -> Result<YamlNodeId> {
+    fn parse_tab_indented_opaque(&mut self, leading: Vec<YamlTrivia>) -> Result<YamlNodeId> {
         let line = self.source.lines[self.line];
         let block = tab_indented_block_at(self.source, self.line, self.end);
         let state = self
@@ -3136,7 +3136,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         )))
     }
 
-    fn parse_bom_prefixed_opaque(&mut self, leading: Vec<YamlTrivia<'src>>) -> Result<YamlNodeId> {
+    fn parse_bom_prefixed_opaque(&mut self, leading: Vec<YamlTrivia>) -> Result<YamlNodeId> {
         let line = self.source.lines[self.line];
         let end_line = (self.line + 1..self.end)
             .find(|line| {
@@ -3187,7 +3187,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_opaque_flow_node(
         &mut self,
         block: Span,
-        leading: Vec<YamlTrivia<'src>>,
+        leading: Vec<YamlTrivia>,
     ) -> Result<YamlNodeId> {
         let state = self
             .engine
@@ -3249,7 +3249,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn parse_flow_collection_block(
         &mut self,
         block: FlowCollectionBlock,
-        leading: Vec<YamlTrivia<'src>>,
+        leading: Vec<YamlTrivia>,
     ) -> Result<YamlNodeId> {
         self.reject_same_line_yaml_directive(block.trailing_comment)?;
 
@@ -3260,18 +3260,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let state = self.engine.state_for_yaml_node(&mut self.doc, target);
         let checkpoint = self.ast.nodes.len();
         let template_spans_possible = self.template_spans_possible_for_state(state);
-        let Some(id) = parse_flow_collection(
-            self.source,
-            &mut self.ast,
-            &mut self.flow_collection_nodes,
-            state,
-            &self.doc.state(state).template_delimiters,
-            template_spans_possible,
-            block.span,
-            block.value,
-            block.collection,
-            block.trailing_comment,
-        ) else {
+        let Some(id) = self.parse_recognized_flow_collection(block, state, template_spans_possible)
+        else {
             if let Some(engine) = engine_checkpoint {
                 self.engine = engine;
             }
@@ -3289,6 +3279,45 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.plan_parsed_yaml_flow_nodes();
         self.line = self.source.line_at_byte(block.span.end.saturating_sub(1)) + 1;
         Ok(id)
+    }
+
+    fn parse_recognized_flow_collection(
+        &mut self,
+        block: FlowCollectionBlock,
+        state: StateId,
+        template_spans_possible: bool,
+    ) -> Option<YamlNodeId> {
+        let delimiters = &self.doc.state(state).template_delimiters;
+        if let Some(recognized) = self
+            .recognized_flow
+            .take_if(|parsed| parsed.value == block.value)
+        {
+            // Recognition uses YAML syntax alone. Active template delimiters can
+            // change token boundaries, so those values still need the configured parser.
+            if !template_spans_possible
+                || !source_may_contain_template_span(
+                    self.source.slice(block.collection),
+                    delimiters,
+                )
+            {
+                let id =
+                    recognized.append_to(&mut self.ast, &mut self.flow_collection_nodes, state);
+                self.ast.node_mut(id).span = SourceSpan::new(block.span);
+                return Some(id);
+            }
+        }
+        parse_flow_collection(
+            self.source,
+            &mut self.ast,
+            &mut self.flow_collection_nodes,
+            state,
+            delimiters,
+            template_spans_possible,
+            block.span,
+            block.value,
+            block.collection,
+            block.trailing_comment,
+        )
     }
 
     fn parse_block_scalar(&mut self, block: BlockScalar) -> Result<YamlNodeId> {
@@ -3381,31 +3410,20 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         if !self.source.slice(metadata.content).trim_ascii().is_empty() {
             self.reject_same_line_yaml_directive(trailing_comment)?;
         }
-        let target = if let Some(target) =
-            scalar_content_flow_collection_target(self.source, metadata.content)
-        {
-            target
-        } else {
-            DirectiveTargetKind::YamlScalar
-        };
-        let state = self.engine.state_for_yaml_node(&mut self.doc, target);
-        let template_spans_possible = self.template_spans_possible_for_state(state);
-        if let Some(id) = parse_flow_collection(
-            self.source,
-            &mut self.ast,
-            &mut self.flow_collection_nodes,
-            state,
-            &self.doc.state(state).template_delimiters,
-            template_spans_possible,
-            span,
-            value,
-            metadata.content,
-            trailing_comment,
-        ) {
-            self.validate_flow_collection_directive_target(state, value)?;
-            self.plan_parsed_yaml_flow_nodes();
-            return Ok(id);
+        if scalar_content_flow_collection_target(self.source, metadata.content).is_some() {
+            return self.parse_flow_collection_block(
+                FlowCollectionBlock {
+                    span,
+                    value,
+                    collection: metadata.content,
+                    trailing_comment,
+                },
+                Vec::new(),
+            );
         }
+        let state = self
+            .engine
+            .state_for_yaml_node(&mut self.doc, DirectiveTargetKind::YamlScalar);
         self.validate_inline_scalar_directive_target(state, value)?;
         if metadata.content.is_empty() && (metadata.tag.is_some() || metadata.anchor.is_some()) {
             value = metadata.content;
@@ -3557,7 +3575,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         )
     }
 
-    fn take_leading_trivia(&mut self) -> Result<Vec<YamlTrivia<'src>>> {
+    fn take_leading_trivia(&mut self) -> Result<Vec<YamlTrivia>> {
         let mut trivia = std::mem::take(&mut self.held_trivia);
         if self.doc.skip_file {
             return Ok(trivia);
@@ -3781,7 +3799,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         Ok(())
     }
 
-    fn unread_trivia(&mut self, trivia: Vec<YamlTrivia<'src>>) {
+    fn unread_trivia(&mut self, trivia: Vec<YamlTrivia>) {
         if trivia.is_empty() {
             return;
         }
@@ -3795,7 +3813,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     }
 }
 
-fn trivia_has_document_marker(trivia: &[YamlTrivia<'_>]) -> bool {
+fn trivia_has_document_marker(trivia: &[YamlTrivia]) -> bool {
     trivia
         .iter()
         .any(|trivia| trivia.kind == YamlTriviaKind::DocumentMarker)
@@ -3808,9 +3826,9 @@ fn config_for_directive_state(config: &Config, state: &DirectiveState) -> Config
 }
 
 #[allow(clippy::too_many_arguments)]
-fn parse_flow_collection<'src>(
-    source: &'src SourceBuffer,
-    ast: &mut YamlDocumentAst<'src>,
+fn parse_flow_collection(
+    source: &SourceBuffer,
+    ast: &mut YamlDocumentAst,
     collection_nodes: &mut Vec<YamlNodeId>,
     state: StateId,
     template_delimiters: &[TemplateDelimiter],
@@ -3883,35 +3901,97 @@ fn parse_flow_collection<'src>(
     Some(id)
 }
 
-fn flow_collection_parseable(source: &SourceBuffer, value: Span) -> bool {
-    let mut ast = YamlDocumentAst::new(value);
+struct RecognizedFlowCollection {
+    value: Span,
+    ast: YamlDocumentAst,
+    collection_nodes: Vec<YamlNodeId>,
+    root: YamlNodeId,
+}
+
+impl RecognizedFlowCollection {
+    fn append_to(
+        mut self,
+        ast: &mut YamlDocumentAst,
+        collection_nodes: &mut Vec<YamlNodeId>,
+        state: StateId,
+    ) -> YamlNodeId {
+        let offset = ast.nodes.len();
+        let relocate = |id: YamlNodeId| YamlNodeId::new(offset + id.index());
+        for node in &mut self.ast.nodes {
+            node.state = state;
+            match &mut node.kind {
+                YamlAstKind::FlowSequence(sequence) => {
+                    for entry in &mut sequence.entries {
+                        *entry = relocate(*entry);
+                    }
+                }
+                YamlAstKind::FlowMapping(mapping) => {
+                    for pair in &mut mapping.pairs {
+                        pair.key = relocate(pair.key);
+                        pair.value = pair.value.map(relocate);
+                    }
+                }
+                YamlAstKind::Scalar(_) | YamlAstKind::Alias(_) => {}
+                _ => unreachable!("flow parsing produces only flow collections and scalar nodes"),
+            }
+        }
+        if ast.nodes.is_empty() {
+            ast.nodes = self.ast.nodes;
+        } else {
+            ast.nodes.extend(self.ast.nodes);
+        }
+        collection_nodes.clear();
+        collection_nodes.extend(self.collection_nodes.into_iter().map(relocate));
+        relocate(self.root)
+    }
+}
+
+fn recognize_flow_collection(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+) -> Option<RecognizedFlowCollection> {
+    let value_start = line_flow_value_start(source.line_text(line))?;
+    let block = flow_collection_block_from_value(
+        source,
+        line,
+        end,
+        value_start,
+        source.lines[line].full.start(),
+    )?
+    .complete()?;
+    let mut ast = YamlDocumentAst::new(block.value);
     let mut collection_nodes = Vec::new();
-    let metadata = scalar_metadata(source, value);
-    parse_flow_collection(
+    let root = parse_flow_collection(
         source,
         &mut ast,
         &mut collection_nodes,
         StateId(0),
         &[],
         false,
-        value,
-        value,
-        metadata.content,
-        None,
-    )
-    .is_some()
+        block.span,
+        block.value,
+        block.collection,
+        block.trailing_comment,
+    )?;
+    Some(RecognizedFlowCollection {
+        value: block.value,
+        ast,
+        collection_nodes,
+        root,
+    })
 }
 
 struct FlowParser<'src, 'ast, 'cfg> {
     text: &'src str,
     base: usize,
     pos: usize,
-    ast: &'ast mut YamlDocumentAst<'src>,
+    ast: &'ast mut YamlDocumentAst,
     collection_nodes: &'ast mut Vec<YamlNodeId>,
     state: StateId,
     template_delimiters: &'cfg [TemplateDelimiter],
     template_spans_possible: bool,
-    inner_trivia: Vec<YamlTrivia<'src>>,
+    inner_trivia: Vec<YamlTrivia>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -4412,7 +4492,7 @@ impl<'src, 'ast, 'cfg> FlowParser<'src, 'ast, 'cfg> {
     fn push_flow_mapping(
         &mut self,
         start: usize,
-        pairs: Vec<YamlFlowPair<'src>>,
+        pairs: Vec<YamlFlowPair>,
         braced: bool,
     ) -> YamlNodeId {
         let value = Span::new(self.base + start, self.base + self.pos);
@@ -4737,7 +4817,7 @@ impl IntoOptionalSpan for Option<Span> {
     }
 }
 
-impl IntoOptionalSpan for Option<SourceSpan<'_>> {
+impl IntoOptionalSpan for Option<SourceSpan> {
     fn into_optional_span(self) -> Option<Span> {
         self.map(SourceSpan::span)
     }
@@ -4745,7 +4825,7 @@ impl IntoOptionalSpan for Option<SourceSpan<'_>> {
 
 pub fn emit_yaml_document(
     source: &SourceBuffer,
-    document: &Document<'_>,
+    document: &Document,
     options: FormatOptions,
     plugins: &PluginRegistry,
 ) -> Result<String> {
@@ -4754,7 +4834,7 @@ pub fn emit_yaml_document(
 
 pub fn emit_yaml_document_with_stats(
     source: &SourceBuffer,
-    document: &Document<'_>,
+    document: &Document,
     options: FormatOptions,
     plugins: &PluginRegistry,
 ) -> Result<(String, YamlEmissionStats)> {
@@ -4766,13 +4846,6 @@ pub fn emit_yaml_document_with_stats(
     };
     let mut out = String::with_capacity(ast.range.len());
     let mut stats = YamlEmissionStats::default();
-    let context = YamlEmitContext {
-        source,
-        document,
-        ast,
-        options,
-        plugins,
-    };
     let insert_document_markers = yaml_is_unmarked_flow_mapping_stream(source, ast);
     for root in &ast.roots {
         if insert_document_markers {
@@ -4780,7 +4853,14 @@ pub fn emit_yaml_document_with_stats(
             out.push_str(options.default_line_ending);
         }
         if let Some(node) = root.node {
-            emit_yaml_node(&mut out, context, node, None, &mut stats)?;
+            let context = YamlEmitContext {
+                source,
+                document,
+                ast,
+                options,
+                plugins,
+            };
+            emit_yaml_node(&mut out, context, node, None, true, &mut stats)?;
         }
     }
     emit_trivia(&mut out, source, &ast.trailing_trivia);
@@ -4788,7 +4868,7 @@ pub fn emit_yaml_document_with_stats(
     Ok((out, stats))
 }
 
-fn yaml_is_unmarked_flow_mapping_stream(source: &SourceBuffer, ast: &YamlDocumentAst<'_>) -> bool {
+fn yaml_is_unmarked_flow_mapping_stream(source: &SourceBuffer, ast: &YamlDocumentAst) -> bool {
     // Use the AST produced by the normal parse rather than scanning the source
     // again. Multiple one-line flow mappings need document markers, while the
     // mapping shape excludes valid YAML multiline scalars. The line count also
@@ -4822,8 +4902,8 @@ fn restore_yaml_bom(source: &SourceBuffer, document: &Document, out: &mut String
 #[derive(Clone, Copy)]
 struct YamlEmitContext<'a> {
     source: &'a SourceBuffer,
-    document: &'a Document<'a>,
-    ast: &'a YamlDocumentAst<'a>,
+    document: &'a Document,
+    ast: &'a YamlDocumentAst,
     options: FormatOptions,
     plugins: &'a PluginRegistry,
 }
@@ -4839,6 +4919,7 @@ fn emit_yaml_node(
     context: YamlEmitContext<'_>,
     id: YamlNodeId,
     forced_indent: Option<usize>,
+    is_root: bool,
     stats: &mut YamlEmissionStats,
 ) -> Result<()> {
     stats.emitted_nodes += 1;
@@ -4864,7 +4945,7 @@ fn emit_yaml_node(
     ) = &node.emit
         && let YamlAstKind::Scalar(scalar) = &node.kind
     {
-        let root_line_start = yaml_node_is_root(ast, id) && yaml_output_is_at_line_start(out);
+        let root_line_start = is_root && yaml_output_is_at_line_start(out);
         emit_yaml_rendered_scalar_plan(
             out,
             source,
@@ -4882,7 +4963,7 @@ fn emit_yaml_node(
     if matches!(
         node.emit,
         YamlEmitPlan::Rendered(YamlRenderedKind::CompactCollection)
-    ) && yaml_node_is_root(ast, id)
+    ) && is_root
         && compact_root_collection_allowed(ast, id)
     {
         emit_compact_yaml_node(out, source, document, ast, id)
@@ -4980,6 +5061,10 @@ fn emit_yaml_node(
                     continue;
                 };
                 let value_node = ast.node(value);
+                if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
+                    out.push_str(source.slice(Span::new(item.line.start(), value_node.span.end())));
+                    continue;
+                }
                 if yaml_block_collection_has_flow_collapse_hint(value_node)
                     && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
                 {
@@ -5017,6 +5102,7 @@ fn emit_yaml_node(
                             context,
                             value,
                             Some(indent + options.indent_width),
+                            false,
                             stats,
                         )?;
                     }
@@ -5086,6 +5172,7 @@ fn emit_yaml_node(
                             context,
                             value,
                             Some(indent + options.indent_width),
+                            false,
                             stats,
                         )?;
                     }
@@ -5177,12 +5264,12 @@ fn emit_yaml_node(
                             }
                         } else {
                             out.push(' ');
-                            emit_yaml_node(out, context, value, None, stats)?;
+                            emit_yaml_node(out, context, value, None, false, stats)?;
                         }
                     }
                     _ => {
                         out.push(' ');
-                        emit_yaml_node(out, context, value, None, stats)?;
+                        emit_yaml_node(out, context, value, None, false, stats)?;
                     }
                 }
             }
@@ -5196,9 +5283,9 @@ fn emit_yaml_inline_sequence_mapping(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    mapping: &YamlMapping<'_>,
-    item: &YamlSequenceItem<'_>,
+    ast: &YamlDocumentAst,
+    mapping: &YamlMapping,
+    item: &YamlSequenceItem,
     indent: usize,
     options: FormatOptions,
     plugins: &PluginRegistry,
@@ -5216,7 +5303,7 @@ fn emit_yaml_inline_sequence_mapping(
     let mapping_indent = indent + 2;
     let child_indent = mapping_indent + options.indent_width;
     let continuation_prefix = " ".repeat(mapping_indent);
-    let pair_child_indent = |pair: &YamlMappingPair<'_>| {
+    let pair_child_indent = |pair: &YamlMappingPair| {
         if pair
             .value
             .is_some_and(|value| matches!(ast.node(value).kind, YamlAstKind::Sequence(_)))
@@ -5295,8 +5382,8 @@ fn emit_yaml_mapping_pair(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    pair: &YamlMappingPair<'_>,
+    ast: &YamlDocumentAst,
+    pair: &YamlMappingPair,
     emit_leading: bool,
     prefix: YamlLinePrefix<'_>,
     child_indent: usize,
@@ -5330,6 +5417,10 @@ fn emit_yaml_mapping_pair(
         return Ok(());
     };
     let value_node = ast.node(value);
+    if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
+        out.push_str(source.slice(pair.source));
+        return Ok(());
+    }
     let context = YamlEmitContext {
         source,
         document,
@@ -5401,6 +5492,7 @@ fn emit_yaml_mapping_pair(
                 context,
                 value,
                 Some(mapping_pair_child_indent(value_node, child_indent)),
+                false,
                 stats,
             )?;
         }
@@ -5427,8 +5519,8 @@ fn emit_yaml_explicit_mapping_pair(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    pair: &YamlMappingPair<'_>,
+    ast: &YamlDocumentAst,
+    pair: &YamlMappingPair,
     key_prefix: YamlLinePrefix<'_>,
     value_prefix: YamlLinePrefix<'_>,
     child_indent: usize,
@@ -5458,6 +5550,10 @@ fn emit_yaml_explicit_mapping_pair(
     }
 
     let value_node = ast.node(value);
+    if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
+        out.push_str(source.slice(pair.source));
+        return Ok(());
+    }
     if yaml_block_collection_has_flow_collapse_hint(value_node)
         && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
     {
@@ -5541,7 +5637,7 @@ fn emit_yaml_explicit_mapping_pair(
 
 fn explicit_mapping_key_body<'a>(
     source: &'a SourceBuffer,
-    pair: &YamlMappingPair<'_>,
+    pair: &YamlMappingPair,
     key_line_index: usize,
 ) -> Option<&'a str> {
     let text = source.line_text(key_line_index);
@@ -5560,7 +5656,7 @@ fn explicit_mapping_key_body<'a>(
 fn emit_yaml_mapping_value_after_colon(
     out: &mut String,
     context: YamlEmitContext<'_>,
-    pair: &YamlMappingPair<'_>,
+    pair: &YamlMappingPair,
     value: YamlNodeId,
     child_indent: usize,
     scalar_body_indent: usize,
@@ -5595,6 +5691,7 @@ fn emit_yaml_mapping_value_after_colon(
                     context,
                     value,
                     Some(mapping_pair_child_indent(value_node, child_indent)),
+                    false,
                     stats,
                 )?;
             }
@@ -5631,7 +5728,7 @@ fn emit_yaml_mapping_value_after_colon(
                 .expect("planned block YAML collection should render during emission");
             } else {
                 out.push(' ');
-                emit_yaml_node(out, context, value, None, stats)?;
+                emit_yaml_node(out, context, value, None, false, stats)?;
             }
         }
         YamlAstKind::Scalar(scalar) if scalar.value.is_empty() => {
@@ -5673,7 +5770,7 @@ fn emit_yaml_mapping_value_after_colon(
         }
         _ => {
             out.push(' ');
-            emit_yaml_node(out, context, value, None, stats)?;
+            emit_yaml_node(out, context, value, None, false, stats)?;
         }
     }
     Ok(())
@@ -5683,8 +5780,8 @@ fn emit_yaml_scalar(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     plugins: &PluginRegistry,
 ) -> Result<()> {
@@ -5756,8 +5853,8 @@ struct YamlScalarEmitPosition {
 fn emit_yaml_rendered_scalar_plan(
     out: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     state: &crate::core::directives::DirectiveState,
     options: FormatOptions,
     position: YamlScalarEmitPosition,
@@ -5801,8 +5898,8 @@ fn emit_yaml_rendered_scalar_plan(
 fn emit_yaml_scalar_plan_output_into(
     output: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     body_indent: Option<usize>,
     root_line_start: bool,
@@ -5895,8 +5992,8 @@ fn emit_yaml_scalar_plan_output_into(
 fn emit_plain_scalar_plan_output_into(
     output: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     body_indent: Option<usize>,
 ) -> Option<()> {
     if scalar.body.is_some()
@@ -5942,7 +6039,7 @@ fn emit_plain_scalar_plan_output_into(
 fn yaml_scalar_continuation_indent_delta(
     output: &str,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     body_indent: Option<usize>,
 ) -> isize {
     let source_line = source.line_at_byte(scalar.value.start());
@@ -6005,8 +6102,8 @@ fn reindent_yaml_scalar_continuations(raw: &str, indent_delta: isize) -> Cow<'_,
 fn emit_non_string_plain_scalar_plan_output_into(
     output: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
 ) -> Option<()> {
     if scalar.body.is_some()
         || scalar.header.is_some()
@@ -6037,8 +6134,8 @@ fn emit_non_string_plain_scalar_plan_output_into(
 
 fn render_unsafe_plain_string_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
 ) -> Option<String> {
     if scalar.style != YamlScalarStyle::Plain
         || scalar.semantic != YamlScalarSemantic::String
@@ -6062,7 +6159,7 @@ fn render_unsafe_plain_string_scalar(
 
 fn normalize_quoted_string_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<String> {
     if !matches!(
@@ -6094,8 +6191,8 @@ fn normalize_quoted_string_scalar(
 
 fn render_quoted_literal_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
@@ -6115,8 +6212,8 @@ fn render_quoted_literal_scalar(
 #[allow(clippy::too_many_arguments)]
 fn render_quoted_literal_scalar_with_layout(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     body_indent: Option<usize>,
     newline: &str,
@@ -6223,94 +6320,13 @@ fn render_quoted_literal_scalar_with_layout(
 }
 
 fn decode_quoted_scalar(raw: &str) -> Option<String> {
-    if raw.starts_with('"') {
-        decode_double_quoted_scalar(raw)
-    } else if raw.starts_with('\'') {
-        decode_single_quoted_scalar(raw)
-    } else {
-        None
-    }
-}
-
-fn decode_single_quoted_scalar(raw: &str) -> Option<String> {
-    let inner = raw.strip_prefix('\'')?.strip_suffix('\'')?;
-    let mut out = String::new();
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\'' {
-            if chars.next() == Some('\'') {
-                out.push('\'');
-            } else {
-                return None;
-            }
-        } else {
-            out.push(ch);
-        }
-    }
-    Some(out)
-}
-
-fn decode_double_quoted_scalar(raw: &str) -> Option<String> {
-    let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
-    let mut out = String::new();
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            if matches!(ch, '\r' | '\n') {
-                return None;
-            }
-            out.push(ch);
-            continue;
-        }
-        let escaped = chars.next()?;
-        match escaped {
-            '0' => out.push('\0'),
-            'a' => out.push('\u{0007}'),
-            'b' => out.push('\u{0008}'),
-            't' | '\t' => out.push('\t'),
-            'n' => out.push('\n'),
-            'v' => out.push('\u{000b}'),
-            'f' => out.push('\u{000c}'),
-            'r' => out.push('\r'),
-            'e' => out.push('\u{001b}'),
-            '"' => out.push('"'),
-            '/' => out.push('/'),
-            '\\' => out.push('\\'),
-            'x' => out.push(decode_hex_escape(&mut chars, 2)?),
-            'u' => out.push(decode_hex_escape(&mut chars, 4)?),
-            'U' => out.push(decode_hex_escape(&mut chars, 8)?),
-            '\n' => {
-                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                    chars.next();
-                }
-            }
-            '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                    chars.next();
-                }
-            }
-            _ => return None,
-        }
-    }
-    Some(out)
-}
-
-fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, digits: usize) -> Option<char> {
-    let mut value = 0u32;
-    for _ in 0..digits {
-        value = value.checked_mul(16)?;
-        value += chars.next()?.to_digit(16)?;
-    }
-    char::from_u32(value)
+    yaml_scalar::decode_quoted(raw, DecodePolicy::Format)
 }
 
 fn render_folded_prose_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
@@ -6330,8 +6346,8 @@ fn render_folded_prose_scalar(
 #[allow(clippy::too_many_arguments)]
 fn render_folded_prose_scalar_with_layout(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     body_indent: Option<usize>,
     newline: &str,
@@ -6399,8 +6415,8 @@ fn render_folded_prose_scalar_with_layout(
 
 fn render_rewrapped_folded_block_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
@@ -6508,7 +6524,7 @@ fn foldable_yaml_prose(source: &str) -> bool {
 
 fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
     let chars = source.char_indices().collect::<Vec<_>>();
-    let breaks = safe_yaml_space_breaks(&chars);
+    let mut breaks = safe_yaml_space_breaks(&chars).into_iter().peekable();
     let mut lines = Vec::new();
     let mut start_byte = 0;
     let mut start_char = 0;
@@ -6516,21 +6532,15 @@ fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
 
     while chars.len().saturating_sub(start_char) > width {
         let target_char = start_char + width;
-        let break_at = breaks
-            .iter()
-            .copied()
-            .take_while(|candidate| candidate.char_index <= target_char)
-            .filter(|candidate| candidate.char_index > start_char)
-            .last()
-            .or_else(|| {
-                breaks
-                    .iter()
-                    .copied()
-                    .find(|candidate| candidate.char_index > start_char)
-            });
-        let Some(break_at) = break_at else {
+        let Some(mut break_at) = breaks.next() else {
             break;
         };
+        while breaks
+            .peek()
+            .is_some_and(|candidate| candidate.char_index <= target_char)
+        {
+            break_at = breaks.next().expect("peeked prose break");
+        }
 
         lines.push(source[start_byte..break_at.byte].to_owned());
         start_byte = break_at.byte + 1;
@@ -6585,8 +6595,8 @@ fn line_ending_or_default(
 
 fn render_inline_markdown_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     state: &crate::core::directives::DirectiveState,
     options: FormatOptions,
     body_indent: Option<usize>,
@@ -6631,14 +6641,14 @@ fn render_inline_markdown_scalar(
     Some(out)
 }
 
-fn inline_markdown_scalar_is_renderable(source: &SourceBuffer, scalar: &YamlScalar<'_>) -> bool {
+fn inline_markdown_scalar_is_renderable(source: &SourceBuffer, scalar: &YamlScalar) -> bool {
     let metadata = scalar_metadata(source, scalar.value);
     inline_markdown_scalar_content(source, scalar, metadata.content).is_some()
 }
 
 fn inline_markdown_scalar_content<'a>(
     source: &'a SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     content: Span,
 ) -> Option<Cow<'a, str>> {
     let raw = source.slice(content).trim_ascii();
@@ -6671,8 +6681,8 @@ fn emit_indented_block(out: &mut String, body: &str, indent: usize, default_newl
 
 fn reindent_yaml_block_scalar_body(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     body: &str,
     options: FormatOptions,
 ) -> String {
@@ -6689,13 +6699,13 @@ fn reindent_yaml_block_scalar_body(
     reindent_block_lines(body, strip_indent, emit_indent)
 }
 
-fn explicit_block_scalar_body_indent(scalar: &YamlScalar<'_>) -> Option<usize> {
+fn explicit_block_scalar_body_indent(scalar: &YamlScalar) -> Option<usize> {
     let header = scalar.block_header?;
     Some(header.base_indent + header.indent? as usize)
 }
 
 fn block_scalar_output_body_indent(
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     body_indent: usize,
     options: FormatOptions,
 ) -> usize {
@@ -6708,7 +6718,7 @@ fn block_scalar_output_body_indent(
 
 fn block_scalar_body_reindent_is_safe(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     body_indent: Option<usize>,
     options: FormatOptions,
 ) -> bool {
@@ -6810,12 +6820,7 @@ fn reindent_block_lines(body: &str, strip_indent: usize, emit_indent: usize) -> 
     out
 }
 
-fn emit_yaml_alias(
-    out: &mut String,
-    source: &SourceBuffer,
-    alias: &YamlAlias,
-    node: &YamlAstNode<'_>,
-) {
+fn emit_yaml_alias(out: &mut String, source: &SourceBuffer, alias: &YamlAlias, node: &YamlAstNode) {
     out.push_str(source.slice(alias.value).trim_ascii());
     emit_inline_comment(out, source, alias.trailing_comment);
     out.push_str(line_ending_for_span(source, node.span));
@@ -6826,9 +6831,9 @@ fn emit_yaml_flow_collection(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
-    node: &YamlAstNode<'_>,
+    node: &YamlAstNode,
     indent: usize,
     options: FormatOptions,
 ) {
@@ -6869,7 +6874,7 @@ fn emit_yaml_flow_collection(
 fn planned_yaml_inline_width_or_source(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> usize {
     let node = ast.node(id);
@@ -6895,7 +6900,7 @@ fn emit_yaml_inline_node_into(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<()> {
     emit_yaml_inline_node_into_with_context(out, source, document, ast, id, false)
@@ -6905,7 +6910,7 @@ fn emit_yaml_inline_node_into_for_flow(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<()> {
     emit_yaml_inline_node_into_with_context(out, source, document, ast, id, true)
@@ -6915,7 +6920,7 @@ fn emit_yaml_inline_node_into_with_context(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     flow_context: bool,
 ) -> Option<()> {
@@ -6932,7 +6937,7 @@ fn emit_yaml_inline_node_into_inner(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     flow_context: bool,
 ) -> Option<()> {
@@ -7046,7 +7051,7 @@ fn emit_yaml_inline_node_into_inner(
 fn render_yaml_inline_node_width(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<usize> {
     render_yaml_inline_node_width_with_context(source, document, ast, id, false)
@@ -7055,7 +7060,7 @@ fn render_yaml_inline_node_width(
 fn render_yaml_inline_node_width_for_flow(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<usize> {
     render_yaml_inline_node_width_with_context(source, document, ast, id, true)
@@ -7064,7 +7069,7 @@ fn render_yaml_inline_node_width_for_flow(
 fn render_yaml_inline_node_width_with_context(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     flow_context: bool,
 ) -> Option<usize> {
@@ -7095,7 +7100,7 @@ fn render_yaml_inline_node_width_with_context(
 fn render_yaml_inline_node_width_with_context_uncached(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     flow_context: bool,
 ) -> Option<usize> {
@@ -7205,7 +7210,7 @@ fn render_yaml_inline_node_width_with_context_uncached(
 fn yaml_flow_collection_block_renderable(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     indent: usize,
     options: FormatOptions,
@@ -7300,7 +7305,7 @@ fn emit_yaml_flow_collection_block_into(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     indent: usize,
     newline: &str,
@@ -7333,7 +7338,7 @@ fn emit_yaml_flow_collection_block_lines(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     indent: usize,
     newline: &str,
@@ -7493,7 +7498,7 @@ fn emit_yaml_flow_collection_block_lines(
 
 fn render_yaml_flow_block_scalar(
     source: &SourceBuffer,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
     body_indent: usize,
     newline: &str,
@@ -7568,7 +7573,7 @@ fn emit_spaces(out: &mut String, count: usize) {
     out.push_str(&SPACES[..remaining]);
 }
 
-fn yaml_node_is_flow_collection(node: &YamlAstNode<'_>) -> bool {
+fn yaml_node_is_flow_collection(node: &YamlAstNode) -> bool {
     matches!(
         node.kind,
         YamlAstKind::FlowSequence(_) | YamlAstKind::FlowMapping(_)
@@ -7577,7 +7582,7 @@ fn yaml_node_is_flow_collection(node: &YamlAstNode<'_>) -> bool {
 
 fn yaml_flow_collection_should_expand(
     source: &SourceBuffer,
-    node: &YamlAstNode<'_>,
+    node: &YamlAstNode,
     inline_width: usize,
     options: FormatOptions,
 ) -> bool {
@@ -7587,27 +7592,27 @@ fn yaml_flow_collection_should_expand(
 
 fn yaml_flow_collection_has_multiline_intent(
     source: &SourceBuffer,
-    node: &YamlAstNode<'_>,
+    node: &YamlAstNode,
     options: FormatOptions,
 ) -> bool {
     !options.yaml_compact && yaml_flow_collection_has_source_newline(source, node)
 }
 
-fn yaml_flow_collection_has_source_newline(source: &SourceBuffer, node: &YamlAstNode<'_>) -> bool {
+fn yaml_flow_collection_has_source_newline(source: &SourceBuffer, node: &YamlAstNode) -> bool {
     let Some(span) = yaml_flow_collection_source_span(node) else {
         return false;
     };
     !span.is_empty() && source.line_at_byte(span.start()) != source.line_at_byte(span.end())
 }
 
-fn yaml_flow_collection_source_contains_tab(source: &SourceBuffer, node: &YamlAstNode<'_>) -> bool {
+fn yaml_flow_collection_source_contains_tab(source: &SourceBuffer, node: &YamlAstNode) -> bool {
     let Some(span) = yaml_flow_collection_source_span(node) else {
         return false;
     };
     source.slice(span).as_bytes().contains(&b'\t')
 }
 
-fn yaml_flow_collection_source_span<'src>(node: &YamlAstNode<'src>) -> Option<SourceSpan<'src>> {
+fn yaml_flow_collection_source_span(node: &YamlAstNode) -> Option<SourceSpan> {
     match &node.kind {
         YamlAstKind::FlowSequence(sequence) => Some(sequence.value),
         YamlAstKind::FlowMapping(mapping) => Some(mapping.value),
@@ -7618,7 +7623,7 @@ fn yaml_flow_collection_source_span<'src>(node: &YamlAstNode<'src>) -> Option<So
 fn emit_yaml_scalar_inline_into(
     out: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<()> {
     let raw = source.slice(scalar.value).trim_ascii();
@@ -7651,7 +7656,7 @@ fn emit_yaml_scalar_inline_into(
 fn emit_plain_scalar_inline_into(
     out: &mut String,
     raw: &str,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<()> {
     if scalar.header.is_some()
@@ -7691,7 +7696,7 @@ fn emit_plain_scalar_inline_into(
 fn emit_simple_quoted_string_scalar_into(
     out: &mut String,
     raw: &str,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<()> {
     if !matches!(
@@ -7715,7 +7720,7 @@ fn emit_simple_quoted_string_scalar_into(
 
 fn render_yaml_scalar_inline_width(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<usize> {
     let raw = source.slice(scalar.value).trim_ascii();
@@ -7736,7 +7741,7 @@ fn render_yaml_scalar_inline_width(
 
 fn normalize_core_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<String> {
     if scalar.header.is_some() || scalar.trailing_comment.is_some() {
@@ -7789,7 +7794,7 @@ fn normalize_core_scalar(
 
 fn normalize_core_scalar_width(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<usize> {
     if scalar.header.is_some() || scalar.trailing_comment.is_some() {
@@ -7870,7 +7875,7 @@ fn normalize_core_scalar_width(
 
 fn normalize_explicit_core_scalar_width(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     metadata: ScalarMetadata,
     tag: Option<&str>,
     decoded: &str,
@@ -7908,7 +7913,7 @@ fn simple_quoted_scalar_inner(raw: &str) -> Option<&str> {
     (!inner.contains(['\\', '\n', '\r'])).then_some(inner)
 }
 
-fn normalize_implicit_core_scalar(raw: &str, scalar: &YamlScalar<'_>) -> Option<String> {
+fn normalize_implicit_core_scalar(raw: &str, scalar: &YamlScalar) -> Option<String> {
     match scalar.semantic {
         YamlScalarSemantic::Boolean => match raw {
             "true" | "True" | "TRUE" => Some("true".to_owned()),
@@ -7920,7 +7925,7 @@ fn normalize_implicit_core_scalar(raw: &str, scalar: &YamlScalar<'_>) -> Option<
     }
 }
 
-fn normalize_implicit_core_scalar_width(raw: &str, scalar: &YamlScalar<'_>) -> Option<usize> {
+fn normalize_implicit_core_scalar_width(raw: &str, scalar: &YamlScalar) -> Option<usize> {
     match scalar.semantic {
         YamlScalarSemantic::Boolean => match raw {
             "true" | "True" | "TRUE" => Some("true".len()),
@@ -7958,7 +7963,7 @@ fn normalized_yaml_bool_width(value: &str) -> Option<usize> {
 
 fn explicit_core_scalar_width(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     metadata: ScalarMetadata,
     value_width: usize,
 ) -> usize {
@@ -7970,11 +7975,7 @@ fn explicit_core_scalar_width(
     }
 }
 
-fn render_explicit_core_scalar(
-    source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    value: &str,
-) -> String {
+fn render_explicit_core_scalar(source: &SourceBuffer, scalar: &YamlScalar, value: &str) -> String {
     let metadata = scalar_metadata(source, scalar.value);
     let prefix = scalar_property_prefix(source, scalar, metadata);
     if prefix.is_empty() {
@@ -7986,7 +7987,7 @@ fn render_explicit_core_scalar(
 
 fn scalar_property_prefix_width(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     metadata: ScalarMetadata,
 ) -> usize {
     let inline_prefix = source
@@ -8010,7 +8011,7 @@ fn scalar_property_prefix_width(
 
 fn normalize_quoted_string_scalar_width(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     flow_context: bool,
 ) -> Option<usize> {
     if !matches!(
@@ -8045,7 +8046,7 @@ fn normalize_quoted_string_scalar_width(
 
 fn scalar_property_prefix(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     metadata: ScalarMetadata,
 ) -> String {
     let inline_prefix = source
@@ -8120,13 +8121,7 @@ fn decoded_quoted_explicit_string_width(raw: &str, flow_context: bool) -> Option
 
 fn decoded_quoted_explicit_core_width(raw: &str, tag: Option<&str>) -> Option<usize> {
     let mut state = DecodedCoreScalarState::new();
-    if raw.starts_with('"') {
-        decode_double_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else if raw.starts_with('\'') {
-        decode_single_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else {
-        return None;
-    }
+    decode_quoted_chars(raw, DecodePolicy::Width, |ch| state.push(ch))?;
     match tag {
         Some("!!bool") => state.normalized_bool_width(),
         Some("!!null") => state.normalized_null_width(),
@@ -8141,13 +8136,7 @@ fn decoded_quoted_string_width_state(
     flow_context: bool,
 ) -> Option<DecodedStringWidthState> {
     let mut state = DecodedStringWidthState::new(flow_context);
-    if raw.starts_with('"') {
-        decode_double_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else if raw.starts_with('\'') {
-        decode_single_quoted_scalar_chars(raw, |ch| state.push(ch))?;
-    } else {
-        return None;
-    }
+    decode_quoted_chars(raw, DecodePolicy::Width, |ch| state.push(ch))?;
     Some(state)
 }
 
@@ -8555,58 +8544,6 @@ fn plain_scalar_unsafe_start_byte(byte: u8) -> bool {
     )
 }
 
-fn decode_single_quoted_scalar_chars(raw: &str, mut push: impl FnMut(char)) -> Option<()> {
-    let inner = raw.strip_prefix('\'')?.strip_suffix('\'')?;
-    let mut chars = inner.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\'' {
-            if chars.next() == Some('\'') {
-                push('\'');
-            } else {
-                return None;
-            }
-        } else {
-            push(ch);
-        }
-    }
-    Some(())
-}
-
-fn decode_double_quoted_scalar_chars(raw: &str, mut push: impl FnMut(char)) -> Option<()> {
-    let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
-    let mut chars = inner.chars();
-    while let Some(ch) = chars.next() {
-        if ch != '\\' {
-            if matches!(ch, '\r' | '\n') {
-                return None;
-            }
-            push(ch);
-            continue;
-        }
-        let escaped = chars.next()?;
-        let decoded = match escaped {
-            '0' => '\0',
-            'a' => '\u{0007}',
-            'b' => '\u{0008}',
-            't' | '\t' => '\t',
-            'n' => '\n',
-            'v' => '\u{000b}',
-            'f' => '\u{000c}',
-            'r' => '\r',
-            'e' => '\u{001b}',
-            '"' => '"',
-            '/' => '/',
-            '\\' => '\\',
-            'x' => decode_hex_escape(&mut chars, 2)?,
-            'u' => decode_hex_escape(&mut chars, 4)?,
-            'U' => decode_hex_escape(&mut chars, 8)?,
-            _ => return None,
-        };
-        push(decoded);
-    }
-    Some(())
-}
-
 fn double_quote_char_metrics(ch: char) -> (usize, usize) {
     match ch {
         '\0' | '\u{0007}' | '\u{0008}' | '\t' | '\n' | '\u{000b}' | '\u{000c}' | '\r'
@@ -8728,7 +8665,7 @@ fn quote_yaml_double_for_flow_metrics(value: &str) -> (usize, usize) {
     (bytes, chars)
 }
 
-fn flow_trailing_comment<'src>(kind: &YamlAstKind<'src>) -> Option<SourceSpan<'src>> {
+fn flow_trailing_comment(kind: &YamlAstKind) -> Option<SourceSpan> {
     match kind {
         YamlAstKind::FlowSequence(sequence) => sequence.trailing_comment,
         YamlAstKind::FlowMapping(mapping) => mapping.trailing_comment,
@@ -8739,8 +8676,8 @@ fn flow_trailing_comment<'src>(kind: &YamlAstKind<'src>) -> Option<SourceSpan<'s
 fn emit_yaml_scalar_after_prefix(
     out: &mut String,
     context: YamlEmitContext<'_>,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     body_indent: Option<usize>,
 ) -> Result<()> {
     let YamlEmitContext {
@@ -8771,7 +8708,7 @@ fn emit_yaml_scalar_after_prefix(
     }
 }
 
-fn render_yaml_block_scalar_value_header(source: &SourceBuffer, scalar: &YamlScalar<'_>) -> String {
+fn render_yaml_block_scalar_value_header(source: &SourceBuffer, scalar: &YamlScalar) -> String {
     let header = scalar.header.expect("block scalars have headers");
     let mut output = if scalar.nested.is_some() && scalar.style == YamlScalarStyle::FoldedBlock {
         format_markdown_yaml_block_value(source.slice(scalar.value))
@@ -8788,8 +8725,8 @@ fn emit_yaml_nested_markdown_block_scalar(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     plugins: &PluginRegistry,
     nested: usize,
@@ -8819,8 +8756,8 @@ fn emit_yaml_nested_markdown_block_scalar(
 
 fn external_block_scalar_action(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
     plugins: &PluginRegistry,
     name: &str,
@@ -8848,7 +8785,7 @@ fn external_block_scalar_action(
 
 fn external_block_scalar_line_ending(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     options: FormatOptions,
 ) -> &'static str {
     let header = scalar.header.expect("external block scalars have headers");
@@ -8868,8 +8805,8 @@ fn append_trailing_line_ending_if_missing(text: &mut String, line_ending: &str) 
 
 fn yaml_block_scalar_formatter_input(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     options: FormatOptions,
 ) -> String {
     let Some(source_body) = scalar.body else {
@@ -8887,8 +8824,8 @@ fn yaml_block_scalar_formatter_input(
 fn emit_yaml_formatted_external_block_scalar(
     out: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     formatted: &str,
     options: FormatOptions,
 ) {
@@ -8905,8 +8842,8 @@ fn emit_yaml_formatted_external_block_scalar(
 fn emit_yaml_formatted_external_block_scalar_after_prefix(
     out: &mut String,
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
     formatted: &str,
     options: FormatOptions,
 ) {
@@ -8971,7 +8908,7 @@ fn rewrite_yaml_block_chomp(header: &str, chomp: YamlBlockChomp) -> String {
 fn yaml_node_should_preserve(
     source: &SourceBuffer,
     document: &Document,
-    node: &YamlAstNode<'_>,
+    node: &YamlAstNode,
 ) -> bool {
     if let Some(must_preserve_source) = node.must_preserve_source {
         return must_preserve_source;
@@ -8982,7 +8919,7 @@ fn yaml_node_should_preserve(
 fn yaml_node_should_preserve_uncached(
     source: &SourceBuffer,
     document: &Document,
-    node: &YamlAstNode<'_>,
+    node: &YamlAstNode,
 ) -> bool {
     yaml_node_should_preserve_uncached_with_template_possible(source, document, node, true)
 }
@@ -8990,7 +8927,7 @@ fn yaml_node_should_preserve_uncached(
 fn yaml_node_should_preserve_uncached_with_template_possible(
     source: &SourceBuffer,
     document: &Document,
-    node: &YamlAstNode<'_>,
+    node: &YamlAstNode,
     template_spans_possible: bool,
 ) -> bool {
     let state = document.state(node.state);
@@ -9009,7 +8946,7 @@ fn yaml_node_should_preserve_uncached_with_template_possible(
         )
 }
 
-fn yaml_node_preserves_own_template_span(kind: &YamlAstKind<'_>) -> bool {
+fn yaml_node_preserves_own_template_span(kind: &YamlAstKind) -> bool {
     matches!(
         kind,
         YamlAstKind::Scalar(_)
@@ -9049,7 +8986,7 @@ fn source_may_contain_template_span(
     })
 }
 
-fn yaml_node_has_properties(source: &SourceBuffer, node: &YamlAstNode<'_>) -> bool {
+fn yaml_node_has_properties(source: &SourceBuffer, node: &YamlAstNode) -> bool {
     match &node.kind {
         YamlAstKind::Mapping(mapping) => {
             mapping.anchor.is_some()
@@ -9088,15 +9025,15 @@ fn yaml_node_has_properties(source: &SourceBuffer, node: &YamlAstNode<'_>) -> bo
     }
 }
 
-fn scalar_has_properties(scalar: &YamlScalar<'_>) -> bool {
+fn scalar_has_properties(scalar: &YamlScalar) -> bool {
     scalar.tag.is_some() || scalar.anchor.is_some()
 }
 
 fn yaml_scalar_is_markdown_target(
     source: &SourceBuffer,
     document: &Document,
-    scalar: &YamlScalar<'_>,
-    node: &YamlAstNode<'_>,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
 ) -> bool {
     document.state(node.state).markdown_target
         || scalar
@@ -9108,7 +9045,7 @@ fn yaml_tag_is_markdown(tag: &str) -> bool {
     matches!(tag, "!markdown" | "!md")
 }
 
-fn markdown_block_scalar_body_is_empty(source: &SourceBuffer, scalar: &YamlScalar<'_>) -> bool {
+fn markdown_block_scalar_body_is_empty(source: &SourceBuffer, scalar: &YamlScalar) -> bool {
     scalar
         .body
         .is_some_and(|body| source.slice(body).is_empty())
@@ -9116,7 +9053,7 @@ fn markdown_block_scalar_body_is_empty(source: &SourceBuffer, scalar: &YamlScala
 
 fn render_empty_markdown_scalar(
     source: &SourceBuffer,
-    scalar: &YamlScalar<'_>,
+    scalar: &YamlScalar,
     trailing_comment: impl IntoOptionalSpan,
     newline: &str,
 ) -> String {
@@ -9157,7 +9094,7 @@ fn collection_tag_is_core(tag: &str, kind: YamlCollectionKind) -> bool {
 
 fn collection_tag_is_removable(
     source: &SourceBuffer,
-    kind: &YamlAstKind<'_>,
+    kind: &YamlAstKind,
     tag: impl Into<Span>,
 ) -> bool {
     let tag = tag.into();
@@ -9173,8 +9110,8 @@ fn emit_collection_property_prefix_into(
     out: &mut String,
     source: &SourceBuffer,
     kind: YamlCollectionKind,
-    tag: Option<SourceSpan<'_>>,
-    anchor: Option<SourceSpan<'_>>,
+    tag: Option<SourceSpan>,
+    anchor: Option<SourceSpan>,
 ) -> Option<()> {
     if collection_has_non_removable_tag(source, kind, tag) {
         return None;
@@ -9189,8 +9126,8 @@ fn emit_collection_property_prefix_into(
 fn collection_property_prefix_width(
     source: &SourceBuffer,
     kind: YamlCollectionKind,
-    tag: Option<SourceSpan<'_>>,
-    anchor: Option<SourceSpan<'_>>,
+    tag: Option<SourceSpan>,
+    anchor: Option<SourceSpan>,
 ) -> Option<usize> {
     if collection_has_non_removable_tag(source, kind, tag) {
         return None;
@@ -9202,11 +9139,11 @@ fn collection_property_prefix_width(
     )
 }
 
-fn mapping_pair_child_indent(_node: &YamlAstNode<'_>, default: usize) -> usize {
+fn mapping_pair_child_indent(_node: &YamlAstNode, default: usize) -> usize {
     default
 }
 
-fn yaml_node_source_indent(source: &SourceBuffer, node: &YamlAstNode<'_>) -> usize {
+fn yaml_node_source_indent(source: &SourceBuffer, node: &YamlAstNode) -> usize {
     if let Some(indent) = node.source_indent() {
         return indent;
     }
@@ -9216,9 +9153,7 @@ fn yaml_node_source_indent(source: &SourceBuffer, node: &YamlAstNode<'_>) -> usi
     indent
 }
 
-fn yaml_node_properties<'src>(
-    kind: &YamlAstKind<'src>,
-) -> Option<(Option<SourceSpan<'src>>, Option<SourceSpan<'src>>)> {
+fn yaml_node_properties(kind: &YamlAstKind) -> Option<(Option<SourceSpan>, Option<SourceSpan>)> {
     match kind {
         YamlAstKind::Mapping(mapping) => Some((mapping.tag, mapping.anchor)),
         YamlAstKind::Sequence(sequence) => Some((sequence.tag, sequence.anchor)),
@@ -9228,7 +9163,7 @@ fn yaml_node_properties<'src>(
     }
 }
 
-fn emit_yaml_node_properties(out: &mut String, source: &SourceBuffer, node: &YamlAstNode<'_>) {
+fn emit_yaml_node_properties(out: &mut String, source: &SourceBuffer, node: &YamlAstNode) {
     if let Some((tag, anchor)) = yaml_node_properties(&node.kind) {
         if let Some(tag) = tag
             && collection_tag_is_removable(source, &node.kind, tag)
@@ -9259,15 +9194,11 @@ fn emit_inline_comment(out: &mut String, source: &SourceBuffer, comment: impl In
     }
 }
 
-fn yaml_node_is_root(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
-    ast.roots.iter().any(|root| root.node == Some(id))
-}
-
 fn yaml_output_is_at_line_start(output: &str) -> bool {
     output.is_empty() || output.ends_with(['\n', '\r'])
 }
 
-fn compact_root_collection_allowed(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
+fn compact_root_collection_allowed(ast: &YamlDocumentAst, id: YamlNodeId) -> bool {
     match &ast.node(id).kind {
         YamlAstKind::Mapping(mapping) => {
             mapping.pairs.len() > 1
@@ -9284,14 +9215,14 @@ fn compact_root_collection_allowed(ast: &YamlDocumentAst<'_>, id: YamlNodeId) ->
     }
 }
 
-fn yaml_node_is_block_collection(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
+fn yaml_node_is_block_collection(ast: &YamlDocumentAst, id: YamlNodeId) -> bool {
     matches!(
         ast.node(id).kind,
         YamlAstKind::Mapping(_) | YamlAstKind::Sequence(_)
     )
 }
 
-fn yaml_block_collection_has_flow_collapse_hint(node: &YamlAstNode<'_>) -> bool {
+fn yaml_block_collection_has_flow_collapse_hint(node: &YamlAstNode) -> bool {
     match &node.kind {
         YamlAstKind::Mapping(mapping) => mapping.flow_collapse_hint.is_some(),
         YamlAstKind::Sequence(sequence) => sequence.flow_collapse_hint.is_some(),
@@ -9302,7 +9233,7 @@ fn yaml_block_collection_has_flow_collapse_hint(node: &YamlAstNode<'_>) -> bool 
 fn compact_yaml_value_width(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<usize> {
     match &ast.node(id).kind {
@@ -9316,7 +9247,7 @@ fn compact_yaml_value_width(
 fn compact_yaml_node_width(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<usize> {
     let node = ast.node(id);
@@ -9378,7 +9309,7 @@ fn emit_compact_yaml_node(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<()> {
     let start_len = out.len();
@@ -9394,7 +9325,7 @@ fn emit_compact_yaml_node_inner(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<()> {
     let node = ast.node(id);
@@ -9458,7 +9389,7 @@ fn emit_compact_yaml_value(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     id: YamlNodeId,
 ) -> Option<()> {
     match &ast.node(id).kind {
@@ -9472,8 +9403,8 @@ fn emit_compact_yaml_value(
 fn flow_table_sequence_renderable(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    sequence: &YamlSequence<'_>,
+    ast: &YamlDocumentAst,
+    sequence: &YamlSequence,
     compact_table: bool,
 ) -> Option<()> {
     let mut has_row = false;
@@ -9496,11 +9427,11 @@ fn emit_flow_table_sequence_into(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    sequence: &YamlSequence<'_>,
+    ast: &YamlDocumentAst,
+    sequence: &YamlSequence,
     indent: usize,
     compact_table: bool,
-    node_leading: &[YamlTrivia<'_>],
+    node_leading: &[YamlTrivia],
 ) -> Option<()> {
     let start_len = out.len();
     if emit_flow_table_sequence_inner(
@@ -9527,11 +9458,11 @@ fn emit_flow_table_sequence_inner(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    sequence: &YamlSequence<'_>,
+    ast: &YamlDocumentAst,
+    sequence: &YamlSequence,
     indent: usize,
     compact_table: bool,
-    node_leading: &[YamlTrivia<'_>],
+    node_leading: &[YamlTrivia],
 ) -> Option<()> {
     let mut rows = Vec::new();
     let mut fields = Vec::new();
@@ -9588,8 +9519,8 @@ fn emit_flow_table_sequence_inner(
 fn flow_table_row_fields(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    value_node: &YamlAstNode<'_>,
+    ast: &YamlDocumentAst,
+    value_node: &YamlAstNode,
     compact_table: bool,
     fields: &mut Vec<FlowTableField>,
 ) -> Option<usize> {
@@ -9613,8 +9544,8 @@ fn flow_table_row_fields(
 fn flow_table_row_field_count(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    value_node: &YamlAstNode<'_>,
+    ast: &YamlDocumentAst,
+    value_node: &YamlAstNode,
     compact_table: bool,
 ) -> Option<usize> {
     match &value_node.kind {
@@ -9631,8 +9562,8 @@ fn flow_table_row_field_count(
 fn flow_mapping_table_field_count(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    mapping: &YamlFlowMapping<'_>,
+    ast: &YamlDocumentAst,
+    mapping: &YamlFlowMapping,
 ) -> Option<usize> {
     if !flow_mapping_table_supported(mapping) {
         return None;
@@ -9653,8 +9584,8 @@ fn flow_mapping_table_field_count(
 fn flow_mapping_table_fields(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    mapping: &YamlFlowMapping<'_>,
+    ast: &YamlDocumentAst,
+    mapping: &YamlFlowMapping,
     fields: &mut Vec<FlowTableField>,
 ) -> Option<()> {
     if !flow_mapping_table_supported(mapping) {
@@ -9670,7 +9601,7 @@ fn flow_mapping_table_fields(
     Some(())
 }
 
-fn flow_mapping_table_supported(mapping: &YamlFlowMapping<'_>) -> bool {
+fn flow_mapping_table_supported(mapping: &YamlFlowMapping) -> bool {
     mapping.braced
         && !mapping.has_inner_trivia
         && mapping.tag.is_none()
@@ -9681,8 +9612,8 @@ fn flow_mapping_table_supported(mapping: &YamlFlowMapping<'_>) -> bool {
 fn block_mapping_table_field_count(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    mapping: &YamlMapping<'_>,
+    ast: &YamlDocumentAst,
+    mapping: &YamlMapping,
 ) -> Option<usize> {
     if !block_mapping_table_supported(mapping) {
         return None;
@@ -9713,8 +9644,8 @@ fn block_mapping_table_field_count(
 fn block_mapping_table_fields(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    mapping: &YamlMapping<'_>,
+    ast: &YamlDocumentAst,
+    mapping: &YamlMapping,
     fields: &mut Vec<FlowTableField>,
 ) -> Option<()> {
     if !block_mapping_table_supported(mapping) {
@@ -9740,7 +9671,7 @@ fn block_mapping_table_fields(
     Some(())
 }
 
-fn block_mapping_table_supported(mapping: &YamlMapping<'_>) -> bool {
+fn block_mapping_table_supported(mapping: &YamlMapping) -> bool {
     mapping.tag.is_none()
         && mapping.anchor.is_none()
         && mapping.pairs.iter().all(|pair| !pair.explicit)
@@ -9750,8 +9681,8 @@ fn emit_mapping_key_for_flow(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    pair: &YamlMappingPair<'_>,
+    ast: &YamlDocumentAst,
+    pair: &YamlMappingPair,
 ) -> Option<()> {
     emit_mapping_key_for_flow_parts(out, source, document, ast, pair.key.span(), pair.key_node)
 }
@@ -9760,7 +9691,7 @@ fn emit_mapping_key_for_flow_parts(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     key: Span,
     key_node: Option<YamlNodeId>,
 ) -> Option<()> {
@@ -9779,7 +9710,7 @@ fn emit_mapping_key_for_flow_parts(
 fn mapping_key_width_for_flow(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     key: Span,
     key_node: Option<YamlNodeId>,
 ) -> Option<usize> {
@@ -9797,8 +9728,8 @@ fn mapping_key_width_for_flow(
 fn render_mapping_key_width_for_flow(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
-    pair: &YamlMappingPair<'_>,
+    ast: &YamlDocumentAst,
+    pair: &YamlMappingPair,
 ) -> Option<usize> {
     mapping_key_width_for_flow(source, document, ast, pair.key.span(), pair.key_node)
 }
@@ -9828,8 +9759,8 @@ struct FlowTableRow {
 
 struct FlowTableEmitContext<'a> {
     source: &'a SourceBuffer,
-    document: &'a Document<'a>,
-    ast: &'a YamlDocumentAst<'a>,
+    document: &'a Document,
+    ast: &'a YamlDocumentAst,
     fields: &'a [FlowTableField],
     field_widths: &'a [usize],
     indent: usize,
@@ -9840,7 +9771,7 @@ fn emit_flow_table_rows(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     rows: &[FlowTableRow],
     fields: &[FlowTableField],
     indent: usize,
@@ -9983,7 +9914,7 @@ fn flow_table_row_field_slice<'a>(
 fn flow_table_field_width_for_parts(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     key: FlowTableCell,
     value: YamlNodeId,
 ) -> Option<usize> {
@@ -9995,7 +9926,7 @@ fn flow_table_field_width_for_parts(
 fn flow_table_cell_width(
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     cell: FlowTableCell,
 ) -> Option<usize> {
     match cell {
@@ -10012,7 +9943,7 @@ fn emit_flow_table_cell(
     out: &mut String,
     source: &SourceBuffer,
     document: &Document,
-    ast: &YamlDocumentAst<'_>,
+    ast: &YamlDocumentAst,
     cell: FlowTableCell,
 ) -> Option<()> {
     match cell {
@@ -10025,7 +9956,7 @@ fn emit_flow_table_cell(
     }
 }
 
-fn emit_trivia(out: &mut String, source: &SourceBuffer, trivia: &[YamlTrivia<'_>]) {
+fn emit_trivia(out: &mut String, source: &SourceBuffer, trivia: &[YamlTrivia]) {
     for item in trivia {
         let _ = item.kind;
         out.push_str(source.slice(item.span));
@@ -10905,7 +10836,7 @@ fn escaped_double_quoted_scalar_block_from_value(
     let block = quoted_scalar_block_from_value(source, line, end, value_start, span_start)?;
     let metadata = scalar_metadata(source, block.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    decode_double_quoted_scalar(raw)?;
+    decode_quoted_scalar(raw)?;
     Some(block)
 }
 
@@ -11489,20 +11420,6 @@ fn node_properties_content_start(text: &str, mut cursor: usize) -> usize {
 }
 
 fn unsupported_flow_block_at(source: &SourceBuffer, line: usize, end: usize) -> Option<Span> {
-    let text = source.line_text(line);
-    if let Some(value_start) = line_flow_value_start(text)
-        && let Some(FlowCollectionScan::Complete(block)) = flow_collection_block_from_value(
-            source,
-            line,
-            end,
-            value_start,
-            source.lines[line].full.start(),
-        )
-        && flow_collection_parseable(source, block.value)
-    {
-        return None;
-    }
-
     let start = source.lines[line].full.start();
     let mut depth = 0usize;
     let mut saw_flow = false;

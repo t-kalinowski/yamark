@@ -94,9 +94,15 @@ enum FileFormatResult {
     },
     Changed {
         diagnostics: Vec<Diagnostic>,
-        output: String,
-        diff_input: Option<String>,
+        change: FileChange,
     },
+}
+
+#[derive(Debug)]
+enum FileChange {
+    Check,
+    Write(String),
+    Diff(String),
 }
 
 pub fn format_source_for_path(
@@ -291,7 +297,7 @@ pub(crate) fn format_paths_with_trace_and_overrides(
         let outcome = result?;
         let mut run = FormatRun::default();
         run.summary.scanned = 1;
-        apply_format_outcome(&mut run, outcome, mode)?;
+        apply_format_outcome(&mut run, outcome)?;
         sort_diagnostics(&mut run.diagnostics);
         return Ok(run);
     }
@@ -304,17 +310,13 @@ pub(crate) fn format_paths_with_trace_and_overrides(
     run.summary.scanned = scanned;
 
     for outcome in outcomes {
-        apply_format_outcome(&mut run, outcome, mode)?;
+        apply_format_outcome(&mut run, outcome)?;
     }
     sort_diagnostics(&mut run.diagnostics);
     Ok(run)
 }
 
-fn apply_format_outcome(
-    run: &mut FormatRun,
-    outcome: IndexedOutcome,
-    mode: FormatMode,
-) -> Result<()> {
+fn apply_format_outcome(run: &mut FormatRun, outcome: IndexedOutcome) -> Result<()> {
     match outcome.result {
         FileFormatResult::Skipped => run.summary.skipped += 1,
         FileFormatResult::Failed(diagnostic) => {
@@ -327,25 +329,19 @@ fn apply_format_outcome(
         }
         FileFormatResult::Changed {
             diagnostics,
-            output,
-            diff_input,
+            change,
         } => {
             run.diagnostics.extend(diagnostics);
             run.summary.formatted += 1;
-            match mode {
-                FormatMode::Write => fs::write(&outcome.path, output).map_err(|err| {
+            match change {
+                FileChange::Write(output) => fs::write(&outcome.path, output).map_err(|err| {
                     YamarkError::from(
                         Diagnostic::error(format!("failed to write file: {err}"))
                             .with_path(&outcome.path),
                     )
                 })?,
-                FormatMode::Check => {}
-                FormatMode::Diff => {
-                    let input = diff_input
-                        .as_deref()
-                        .expect("diff mode keeps original input");
-                    run.diffs.push(simple_diff(&outcome.path, input, &output));
-                }
+                FileChange::Check => {}
+                FileChange::Diff(diff) => run.diffs.push(diff),
             }
         }
     }
@@ -647,8 +643,17 @@ fn format_candidate(
                 {
                     Ok(formatted) if formatted.changed => FileFormatResult::Changed {
                         diagnostics: formatted.diagnostics,
-                        output: formatted.output,
-                        diff_input,
+                        change: match mode {
+                            FormatMode::Check => FileChange::Check,
+                            FormatMode::Write => FileChange::Write(formatted.output),
+                            FormatMode::Diff => FileChange::Diff(simple_diff(
+                                &candidate.path,
+                                diff_input
+                                    .as_deref()
+                                    .expect("diff mode keeps original input"),
+                                &formatted.output,
+                            )),
+                        },
                     },
                     Ok(formatted) => FileFormatResult::Unchanged {
                         diagnostics: formatted.diagnostics,
@@ -729,8 +734,14 @@ fn simple_diff(path: &Path, before: &str, after: &str) -> String {
     let before_lines = diff_lines(before);
     let after_lines = diff_lines(after);
     let ops = diff_ops(&before_lines, &after_lines);
+    let mut previous_start = 0;
+    let (mut old_start, mut new_start) = (1, 1);
     for (start, end) in diff_hunks(&ops, 3) {
-        let (old_start, old_count, new_start, new_count) = hunk_ranges(&ops, start, end);
+        let (old_skipped, new_skipped) = diff_line_counts(&ops[previous_start..start]);
+        old_start += old_skipped;
+        new_start += new_skipped;
+        previous_start = start;
+        let (old_count, new_count) = diff_line_counts(&ops[start..end]);
         out.push_str(&format!(
             "@@ -{} +{} @@\n",
             unified_range(old_start, old_count),
@@ -809,6 +820,30 @@ fn push_diff_line(out: &mut String, prefix: char, line: DiffLine<'_>) {
 }
 
 fn diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'a>> {
+    let prefix = before
+        .iter()
+        .zip(after)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let suffix = before[prefix..]
+        .iter()
+        .rev()
+        .zip(after[prefix..].iter().rev())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let before_end = before.len() - suffix;
+    let after_end = after.len() - suffix;
+    let mut ops = Vec::with_capacity(before.len() + after.len());
+    ops.extend(before[..prefix].iter().copied().map(DiffOp::Equal));
+    ops.extend(middle_diff_ops(
+        &before[prefix..before_end],
+        &after[prefix..after_end],
+    ));
+    ops.extend(before[before_end..].iter().copied().map(DiffOp::Equal));
+    ops
+}
+
+fn middle_diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'a>> {
     const MAX_LCS_CELLS: usize = 4_000_000;
     if before
         .len()
@@ -849,28 +884,11 @@ fn diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'
 }
 
 fn linear_diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'a>> {
-    let mut prefix = 0usize;
-    while prefix < before.len() && prefix < after.len() && before[prefix] == after[prefix] {
-        prefix += 1;
-    }
-
-    let mut suffix = 0usize;
-    while suffix < before.len().saturating_sub(prefix)
-        && suffix < after.len().saturating_sub(prefix)
-        && before[before.len() - 1 - suffix] == after[after.len() - 1 - suffix]
-    {
-        suffix += 1;
-    }
-
-    let before_end = before.len() - suffix;
-    let after_end = after.len() - suffix;
-    let mut ops = Vec::with_capacity(before.len() + after.len());
-    for line in &before[..prefix] {
-        ops.push(DiffOp::Equal(*line));
-    }
-
-    let mut i = prefix;
-    let mut j = prefix;
+    let before_end = before.len();
+    let after_end = after.len();
+    let mut ops = Vec::new();
+    let mut i = 0;
+    let mut j = 0;
     let mut sync_index = None;
     while i < before_end || j < after_end {
         if i < before_end && j < after_end && before[i] == after[j] {
@@ -915,9 +933,6 @@ fn linear_diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<D
         }
     }
 
-    for line in &before[before_end..] {
-        ops.push(DiffOp::Equal(*line));
-    }
     ops
 }
 
@@ -1054,23 +1069,10 @@ fn next_change(ops: &[DiffOp<'_>], start: usize) -> Option<usize> {
         .find_map(|(index, op)| (!matches!(op, DiffOp::Equal(_))).then_some(index))
 }
 
-fn hunk_ranges(ops: &[DiffOp<'_>], start: usize, end: usize) -> (usize, usize, usize, usize) {
-    let mut old_line = 1usize;
-    let mut new_line = 1usize;
-    for op in &ops[..start] {
-        match op {
-            DiffOp::Equal(_) => {
-                old_line += 1;
-                new_line += 1;
-            }
-            DiffOp::Remove(_) => old_line += 1,
-            DiffOp::Add(_) => new_line += 1,
-        }
-    }
-
+fn diff_line_counts(ops: &[DiffOp<'_>]) -> (usize, usize) {
     let mut old_count = 0usize;
     let mut new_count = 0usize;
-    for op in &ops[start..end] {
+    for op in ops {
         match op {
             DiffOp::Equal(_) => {
                 old_count += 1;
@@ -1080,7 +1082,7 @@ fn hunk_ranges(ops: &[DiffOp<'_>], start: usize, end: usize) -> (usize, usize, u
             DiffOp::Add(_) => new_count += 1,
         }
     }
-    (old_line, old_count, new_line, new_count)
+    (old_count, new_count)
 }
 
 fn unified_range(start: usize, count: usize) -> String {

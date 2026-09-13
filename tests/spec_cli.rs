@@ -20,6 +20,26 @@ fn run_stdin(args: &[&str], stdin: &str) -> (i32, String, String) {
     )
 }
 
+#[test]
+fn unsupported_flow_values_preserve_container_prefixes() {
+    for suffix in [
+        "sequence:\n  - [it's quoted]\n",
+        "sequence:\n  -\n    [it's quoted]\n",
+        "nested:\n  [it's quoted]\n",
+        "? explicit\n: [it's quoted]\n",
+    ] {
+        let input = format!("top: [a,b]\n{suffix}");
+        let expected = format!("top: [a, b]\n{suffix}");
+        let args = ["format", "--stdin-file-path", "input.yaml", "--verify"];
+        let (status, output, stderr) = run_stdin(&args, &input);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(output, expected);
+        let (status, repeated, stderr) = run_stdin(&args, &output);
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(repeated, output);
+    }
+}
+
 #[cfg(unix)]
 fn fake_ruff_path_env(dir: &Path) -> std::ffi::OsString {
     use std::os::unix::fs::PermissionsExt;
