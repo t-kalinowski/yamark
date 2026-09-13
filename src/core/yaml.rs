@@ -4779,9 +4779,8 @@ pub fn emit_yaml_document_with_stats(
                 ast,
                 options,
                 plugins,
-                root: node,
             };
-            emit_yaml_node(&mut out, context, node, None, &mut stats)?;
+            emit_yaml_node(&mut out, context, node, None, true, &mut stats)?;
         }
     }
     emit_trivia(&mut out, source, &ast.trailing_trivia);
@@ -4822,7 +4821,6 @@ fn restore_yaml_bom(source: &SourceBuffer, document: &Document, out: &mut String
 
 #[derive(Clone, Copy)]
 struct YamlEmitContext<'a> {
-    root: YamlNodeId,
     source: &'a SourceBuffer,
     document: &'a Document<'a>,
     ast: &'a YamlDocumentAst<'a>,
@@ -4841,11 +4839,11 @@ fn emit_yaml_node(
     context: YamlEmitContext<'_>,
     id: YamlNodeId,
     forced_indent: Option<usize>,
+    is_root: bool,
     stats: &mut YamlEmissionStats,
 ) -> Result<()> {
     stats.emitted_nodes += 1;
     let YamlEmitContext {
-        root,
         source,
         document,
         ast,
@@ -4867,7 +4865,7 @@ fn emit_yaml_node(
     ) = &node.emit
         && let YamlAstKind::Scalar(scalar) = &node.kind
     {
-        let root_line_start = id == root && yaml_output_is_at_line_start(out);
+        let root_line_start = is_root && yaml_output_is_at_line_start(out);
         emit_yaml_rendered_scalar_plan(
             out,
             source,
@@ -4885,7 +4883,7 @@ fn emit_yaml_node(
     if matches!(
         node.emit,
         YamlEmitPlan::Rendered(YamlRenderedKind::CompactCollection)
-    ) && id == root
+    ) && is_root
         && compact_root_collection_allowed(ast, id)
     {
         emit_compact_yaml_node(out, source, document, ast, id)
@@ -5020,6 +5018,7 @@ fn emit_yaml_node(
                             context,
                             value,
                             Some(indent + options.indent_width),
+                            false,
                             stats,
                         )?;
                     }
@@ -5089,6 +5088,7 @@ fn emit_yaml_node(
                             context,
                             value,
                             Some(indent + options.indent_width),
+                            false,
                             stats,
                         )?;
                     }
@@ -5180,12 +5180,12 @@ fn emit_yaml_node(
                             }
                         } else {
                             out.push(' ');
-                            emit_yaml_node(out, context, value, None, stats)?;
+                            emit_yaml_node(out, context, value, None, false, stats)?;
                         }
                     }
                     _ => {
                         out.push(' ');
-                        emit_yaml_node(out, context, value, None, stats)?;
+                        emit_yaml_node(out, context, value, None, false, stats)?;
                     }
                 }
             }
@@ -5404,6 +5404,7 @@ fn emit_yaml_mapping_pair(
                 context,
                 value,
                 Some(mapping_pair_child_indent(value_node, child_indent)),
+                false,
                 stats,
             )?;
         }
@@ -5570,7 +5571,6 @@ fn emit_yaml_mapping_value_after_colon(
     stats: &mut YamlEmissionStats,
 ) -> Result<()> {
     let YamlEmitContext {
-        root,
         source,
         document,
         ast,
@@ -5599,6 +5599,7 @@ fn emit_yaml_mapping_value_after_colon(
                     context,
                     value,
                     Some(mapping_pair_child_indent(value_node, child_indent)),
+                    false,
                     stats,
                 )?;
             }
@@ -5635,7 +5636,7 @@ fn emit_yaml_mapping_value_after_colon(
                 .expect("planned block YAML collection should render during emission");
             } else {
                 out.push(' ');
-                emit_yaml_node(out, context, value, None, stats)?;
+                emit_yaml_node(out, context, value, None, false, stats)?;
             }
         }
         YamlAstKind::Scalar(scalar) if scalar.value.is_empty() => {
@@ -5677,7 +5678,7 @@ fn emit_yaml_mapping_value_after_colon(
         }
         _ => {
             out.push(' ');
-            emit_yaml_node(out, context, value, None, stats)?;
+            emit_yaml_node(out, context, value, None, false, stats)?;
         }
     }
     Ok(())
@@ -8742,7 +8743,6 @@ fn emit_yaml_scalar_after_prefix(
     body_indent: Option<usize>,
 ) -> Result<()> {
     let YamlEmitContext {
-        root,
         source,
         document,
         options,
