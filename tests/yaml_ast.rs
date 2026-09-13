@@ -187,7 +187,7 @@ next: value
 
 #[test]
 fn scalar_value_text_borrows_from_source_lifetime() {
-    fn value_text<'src>(source: &'src SourceBuffer, scalar: &YamlScalar<'src>) -> &'src str {
+    fn value_text<'src>(source: &'src SourceBuffer, scalar: &YamlScalar) -> &'src str {
         scalar.value.as_str(source)
     }
 

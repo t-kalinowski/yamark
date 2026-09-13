@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
 use memchr::memchr2;
@@ -41,14 +40,15 @@ impl Span {
     }
 }
 
+/// Compact byte offsets into a source buffer. Spans do not borrow or identify
+/// a buffer; callers supply the corresponding source when accessing text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SourceSpan<'src> {
+pub struct SourceSpan {
     start_plus_one: NonZeroU32,
     end: u32,
-    source: PhantomData<&'src str>,
 }
 
-impl<'src> SourceSpan<'src> {
+impl SourceSpan {
     pub(crate) fn new(span: Span) -> Self {
         assert!(
             span.start <= span.end,
@@ -62,7 +62,6 @@ impl<'src> SourceSpan<'src> {
             start_plus_one: NonZeroU32::new(span.start as u32 + 1)
                 .expect("source span start offset is stored one-based"),
             end: span.end as u32,
-            source: PhantomData,
         }
     }
 
@@ -106,21 +105,13 @@ impl<'src> SourceSpan<'src> {
             .expect("source span start offset is stored one-based");
     }
 
-    pub(crate) fn retag<'dst>(self) -> SourceSpan<'dst> {
-        SourceSpan {
-            start_plus_one: self.start_plus_one,
-            end: self.end,
-            source: PhantomData,
-        }
-    }
-
-    pub fn as_str(self, source: &'src SourceBuffer) -> &'src str {
+    pub fn as_str(self, source: &SourceBuffer) -> &str {
         source.slice(self)
     }
 }
 
-impl From<SourceSpan<'_>> for Span {
-    fn from(span: SourceSpan<'_>) -> Self {
+impl From<SourceSpan> for Span {
+    fn from(span: SourceSpan) -> Self {
         span.span()
     }
 }
@@ -152,8 +143,8 @@ impl LineEnding {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {
-    pub full: SourceSpan<'static>,
-    pub text: SourceSpan<'static>,
+    pub full: SourceSpan,
+    pub text: SourceSpan,
     pub ending: LineEnding,
 }
 

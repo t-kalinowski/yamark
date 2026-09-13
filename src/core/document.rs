@@ -164,20 +164,20 @@ impl Default for FormatOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct Document<'src> {
+pub struct Document {
     pub kind: DocumentKind,
     pub range: Span,
     pub source: Option<SourceBuffer>,
-    pub nodes: Vec<Node<'src>>,
-    pub nested: Vec<Document<'src>>,
+    pub nodes: Vec<Node>,
+    pub nested: Vec<Document>,
     pub states: DirectiveStateTable,
-    pub yaml: Option<YamlDocumentAst<'src>>,
+    pub yaml: Option<YamlDocumentAst>,
     pub trace: DocumentTrace,
     pub options: FormatOptions,
     pub skip_file: bool,
 }
 
-impl<'src> Document<'src> {
+impl Document {
     pub fn new(kind: DocumentKind, range: Span) -> Self {
         Self {
             kind,
@@ -197,11 +197,11 @@ impl<'src> Document<'src> {
         self.states.get(id)
     }
 
-    pub fn push_node(&mut self, node: Node<'src>) {
+    pub fn push_node(&mut self, node: Node) {
         self.nodes.push(node);
     }
 
-    pub fn push_nested(&mut self, document: Document<'src>) -> usize {
+    pub fn push_nested(&mut self, document: Document) -> usize {
         let id = self.nested.len();
         self.nested.push(document);
         id
@@ -218,29 +218,6 @@ impl<'src> Document<'src> {
             node.state = state;
         }
     }
-
-    pub(crate) fn retag_source_lifetime<'dst>(self) -> Document<'dst> {
-        Document {
-            kind: self.kind,
-            range: self.range,
-            source: self.source,
-            nodes: self
-                .nodes
-                .into_iter()
-                .map(Node::retag_source_lifetime)
-                .collect(),
-            nested: self
-                .nested
-                .into_iter()
-                .map(Document::retag_source_lifetime)
-                .collect(),
-            states: self.states,
-            yaml: self.yaml.map(YamlDocumentAst::retag_source_lifetime),
-            trace: self.trace,
-            options: self.options,
-            skip_file: self.skip_file,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -255,20 +232,20 @@ pub struct DocumentTrace {
 }
 
 #[derive(Debug, Clone)]
-pub struct Node<'src> {
+pub struct Node {
     pub kind: NodeKind,
     pub span: Span,
     pub state: StateId,
-    pub emit: EmitPlan<'src>,
+    pub emit: EmitPlan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SourceText<'src> {
-    Span(SourceSpan<'src>),
+pub enum SourceText {
+    Span(SourceSpan),
     Owned(Box<str>),
 }
 
-impl<'src> SourceText<'src> {
+impl SourceText {
     pub(crate) fn span(span: Span) -> Self {
         Self::Span(SourceSpan::new(span))
     }
@@ -277,31 +254,10 @@ impl<'src> SourceText<'src> {
         Self::Owned(text.into_boxed_str())
     }
 
-    pub fn as_str<'a>(&'a self, source: &'src SourceBuffer) -> &'a str
-    where
-        'src: 'a,
-    {
+    pub fn as_str<'a>(&'a self, source: &'a SourceBuffer) -> &'a str {
         match self {
             Self::Span(span) => span.as_str(source),
             Self::Owned(text) => text.as_ref(),
-        }
-    }
-
-    pub(crate) fn retag_source_lifetime<'dst>(self) -> SourceText<'dst> {
-        match self {
-            Self::Span(span) => SourceText::Span(span.retag()),
-            Self::Owned(text) => SourceText::Owned(text),
-        }
-    }
-}
-
-impl<'src> Node<'src> {
-    pub(crate) fn retag_source_lifetime<'dst>(self) -> Node<'dst> {
-        Node {
-            kind: self.kind,
-            span: self.span,
-            state: self.state,
-            emit: self.emit.retag_source_lifetime(),
         }
     }
 }
@@ -359,7 +315,7 @@ pub struct CodeFenceSafety {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EmitPlan<'src> {
+pub enum EmitPlan {
     Copy,
     Preserve,
     MarkdownHeading {
@@ -402,115 +358,22 @@ pub enum EmitPlan<'src> {
         body: Span,
         closing: Span,
         nested: usize,
-        indent: SourceSpan<'src>,
-        closing_indent: SourceSpan<'src>,
+        indent: SourceSpan,
+        closing_indent: SourceSpan,
     },
     EmbeddedMarkdownComment {
-        prefix: SourceText<'src>,
+        prefix: SourceText,
         nested: usize,
     },
     EmbeddedYamlComment {
-        prefix: SourceText<'src>,
+        prefix: SourceText,
         nested: usize,
     },
     ExternalPlugin {
         name: Box<str>,
         body: Span,
-        string_indent: Option<SourceSpan<'src>>,
+        string_indent: Option<SourceSpan>,
         normalized_opening: Option<Box<str>>,
         fence_safety: Option<CodeFenceSafety>,
     },
-}
-
-impl<'src> EmitPlan<'src> {
-    pub(crate) fn retag_source_lifetime<'dst>(self) -> EmitPlan<'dst> {
-        match self {
-            Self::Copy => EmitPlan::Copy,
-            Self::Preserve => EmitPlan::Preserve,
-            Self::MarkdownHeading { marker, content } => {
-                EmitPlan::MarkdownHeading { marker, content }
-            }
-            Self::MarkdownSetextHeading { content, depth } => {
-                EmitPlan::MarkdownSetextHeading { content, depth }
-            }
-            Self::MarkdownThematicBreak => EmitPlan::MarkdownThematicBreak,
-            Self::MarkdownParagraph => EmitPlan::MarkdownParagraph,
-            Self::MarkdownTable => EmitPlan::MarkdownTable,
-            Self::MarkdownPandocTable => EmitPlan::MarkdownPandocTable,
-            Self::MarkdownList => EmitPlan::MarkdownList,
-            Self::MarkdownDefinitionList => EmitPlan::MarkdownDefinitionList,
-            Self::MarkdownBlockquote => EmitPlan::MarkdownBlockquote,
-            Self::MarkdownFrontMatter {
-                opening,
-                closing,
-                nested,
-            } => EmitPlan::MarkdownFrontMatter {
-                opening,
-                closing,
-                nested,
-            },
-            Self::MarkdownCodeFence {
-                opening,
-                normalized_opening,
-                closing,
-                nested,
-                safety,
-                supported,
-            } => EmitPlan::MarkdownCodeFence {
-                opening,
-                normalized_opening,
-                closing,
-                nested,
-                safety,
-                supported,
-            },
-            Self::MarkdownDiv {
-                opening,
-                closing,
-                nested,
-            } => EmitPlan::MarkdownDiv {
-                opening,
-                closing,
-                nested,
-            },
-            Self::MarkdownOpaque => EmitPlan::MarkdownOpaque,
-            Self::YamlDocument => EmitPlan::YamlDocument,
-            Self::EmbeddedMarkdownString {
-                opening,
-                body,
-                closing,
-                nested,
-                indent,
-                closing_indent,
-            } => EmitPlan::EmbeddedMarkdownString {
-                opening,
-                body,
-                closing,
-                nested,
-                indent: indent.retag(),
-                closing_indent: closing_indent.retag(),
-            },
-            Self::EmbeddedMarkdownComment { prefix, nested } => EmitPlan::EmbeddedMarkdownComment {
-                prefix: prefix.retag_source_lifetime(),
-                nested,
-            },
-            Self::EmbeddedYamlComment { prefix, nested } => EmitPlan::EmbeddedYamlComment {
-                prefix: prefix.retag_source_lifetime(),
-                nested,
-            },
-            Self::ExternalPlugin {
-                name,
-                body,
-                string_indent,
-                normalized_opening,
-                fence_safety,
-            } => EmitPlan::ExternalPlugin {
-                name,
-                body,
-                string_indent: string_indent.map(SourceSpan::retag),
-                normalized_opening,
-                fence_safety,
-            },
-        }
-    }
 }

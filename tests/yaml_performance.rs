@@ -60,21 +60,21 @@ fn count_thread_allocations() -> bool {
 #[test]
 fn yaml_ast_node_layout_stays_semantic_only() {
     assert_eq!(
-        size_of::<SourceSpan<'_>>(),
+        size_of::<SourceSpan>(),
         8,
         "SourceSpan is {} bytes",
-        size_of::<SourceSpan<'_>>()
+        size_of::<SourceSpan>()
     );
     assert_eq!(
-        size_of::<Option<SourceSpan<'_>>>(),
+        size_of::<Option<SourceSpan>>(),
         8,
         "Option<SourceSpan> is {} bytes",
-        size_of::<Option<SourceSpan<'_>>>()
+        size_of::<Option<SourceSpan>>()
     );
     assert!(
-        size_of::<SourceSpan<'_>>() < size_of::<Span>(),
+        size_of::<SourceSpan>() < size_of::<Span>(),
         "SourceSpan is {} bytes; Span is {} bytes",
-        size_of::<SourceSpan<'_>>(),
+        size_of::<SourceSpan>(),
         size_of::<Span>()
     );
     assert!(

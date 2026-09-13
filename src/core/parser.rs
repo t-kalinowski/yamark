@@ -28,13 +28,13 @@ pub struct FormattedDocument {
     pub(crate) diagnostics: Vec<crate::diagnostic::Diagnostic>,
 }
 
-pub fn parse_source<'src>(
-    source: &'src SourceBuffer,
+pub fn parse_source(
+    source: &SourceBuffer,
     range: Span,
     kind: DocumentKind,
     options: FormatOptions,
     config: &Config,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     validate_compact_source_range(range)?;
     match kind {
         DocumentKind::Markdown => {
@@ -58,14 +58,14 @@ pub fn parse_source<'src>(
     }
 }
 
-fn parse_source_for_formatting<'src>(
-    source: &'src SourceBuffer,
+fn parse_source_for_formatting(
+    source: &SourceBuffer,
     range: Span,
     kind: DocumentKind,
     options: FormatOptions,
     config: &Config,
     collect_trace: bool,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     validate_compact_source_range(range)?;
     match kind {
         DocumentKind::Markdown => {
@@ -94,14 +94,14 @@ fn parse_source_for_formatting<'src>(
     }
 }
 
-fn parse_source_for_validation<'src>(
-    source: &'src SourceBuffer,
+fn parse_source_for_validation(
+    source: &SourceBuffer,
     range: Span,
     kind: DocumentKind,
     options: FormatOptions,
     config: &Config,
     yaml_node_capacity_hint: usize,
-) -> Result<Document<'src>> {
+) -> Result<Document> {
     validate_compact_source_range(range)?;
     match kind {
         DocumentKind::Markdown => {
@@ -225,7 +225,6 @@ pub(crate) fn format_source_report_with_policy(
     let changed = output != source.as_str();
     let mut output_parse_passes = 0;
     if verify_output && changed && output_requires_yaml_validation(kind, &document, &output) {
-        let document = document.retag_source_lifetime();
         let before = crate::core::yaml_equivalence::capture_yaml_validation_snapshot(
             source.into_string(),
             document,
@@ -273,13 +272,13 @@ pub(crate) fn format_source_report_with_policy(
     })
 }
 
-fn document_contains_yaml(document: &Document<'_>) -> bool {
+fn document_contains_yaml(document: &Document) -> bool {
     document.kind == DocumentKind::Yaml || document.nested.iter().any(document_contains_yaml)
 }
 
 fn output_requires_yaml_validation(
     kind: DocumentKind,
-    input_document: &Document<'_>,
+    input_document: &Document,
     output: &str,
 ) -> bool {
     document_contains_yaml(input_document)
