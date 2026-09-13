@@ -249,6 +249,7 @@ fn replan_yaml_document_with_delta(
         end: 0,
         held_trivia: Vec::new(),
         flow_collection_nodes: Vec::new(),
+        recognized_flow: None,
         default_template_openers_present: source_contains_any_template_opener(
             plan_source.as_str(),
             &config.template_delimiters,
@@ -282,6 +283,7 @@ fn replan_yaml_document_with_delta(
         end: _,
         held_trivia: _,
         flow_collection_nodes: _,
+        recognized_flow: _,
         default_template_openers_present: _,
         template_spans_possible_by_state: _,
         collect_trace: _,
@@ -640,6 +642,7 @@ struct YamlParser<'src, 'cfg> {
     end: usize,
     held_trivia: Vec<YamlTrivia>,
     flow_collection_nodes: Vec<YamlNodeId>,
+    recognized_flow: Option<RecognizedFlowCollection>,
     default_template_openers_present: bool,
     template_spans_possible_by_state: RefCell<Vec<Option<bool>>>,
     collect_trace: bool,
@@ -683,6 +686,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             end: end_line,
             held_trivia: Vec::new(),
             flow_collection_nodes: Vec::new(),
+            recognized_flow: None,
             default_template_openers_present: source_contains_any_template_opener(
                 source.as_str(),
                 &config.template_delimiters,
@@ -1618,10 +1622,13 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 .map(Some);
         }
 
-        if !line_has_flow_collapse_hint_value(self.source, self.line, self.end)
-            && let Some(block) = unsupported_flow_block_at(self.source, self.line, self.end)
-        {
-            return self.parse_opaque_flow(block, leading);
+        if !line_has_flow_collapse_hint_value(self.source, self.line, self.end) {
+            self.recognized_flow = recognize_flow_collection(self.source, self.line, self.end);
+            if self.recognized_flow.is_none()
+                && let Some(block) = unsupported_flow_block_at(self.source, self.line, self.end)
+            {
+                return self.parse_opaque_flow(block, leading);
+            }
         }
 
         if sequence_line(text, actual_indent).is_some() {
@@ -3253,18 +3260,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let state = self.engine.state_for_yaml_node(&mut self.doc, target);
         let checkpoint = self.ast.nodes.len();
         let template_spans_possible = self.template_spans_possible_for_state(state);
-        let Some(id) = parse_flow_collection(
-            self.source,
-            &mut self.ast,
-            &mut self.flow_collection_nodes,
-            state,
-            &self.doc.state(state).template_delimiters,
-            template_spans_possible,
-            block.span,
-            block.value,
-            block.collection,
-            block.trailing_comment,
-        ) else {
+        let Some(id) = self.parse_recognized_flow_collection(block, state, template_spans_possible)
+        else {
             if let Some(engine) = engine_checkpoint {
                 self.engine = engine;
             }
@@ -3282,6 +3279,45 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.plan_parsed_yaml_flow_nodes();
         self.line = self.source.line_at_byte(block.span.end.saturating_sub(1)) + 1;
         Ok(id)
+    }
+
+    fn parse_recognized_flow_collection(
+        &mut self,
+        block: FlowCollectionBlock,
+        state: StateId,
+        template_spans_possible: bool,
+    ) -> Option<YamlNodeId> {
+        let delimiters = &self.doc.state(state).template_delimiters;
+        if let Some(recognized) = self
+            .recognized_flow
+            .take_if(|parsed| parsed.value == block.value)
+        {
+            // Recognition uses YAML syntax alone. Active template delimiters can
+            // change token boundaries, so those values still need the configured parser.
+            if !template_spans_possible
+                || !source_may_contain_template_span(
+                    self.source.slice(block.collection),
+                    delimiters,
+                )
+            {
+                let id =
+                    recognized.append_to(&mut self.ast, &mut self.flow_collection_nodes, state);
+                self.ast.node_mut(id).span = SourceSpan::new(block.span);
+                return Some(id);
+            }
+        }
+        parse_flow_collection(
+            self.source,
+            &mut self.ast,
+            &mut self.flow_collection_nodes,
+            state,
+            delimiters,
+            template_spans_possible,
+            block.span,
+            block.value,
+            block.collection,
+            block.trailing_comment,
+        )
     }
 
     fn parse_block_scalar(&mut self, block: BlockScalar) -> Result<YamlNodeId> {
@@ -3876,23 +3912,85 @@ fn parse_flow_collection(
     Some(id)
 }
 
-fn flow_collection_parseable(source: &SourceBuffer, value: Span) -> bool {
-    let mut ast = YamlDocumentAst::new(value);
+struct RecognizedFlowCollection {
+    value: Span,
+    ast: YamlDocumentAst,
+    collection_nodes: Vec<YamlNodeId>,
+    root: YamlNodeId,
+}
+
+impl RecognizedFlowCollection {
+    fn append_to(
+        mut self,
+        ast: &mut YamlDocumentAst,
+        collection_nodes: &mut Vec<YamlNodeId>,
+        state: StateId,
+    ) -> YamlNodeId {
+        let offset = ast.nodes.len();
+        let relocate = |id: YamlNodeId| YamlNodeId::new(offset + id.index());
+        for node in &mut self.ast.nodes {
+            node.state = state;
+            match &mut node.kind {
+                YamlAstKind::FlowSequence(sequence) => {
+                    for entry in &mut sequence.entries {
+                        *entry = relocate(*entry);
+                    }
+                }
+                YamlAstKind::FlowMapping(mapping) => {
+                    for pair in &mut mapping.pairs {
+                        pair.key = relocate(pair.key);
+                        pair.value = pair.value.map(relocate);
+                    }
+                }
+                YamlAstKind::Scalar(_) | YamlAstKind::Alias(_) => {}
+                _ => unreachable!("flow parsing produces only flow collections and scalar nodes"),
+            }
+        }
+        if ast.nodes.is_empty() {
+            ast.nodes = self.ast.nodes;
+        } else {
+            ast.nodes.extend(self.ast.nodes);
+        }
+        collection_nodes.clear();
+        collection_nodes.extend(self.collection_nodes.into_iter().map(relocate));
+        relocate(self.root)
+    }
+}
+
+fn recognize_flow_collection(
+    source: &SourceBuffer,
+    line: usize,
+    end: usize,
+) -> Option<RecognizedFlowCollection> {
+    let value_start = line_flow_value_start(source.line_text(line))?;
+    let block = flow_collection_block_from_value(
+        source,
+        line,
+        end,
+        value_start,
+        source.lines[line].full.start(),
+    )?
+    .complete()?;
+    let mut ast = YamlDocumentAst::new(block.value);
     let mut collection_nodes = Vec::new();
-    let metadata = scalar_metadata(source, value);
-    parse_flow_collection(
+    let root = parse_flow_collection(
         source,
         &mut ast,
         &mut collection_nodes,
         StateId(0),
         &[],
         false,
-        value,
-        value,
-        metadata.content,
-        None,
-    )
-    .is_some()
+        block.span,
+        block.value,
+        block.collection,
+        block.trailing_comment,
+    )?;
+    Some(RecognizedFlowCollection {
+        value: block.value,
+        ast,
+        collection_nodes,
+        root,
+    })
 }
 
 struct FlowParser<'src, 'ast, 'cfg> {
@@ -11321,20 +11419,6 @@ fn node_properties_content_start(text: &str, mut cursor: usize) -> usize {
 }
 
 fn unsupported_flow_block_at(source: &SourceBuffer, line: usize, end: usize) -> Option<Span> {
-    let text = source.line_text(line);
-    if let Some(value_start) = line_flow_value_start(text)
-        && let Some(FlowCollectionScan::Complete(block)) = flow_collection_block_from_value(
-            source,
-            line,
-            end,
-            value_start,
-            source.lines[line].full.start(),
-        )
-        && flow_collection_parseable(source, block.value)
-    {
-        return None;
-    }
-
     let start = source.lines[line].full.start();
     let mut depth = 0usize;
     let mut saw_flow = false;
