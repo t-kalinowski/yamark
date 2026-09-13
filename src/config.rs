@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::core::directives::TemplateDelimiter;
-use crate::core::document::MarkdownWrap;
+use crate::core::document::{MarkdownTableWidths, MarkdownWrap};
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
 use crate::plugins::{ExternalFormatter, ExternalFormatterMode, builtin_formatter};
 
@@ -23,6 +23,7 @@ pub struct Config {
 pub struct FormatConfig {
     pub compact: Option<bool>,
     pub markdown_wrap: Option<MarkdownWrap>,
+    pub markdown_table_widths: Option<MarkdownTableWidths>,
     pub markdown_horizontal_rule: Option<&'static str>,
 }
 
@@ -242,7 +243,7 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
     for key in table.keys() {
         if !matches!(
             key.as_str(),
-            "compact" | "wrap" | "markdown_horizontal_rule"
+            "compact" | "wrap" | "table_widths" | "markdown_horizontal_rule"
         ) {
             return Err(YamarkError::new(format!(
                 "unknown format config key: format.{key}"
@@ -262,6 +263,15 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
             .ok_or_else(|| YamarkError::new("format.wrap must be a string"))?;
         format.markdown_wrap = Some(
             MarkdownWrap::parse(value).map_err(|err| YamarkError::new(format!("format.{err}")))?,
+        );
+    }
+    if let Some(value) = table.get("table_widths") {
+        let value = value
+            .as_str()
+            .ok_or_else(|| YamarkError::new("format.table_widths must be a string"))?;
+        format.markdown_table_widths = Some(
+            MarkdownTableWidths::parse(value)
+                .map_err(|_| YamarkError::new("format.table_widths must be fit or preserve"))?,
         );
     }
     if let Some(value) = table.get("markdown_horizontal_rule") {

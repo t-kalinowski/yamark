@@ -17,7 +17,8 @@ mod yaml_scalar;
 pub mod yaml_scan;
 
 pub use document::{
-    Document, DocumentKind, EmitPlan, FileKind, FormatOptions, MarkdownWrap, Node, NodeKind,
+    Document, DocumentKind, EmitPlan, FileKind, FormatOptions, MarkdownTableWidths, MarkdownWrap,
+    Node, NodeKind,
 };
 pub use parser::{format_source, parse_source};
 pub use source::{Line, LineEnding, SourceBuffer, Span};

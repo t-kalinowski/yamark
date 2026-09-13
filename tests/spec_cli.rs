@@ -2618,6 +2618,8 @@ fn markdown_pandoc_headerless_tables_keep_their_borders_and_following_blocks() {
                     );
                 let args = [
                     "format",
+                    "--table-widths",
+                    "preserve",
                     "--stdin-file-path",
                     "input.qmd",
                     "--wrap",
@@ -2657,7 +2659,13 @@ fn markdown_pandoc_tables_expand_tabs_before_splitting_cells() {
         for newline in ["\n", "\r\n"] {
             let input = input.replace('\n', newline);
             let expected = expected.replace('\n', newline);
-            let args = ["format", "--stdin-file-path", "input.qmd"];
+            let args = [
+                "format",
+                "--table-widths",
+                "preserve",
+                "--stdin-file-path",
+                "input.qmd",
+            ];
             let (status, stdout, stderr) = run_stdin(&args, &input);
             assert_eq!(status, 0, "{stderr}");
             assert_eq!(stdout, expected, "input: {input:?}");
@@ -2689,7 +2697,15 @@ fn markdown_pandoc_tables_preserve_alignment_and_widths() {
             for newline in ["\n", "\r\n"] {
                 let input = input.replace('\n', newline);
                 let expected = expected.replace('\n', newline);
-                let args = ["format", "--stdin-file-path", "input.qmd", "--wrap", width];
+                let args = [
+                    "format",
+                    "--table-widths",
+                    "preserve",
+                    "--stdin-file-path",
+                    "input.qmd",
+                    "--wrap",
+                    width,
+                ];
                 let (status, stdout, stderr) = run_stdin(&args, &input);
                 assert_eq!(status, 0, "{stderr}");
                 assert_eq!(stdout, expected);
@@ -2717,10 +2733,10 @@ Term
 </section>
 ";
     let expected = "\
-Name        Value
-----------  -----
-short       one
-long name   two
+Name       Value
+---------  -----
+short      one
+long name  two
 
 Term
 : definition with spacing
@@ -2763,21 +2779,21 @@ _x_         __y__
 ----------  ----------
 ";
     let expected = "\
-Name        Value
-----------  -----
-*x*         **y**
+Name   Value
+-----  -----
+*x*    **y**
 
-+------+-----+
-| Name |Value|
-+======+=====+
-| *x*  |**y**|
-+------+-----+
++------+-------+
+| Name | Value |
++======+=======+
+| *x*  | **y** |
++------+-------+
 
-----------  ----------
-Name        Value
-----------  ----------
-*x*         **y**
-----------  ----------
+-----  ------
+Name   Value
+-----  ------
+*x*    **y**
+-----  ------
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--canonical"],
@@ -2798,11 +2814,11 @@ long name   two
 ----------  -----
 ";
     let expected = "\
-Name        Value
-----------  -----
-short       one
-long name   two
-----------  -----
+Name       Value
+---------  -----
+short      one
+long name  two
+---------  -----
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
     assert_eq!(status, 0, "{stderr}");
@@ -2823,10 +2839,10 @@ Term
 :   definition with    spacing
 ";
     let expected = "\
-Name        Value
-----------  -----
-short       one
-long name   two
+Name       Value
+---------  -----
+short      one
+long name  two
 Table: keep    caption spacing
 
 Term
@@ -2853,10 +2869,10 @@ long name   two
 : keep    caption spacing
 ";
     let expected = "\
-Name        Value
-----------  -----
-short       one
-long name   two
+Name       Value
+---------  -----
+short      one
+long name  two
 : keep    caption spacing
 ";
     let (status, stdout, stderr) = run_stdin(
@@ -2986,13 +3002,13 @@ fn markdown_pandoc_grid_tables_are_normalized() {
 +------+-----+
 ";
     let expected = "\
-+------+-----+
-| Name |Value|
-+======+=====+
-| a    | one |
-+------+-----+
-|longer| two |
-+------+-----+
++--------+-------+
+| Name   | Value |
++========+=======+
+| a      | one   |
++--------+-------+
+| longer | two   |
++--------+-------+
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
     assert_eq!(status, 0, "{stderr}");
@@ -3012,13 +3028,13 @@ fn markdown_pandoc_grid_tables_with_multiline_rows_are_normalized() {
 +------+-----+
 ";
     let expected = "\
-+------+-----+
-| Name |Value|
-|      |Extra|
-+======+=====+
-| a    | one |
-|      | two |
-+------+-----+
++------+-------+
+| Name | Value |
+|      | Extra |
++======+=======+
+| a    | one   |
+|      | two   |
++------+-------+
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
     assert_eq!(status, 0, "{stderr}");
@@ -3038,13 +3054,13 @@ long name   two
 ----------  ----------
 ";
     let expected = "\
-----------  ----------
-Name        Value
-----------  ----------
-short       one
+---------  ------
+Name       Value
+---------  ------
+short      one
 
-long name   two
-----------  ----------
+long name  two
+---------  ------
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
     assert_eq!(status, 0, "{stderr}");
@@ -3066,15 +3082,15 @@ Second     row                 5.0 Another row.
 -------------------------------------------------------------
 ";
     let expected = "\
--------------------------------------------------------------
-Centered   Default           Right Left
-Header     Aligned         Aligned Aligned
----------  -------  -------------- -------------------------
-First      row                12.0 Example of a row that
-                                   spans multiple lines.
+-------------------------------------------------
+Centered  Default    Right  Left
+Header    Aligned  Aligned  Aligned
+--------  -------  -------  ---------------------
+First     row         12.0  Example of a row that
+                            spans multiple lines.
 
-Second     row                 5.0 Another row.
--------------------------------------------------------------
+Second    row          5.0  Another row.
+-------------------------------------------------
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "20"],

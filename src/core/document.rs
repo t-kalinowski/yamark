@@ -126,6 +126,23 @@ fn parse_wrap_width(value: &str) -> Option<usize> {
     value.parse::<usize>().ok().filter(|width| *width > 0)
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MarkdownTableWidths {
+    #[default]
+    Fit,
+    Preserve,
+}
+
+impl MarkdownTableWidths {
+    pub fn parse(value: &str) -> Result<Self, &'static str> {
+        match value {
+            "fit" => Ok(Self::Fit),
+            "preserve" => Ok(Self::Preserve),
+            _ => Err("table-widths must be fit or preserve"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormatOptions {
     pub line_width: usize,
@@ -134,6 +151,7 @@ pub struct FormatOptions {
     pub markdown_compact_tables: bool,
     pub yaml_compact: bool,
     pub markdown_wrap: MarkdownWrap,
+    pub markdown_table_widths: MarkdownTableWidths,
     pub markdown_canonical: bool,
     pub markdown_format_footnotes: bool,
     pub markdown_preserve_footnotes: bool,
@@ -152,6 +170,7 @@ impl Default for FormatOptions {
             markdown_compact_tables: false,
             yaml_compact: false,
             markdown_wrap: MarkdownWrap::Column(72),
+            markdown_table_widths: MarkdownTableWidths::Fit,
             markdown_canonical: false,
             markdown_format_footnotes: true,
             markdown_preserve_footnotes: false,

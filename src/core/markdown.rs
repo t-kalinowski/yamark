@@ -6,7 +6,7 @@ use crate::core::directives::{
 };
 use crate::core::document::{
     CodeFenceSafety, Document, DocumentKind, EmitPlan, FormatOptions, MarkdownNodeKind,
-    MarkdownWrap, Node, NodeKind,
+    MarkdownTableWidths, MarkdownWrap, Node, NodeKind,
 };
 use crate::core::markdown_marker::markdown_list_marker_len;
 use crate::core::source::{SourceBuffer, Span};
@@ -2111,6 +2111,8 @@ fn pandoc_multiline_table_end(source: &SourceBuffer, line: usize, end: usize) ->
     // its body may include blank lines and caption-looking text. Otherwise,
     // the second separator closes a headerless table, even when a caption or
     // another block follows it without a blank line.
+    // A later table can supply that third separator: stopping at intervening
+    // prose or headings would disagree with Pandoc's headed-table parse.
     headerless_end
 }
 
@@ -2163,7 +2165,7 @@ fn grid_table_border(text: &str) -> Option<usize> {
         if part.is_empty() {
             continue;
         }
-        if !part.chars().all(|ch| matches!(ch, '-' | '=')) {
+        if !part.chars().all(|ch| matches!(ch, '-' | '=' | ':')) {
             return None;
         }
         columns += 1;
@@ -3121,6 +3123,7 @@ fn front_matter_markdown_delta_at_path(
     for (key, value) in yaml_mapping_scalar_pairs(source, ast, node) {
         match key.as_str() {
             "wrap" => apply_front_matter_wrap(&mut delta, &value),
+            "table-widths" => delta.markdown_table_widths = MarkdownTableWidths::parse(&value).ok(),
             "canonical" => delta.markdown_canonical = parse_front_matter_bool(&value),
             "footnotes" => {
                 delta.markdown_format_footnotes = match value.as_str() {
@@ -3257,6 +3260,7 @@ fn parse_front_matter_bool(value: &str) -> Option<bool> {
 
 fn directive_delta_has_markdown_options(delta: &DirectiveDelta) -> bool {
     delta.markdown_wrap.is_some()
+        || delta.markdown_table_widths.is_some()
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
 }

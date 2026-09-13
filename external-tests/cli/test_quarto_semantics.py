@@ -17,6 +17,22 @@ WIDTHS = [20, 40, 72]
 QUARTO_VERSION = "1.10.18"
 PANDOC_TABLE_CASES = [
     (
+        "simple-default-header-wider-body",
+        "Name    Value\n----    -----\nlonger  example",
+    ),
+    (
+        "pipe-table-unequal-widths",
+        "| A        | B |\n| -------- | - |\n| A long cell whose contents make the source exceed seventy two characters in total | y |",
+    ),
+    (
+        "pipe-table-padding-width-threshold",
+        "| A                                   | B                              |\n| ----------------------------------- | ------------------------------ |\n| x                                   | y                              |",
+    ),
+    (
+        "grid-table-explicit-alignments",
+        "+----------+------------+\n| Name     | Value      |\n+=========:+:==========:+\n| x        | y          |\n+----------+------------+",
+    ),
+    (
         "simple-table-alignment",
         "A             B\n-----  ------------\nx      y",
     ),
@@ -416,7 +432,21 @@ def canonicalize_quarto_json(value: object) -> object:
     return value
 
 
-def case_blocks(document: object) -> dict[str, object]:
+def without_table_widths(value: object) -> object:
+    """Fit mode may change column widths; all other Pandoc fields must match."""
+    if isinstance(value, dict):
+        result = {key: without_table_widths(item) for key, item in value.items()}
+        if result.get("t") == "Table":
+            result["c"][2] = [
+                [alignment, {"t": "ColWidthDefault"}] for alignment, _ in result["c"][2]
+            ]
+        return result
+    if isinstance(value, list):
+        return [without_table_widths(item) for item in value]
+    return value
+
+
+def case_blocks(document: object, table_widths: str) -> dict[str, object]:
     assert isinstance(document, dict)
     blocks = document["blocks"]
     assert isinstance(blocks, list)
@@ -431,20 +461,34 @@ def case_blocks(document: object) -> dict[str, object]:
                 cases[case_id] = []
                 continue
         if case_id is not None:
-            cases[case_id].append(canonicalize_quarto_json(block))
+            block = canonicalize_quarto_json(block)
+            cases[case_id].append(
+                without_table_widths(block) if table_widths == "fit" else block
+            )
     return cases
 
 
 @pytest.mark.parametrize("body", ["a  b    c\n", "a  b    c\n        d\n\ne       f\n"])
+@pytest.mark.parametrize("table_widths", ["fit", "preserve"])
 @pytest.mark.parametrize(
     "following",
     [
         "",
         "Table: keep    caption spacing\n\nFirst sentence. Second sentence.\n",
         "#   Following heading\n\nFirst sentence. Second sentence.\n",
+        *[
+            following + "\n\nLater paragraph.\n\n" + later
+            for following in ["Table: caption", "# Heading"]
+            for later in [
+                "C       D\n------  ------\nu       v\n",
+                "------  ------\nC       D\n------  ------\nu       v\n------  ------\n",
+            ]
+        ],
     ],
 )
-def test_headerless_table_preserves_quarto_document(body: str, following: str) -> None:
+def test_headerless_table_preserves_quarto_document(
+    body: str, following: str, table_widths: str
+) -> None:
     source = f"Before.\n\n------  ------\n{body}------  ------\n{following}"
     with TemporaryDirectory(prefix="yamark-quarto-headerless-") as temp:
         root = Path(temp)
@@ -455,6 +499,8 @@ def test_headerless_table_preserves_quarto_document(body: str, following: str) -
                 "format",
                 "--wrap",
                 "sentence",
+                "--table-widths",
+                table_widths,
                 "--stdin-file-path",
                 "input.qmd",
             ],
@@ -465,12 +511,18 @@ def test_headerless_table_preserves_quarto_document(body: str, following: str) -
         )
         assert result.returncode == 0, result.stderr
         after = render_quarto_json(root, "after", result.stdout)
-    assert canonicalize_quarto_json(before) == canonicalize_quarto_json(after)
+    before, after = canonicalize_quarto_json(before), canonicalize_quarto_json(after)
+    if table_widths == "fit":
+        before, after = without_table_widths(before), without_table_widths(after)
+    assert before == after
 
 
 @pytest.mark.parametrize("width", WIDTHS)
 @pytest.mark.parametrize("canonical", [False, True])
-def test_formatting_preserves_quarto_document(width: int, canonical: bool) -> None:
+@pytest.mark.parametrize("table_widths", ["fit", "preserve"])
+def test_formatting_preserves_quarto_document(
+    width: int, canonical: bool, table_widths: str
+) -> None:
     assert shutil.which("quarto") is not None, "quarto is required"
     version = subprocess.run(
         ["quarto", "--version"],
@@ -488,7 +540,7 @@ def test_formatting_preserves_quarto_document(width: int, canonical: bool) -> No
     with TemporaryDirectory(prefix="yamark-quarto-fuzz-") as temp:
         root = Path(temp)
         before_document = render_quarto_json(root, "before", before_text)
-        before = case_blocks(before_document)
+        before = case_blocks(before_document, table_widths)
         formatted_path = root / "formatted.qmd"
         formatted_path.write_text(before_text, encoding="utf-8")
         result = subprocess.run(
@@ -497,6 +549,8 @@ def test_formatting_preserves_quarto_document(width: int, canonical: bool) -> No
                 "format",
                 "--wrap",
                 str(width),
+                "--table-widths",
+                table_widths,
                 *(["--canonical"] if canonical else []),
                 formatted_path.name,
             ],
@@ -511,7 +565,7 @@ def test_formatting_preserves_quarto_document(width: int, canonical: bool) -> No
             "after",
             formatted_path.read_text(encoding="utf-8"),
         )
-        after = case_blocks(after_document)
+        after = case_blocks(after_document, table_widths)
 
     assert isinstance(before_document, dict)
     assert isinstance(after_document, dict)

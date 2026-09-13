@@ -7,7 +7,7 @@ use std::thread;
 use ignore::WalkBuilder;
 
 use crate::config::{Config, discover_config_path};
-use crate::core::document::{FileKind, FormatOptions, MarkdownWrap};
+use crate::core::document::{FileKind, FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::parser::format_source_report_with_policy;
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
 use crate::json_to_yaml::{JsonSourceKind, json_to_yaml_source};
@@ -38,6 +38,7 @@ pub(crate) struct FormatExecutionOptions {
     pub(crate) collect_trace: bool,
     pub(crate) verify_output: bool,
     pub(crate) markdown_wrap_override: Option<MarkdownWrap>,
+    pub(crate) markdown_table_widths_override: Option<MarkdownTableWidths>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -208,7 +209,7 @@ fn format_source_with_config_as(
     if !kind.is_supported() {
         return Err(YamarkError::new("unsupported file type").with_path(path));
     }
-    let options = apply_config_options(options, config, execution.markdown_wrap_override);
+    let options = apply_config_options(options, config, execution);
     let plugins = PluginRegistry::from_config(config).with_source_path(path);
     let formatted = format_source_report_with_policy(
         kind,
@@ -686,7 +687,7 @@ fn load_config_for_formatted_path(path: &Path, explicit: Option<&Path>) -> Resul
 fn apply_config_options(
     mut options: FormatOptions,
     config: &Config,
-    markdown_wrap_override: Option<MarkdownWrap>,
+    execution: FormatExecutionOptions,
 ) -> FormatOptions {
     if let Some(compact) = config.format.compact
         && (compact || !options.yaml_compact)
@@ -699,8 +700,14 @@ fn apply_config_options(
     if let Some(marker) = config.format.markdown_horizontal_rule {
         options.markdown_horizontal_rule = marker;
     }
-    if let Some(wrap) = markdown_wrap_override {
+    if let Some(wrap) = execution.markdown_wrap_override {
         options.markdown_wrap = wrap;
+    }
+    if let Some(widths) = execution
+        .markdown_table_widths_override
+        .or(config.format.markdown_table_widths)
+    {
+        options.markdown_table_widths = widths;
     }
     options
 }
