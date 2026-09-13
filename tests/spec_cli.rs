@@ -5633,6 +5633,80 @@ fn yaml_compact_table_preserves_block_mappings_with_explicit_keys() {
 }
 
 #[test]
+fn yaml_compact_keeps_single_pair_root_mappings_in_block_style() {
+    let cases = [
+        ("extends: workspace\n", "extends: workspace\n"),
+        ("extends: :workspace\n", "extends: :workspace\n"),
+        ("extends: [ one , two ]\n", "extends: [one, two]\n"),
+        ("---\nextends: workspace\n", "---\nextends: workspace\n"),
+        ("extends: workspace\r\n", "extends: workspace\r\n"),
+    ];
+    let args = [
+        "format",
+        "--stdin-file-path",
+        "input.yaml",
+        "--compact",
+        "--verify",
+    ];
+    for (input, expected) in cases {
+        for source in [input, expected] {
+            let (status, stdout, stderr) = run_stdin(&args, source);
+            assert_eq!(status, 0, "{source}: {stderr}");
+            assert_eq!(stdout, expected, "{source}");
+            assert_eq!(stderr, "");
+        }
+    }
+}
+
+#[test]
+fn yaml_compact_keeps_single_line_sequence_mappings_in_block_style() {
+    let input = "- extends: workspace\n- extends: other\n";
+    for indent in ["2", "4"] {
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.yaml",
+                "--compact",
+                "--indent-width",
+                indent,
+                "--verify",
+            ],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, input);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
+fn yaml_compact_still_collapses_single_pair_mappings_when_it_saves_a_line() {
+    let cases = [
+        (
+            "task:\n  extends: workspace\n",
+            "task: {extends: workspace}\n",
+        ),
+        ("-\n  extends: workspace\n", "- {extends: workspace}\n"),
+    ];
+    for (input, expected) in cases {
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.yaml",
+                "--compact",
+                "--verify",
+            ],
+            input,
+        );
+        assert_eq!(status, 0, "{stderr}");
+        assert_eq!(stdout, expected);
+        assert_eq!(stderr, "");
+    }
+}
+
+#[test]
 fn yaml_compact_respects_line_width() {
     let input = "\
 package:
@@ -6174,6 +6248,79 @@ items: # fmt: table
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.yaml"], input);
     assert_eq!(status, 0, "{stderr}");
     assert_eq!(stdout, expected);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn yaml_indicator_prefixed_strings_stay_plain_when_safe() {
+    let cases = [
+        (
+            "extends: :workspace\nname: app\n",
+            "{extends: :workspace, name: app}\n",
+        ),
+        (
+            "[:workspace, ?query, -option]\n",
+            "[:workspace, ?query, -option]\n",
+        ),
+        (
+            r#"[":workspace", '?query', "-option"]
+"#,
+            "[:workspace, ?query, -option]\n",
+        ),
+        (
+            r#"["\x3aworkspace", "\x3fquery", "\x2doption"]
+"#,
+            "[:workspace, ?query, -option]\n",
+        ),
+        (
+            "{\":workspace\": value, \"?query\": result}\n",
+            "{:workspace: value, ?query: result}\n",
+        ),
+        (
+            "[\"\\x3f\", \"\\x2d\", \"\\x3a value\", \"\\x3f value\", \"\\x2d value\"]\n",
+            "[\"?\", \"-\", \": value\", \"? value\", \"- value\"]\n",
+        ),
+        (
+            r#"[":", "?", "-", ": value", "? value", "- value", ":[value]", "?[value]", "-[value]"]
+"#,
+            "[\":\", \"?\", \"-\", \": value\", \"? value\", \"- value\", \":[value]\", \"?[value]\", \"-[value]\"]\n",
+        ),
+    ];
+    let args = [
+        "format",
+        "--stdin-file-path",
+        "input.yaml",
+        "--compact",
+        "--line-width",
+        "120",
+        "--verify",
+    ];
+    for (input, expected) in cases {
+        for source in [input, expected] {
+            let (status, stdout, stderr) = run_stdin(&args, source);
+            assert_eq!(status, 0, "{source}: {stderr}");
+            assert_eq!(stdout, expected, "{source}");
+            assert_eq!(stderr, "");
+        }
+    }
+}
+
+#[test]
+fn yaml_indicator_prefixed_escaped_strings_use_unquoted_width() {
+    let input = "[\"\\x3aworkspace\"]\n";
+    let (status, stdout, stderr) = run_stdin(
+        &[
+            "format",
+            "--stdin-file-path",
+            "input.yaml",
+            "--line-width",
+            "12",
+            "--verify",
+        ],
+        input,
+    );
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, "[:workspace]\n");
     assert_eq!(stderr, "");
 }
 

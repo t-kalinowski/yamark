@@ -911,16 +911,17 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 let indent = sequence.indent;
                 let item_count = sequence.items.len();
                 for index in 0..item_count {
-                    let (trailing_comment, value) = {
+                    let (trailing_comment, value, value_on_marker_line) = {
                         let YamlAstKind::Sequence(sequence) = &self.ast.node(id).kind else {
                             unreachable!("YAML sequence node changed during planning");
                         };
                         let item = &sequence.items[index];
-                        (item.trailing_comment, item.value)
+                        (item.trailing_comment, item.value, item.value_on_marker_line)
                     };
                     if let Some((value, plan)) = self.yaml_sequence_item_context_plan(
                         trailing_comment,
                         value,
+                        value_on_marker_line,
                         indent,
                         options,
                     ) {
@@ -971,16 +972,17 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 let indent = forced_indent.unwrap_or(sequence.indent);
                 let item_count = sequence.items.len();
                 for index in 0..item_count {
-                    let (trailing_comment, value) = {
+                    let (trailing_comment, value, value_on_marker_line) = {
                         let YamlAstKind::Sequence(sequence) = &self.ast.node(id).kind else {
                             unreachable!("YAML sequence node changed during planning");
                         };
                         let item = &sequence.items[index];
-                        (item.trailing_comment, item.value)
+                        (item.trailing_comment, item.value, item.value_on_marker_line)
                     };
                     if let Some((value, plan)) = self.yaml_sequence_item_context_plan(
                         trailing_comment,
                         value,
+                        value_on_marker_line,
                         indent,
                         options,
                     ) {
@@ -1233,6 +1235,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         &self,
         trailing_comment: Option<SourceSpan<'src>>,
         value: Option<YamlNodeId>,
+        value_on_marker_line: bool,
         sequence_indent: usize,
         options: FormatOptions,
     ) -> Option<(YamlNodeId, YamlEmitPlan)> {
@@ -1301,6 +1304,20 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         value,
                         self.yaml_flow_collapse_hint_emit_plan(value, available_width),
                     ));
+                }
+                // Braces do not shorten a mapping already on the dash's line.
+                if value_on_marker_line
+                    && matches!(
+                        value_node.emit,
+                        YamlEmitPlan::Rendered(YamlRenderedKind::CompactCollection)
+                    )
+                    && let YamlAstKind::Mapping(mapping) = &value_node.kind
+                    && mapping.pairs.len() == 1
+                    && mapping.pairs[0]
+                        .value
+                        .is_some_and(|value| !yaml_node_is_block_collection(&self.ast, value))
+                {
+                    return Some((value, YamlEmitPlan::None));
                 }
                 if trailing_comment.is_none()
                     && self
@@ -4163,13 +4180,17 @@ impl<'src, 'ast, 'cfg> FlowParser<'src, 'ast, 'cfg> {
     }
 
     fn key_is_empty_node(&self) -> bool {
-        matches!(self.peek_byte(), None | Some(b':' | b',' | b']' | b'}'))
+        matches!(self.peek_byte(), None | Some(b',' | b']' | b'}'))
+            || self.peek_byte() == Some(b':')
+                && flow_colon_is_value_indicator(self.text, self.pos, false)
     }
 
     fn sequence_entry_implicit_mapping_start(&self) -> Option<FlowImplicitMappingStart> {
         let start = self.node_properties_end_from(self.pos);
         match self.text.as_bytes().get(start).copied() {
-            Some(b':') => Some(FlowImplicitMappingStart::Reparse),
+            Some(b':') if flow_colon_is_value_indicator(self.text, start, false) => {
+                Some(FlowImplicitMappingStart::Reparse)
+            }
             Some(b'[' | b'{') => None,
             Some(quote @ (b'\'' | b'"')) => {
                 let close = quoted_scalar_close(self.text, start, quote)?;
@@ -8358,12 +8379,11 @@ impl DecodedStringWidthState {
     fn push(&mut self, ch: char) {
         if self.first.is_none() {
             self.first = Some(ch);
-            if plain_scalar_unsafe_first_char(ch) {
+            if matches!(ch, '-' | '?' | ':') || plain_scalar_unsafe_first_char(ch) {
                 self.plain_unsafe = true;
             }
-        }
-        if self.previous == Some('-') && ch.is_whitespace() {
-            self.plain_unsafe = true;
+        } else if self.width == 1 && matches!(self.first, Some('-' | '?' | ':')) {
+            self.plain_unsafe = ch.is_whitespace();
         }
         if ch == ' ' {
             self.has_space = true;
@@ -8500,7 +8520,7 @@ fn yaml_core_non_string_semantic_char(ch: char) -> bool {
 fn plain_scalar_unsafe_start_value(value: &str) -> bool {
     let bytes = value.as_bytes();
     match bytes.first().copied() {
-        Some(b'-') => bytes.get(1).is_none_or(u8::is_ascii_whitespace),
+        Some(b'-' | b'?' | b':') => bytes.get(1).is_none_or(u8::is_ascii_whitespace),
         Some(byte) => plain_scalar_unsafe_start_byte(byte),
         None => true,
     }
@@ -8517,9 +8537,7 @@ fn yaml_scalar_character_requires_escape(ch: char) -> bool {
 fn plain_scalar_unsafe_start_byte(byte: u8) -> bool {
     matches!(
         byte,
-        b'?' | b':'
-            | b','
-            | b'['
+        b',' | b'['
             | b']'
             | b'{'
             | b'}'
@@ -9251,10 +9269,13 @@ fn yaml_output_is_at_line_start(output: &str) -> bool {
 
 fn compact_root_collection_allowed(ast: &YamlDocumentAst<'_>, id: YamlNodeId) -> bool {
     match &ast.node(id).kind {
-        YamlAstKind::Mapping(mapping) => mapping.pairs.iter().all(|pair| {
-            pair.value
-                .is_some_and(|value| !yaml_node_is_block_collection(ast, value))
-        }),
+        YamlAstKind::Mapping(mapping) => {
+            mapping.pairs.len() > 1
+                && mapping.pairs.iter().all(|pair| {
+                    pair.value
+                        .is_some_and(|value| !yaml_node_is_block_collection(ast, value))
+                })
+        }
         YamlAstKind::Sequence(sequence) => sequence.items.iter().all(|item| {
             item.value
                 .is_some_and(|value| !yaml_node_is_block_collection(ast, value))

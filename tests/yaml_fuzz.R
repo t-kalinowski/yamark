@@ -266,6 +266,12 @@ for (case in seq_len(1000L)) {
 }
 
 regression_inputs <- list(
+  indicator_prefixed_strings = paste0(
+    "block: \":workspace\"\n",
+    "flow: [\":workspace\", '?query', '-option']\n",
+    "escaped: [\"\\x3aworkspace\", \"\\x3fquery\", \"\\x2doption\"]\n",
+    "keys: {\":workspace\": value, \"?query\": result}\n"
+  ),
   bom_block_scalar = paste0(
     "\ufeffvalue: |-\n",
     "  first\n",
