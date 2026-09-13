@@ -734,8 +734,14 @@ fn simple_diff(path: &Path, before: &str, after: &str) -> String {
     let before_lines = diff_lines(before);
     let after_lines = diff_lines(after);
     let ops = diff_ops(&before_lines, &after_lines);
+    let mut previous_start = 0;
+    let (mut old_start, mut new_start) = (1, 1);
     for (start, end) in diff_hunks(&ops, 3) {
-        let (old_start, old_count, new_start, new_count) = hunk_ranges(&ops, start, end);
+        let (old_skipped, new_skipped) = diff_line_counts(&ops[previous_start..start]);
+        old_start += old_skipped;
+        new_start += new_skipped;
+        previous_start = start;
+        let (old_count, new_count) = diff_line_counts(&ops[start..end]);
         out.push_str(&format!(
             "@@ -{} +{} @@\n",
             unified_range(old_start, old_count),
@@ -814,6 +820,30 @@ fn push_diff_line(out: &mut String, prefix: char, line: DiffLine<'_>) {
 }
 
 fn diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'a>> {
+    let prefix = before
+        .iter()
+        .zip(after)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let suffix = before[prefix..]
+        .iter()
+        .rev()
+        .zip(after[prefix..].iter().rev())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let before_end = before.len() - suffix;
+    let after_end = after.len() - suffix;
+    let mut ops = Vec::with_capacity(before.len() + after.len());
+    ops.extend(before[..prefix].iter().copied().map(DiffOp::Equal));
+    ops.extend(middle_diff_ops(
+        &before[prefix..before_end],
+        &after[prefix..after_end],
+    ));
+    ops.extend(before[before_end..].iter().copied().map(DiffOp::Equal));
+    ops
+}
+
+fn middle_diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'a>> {
     const MAX_LCS_CELLS: usize = 4_000_000;
     if before
         .len()
@@ -854,28 +884,11 @@ fn diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'
 }
 
 fn linear_diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<DiffOp<'a>> {
-    let mut prefix = 0usize;
-    while prefix < before.len() && prefix < after.len() && before[prefix] == after[prefix] {
-        prefix += 1;
-    }
-
-    let mut suffix = 0usize;
-    while suffix < before.len().saturating_sub(prefix)
-        && suffix < after.len().saturating_sub(prefix)
-        && before[before.len() - 1 - suffix] == after[after.len() - 1 - suffix]
-    {
-        suffix += 1;
-    }
-
-    let before_end = before.len() - suffix;
-    let after_end = after.len() - suffix;
-    let mut ops = Vec::with_capacity(before.len() + after.len());
-    for line in &before[..prefix] {
-        ops.push(DiffOp::Equal(*line));
-    }
-
-    let mut i = prefix;
-    let mut j = prefix;
+    let before_end = before.len();
+    let after_end = after.len();
+    let mut ops = Vec::new();
+    let mut i = 0;
+    let mut j = 0;
     let mut sync_index = None;
     while i < before_end || j < after_end {
         if i < before_end && j < after_end && before[i] == after[j] {
@@ -920,9 +933,6 @@ fn linear_diff_ops<'a>(before: &[DiffLine<'a>], after: &[DiffLine<'a>]) -> Vec<D
         }
     }
 
-    for line in &before[before_end..] {
-        ops.push(DiffOp::Equal(*line));
-    }
     ops
 }
 
@@ -1059,23 +1069,10 @@ fn next_change(ops: &[DiffOp<'_>], start: usize) -> Option<usize> {
         .find_map(|(index, op)| (!matches!(op, DiffOp::Equal(_))).then_some(index))
 }
 
-fn hunk_ranges(ops: &[DiffOp<'_>], start: usize, end: usize) -> (usize, usize, usize, usize) {
-    let mut old_line = 1usize;
-    let mut new_line = 1usize;
-    for op in &ops[..start] {
-        match op {
-            DiffOp::Equal(_) => {
-                old_line += 1;
-                new_line += 1;
-            }
-            DiffOp::Remove(_) => old_line += 1,
-            DiffOp::Add(_) => new_line += 1,
-        }
-    }
-
+fn diff_line_counts(ops: &[DiffOp<'_>]) -> (usize, usize) {
     let mut old_count = 0usize;
     let mut new_count = 0usize;
-    for op in &ops[start..end] {
+    for op in ops {
         match op {
             DiffOp::Equal(_) => {
                 old_count += 1;
@@ -1085,7 +1082,7 @@ fn hunk_ranges(ops: &[DiffOp<'_>], start: usize, end: usize) -> (usize, usize, u
             DiffOp::Add(_) => new_count += 1,
         }
     }
-    (old_line, old_count, new_line, new_count)
+    (old_count, new_count)
 }
 
 fn unified_range(start: usize, count: usize) -> String {
