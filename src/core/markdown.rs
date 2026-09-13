@@ -2128,12 +2128,12 @@ fn pandoc_multiline_table_at(source: &SourceBuffer, line: usize, end: usize) -> 
         let trimmed = source.line_text(i).trim();
         if pandoc_table_separator(trimmed) {
             separator_count += 1;
-            if separator_count == 3 {
+            if separator_count == 3
+                || (separator_count == 2
+                    && (i + 1 == end || source.line_text(i + 1).trim().is_empty()))
+            {
                 return true;
             }
-        }
-        if trimmed.is_empty() && separator_count < 2 {
-            return false;
         }
         i += 1;
     }
@@ -2198,7 +2198,10 @@ fn pandoc_multiline_table_end(source: &SourceBuffer, line: usize, end: usize) ->
     while i < end {
         if pandoc_table_separator(source.line_text(i).trim()) {
             separator_count += 1;
-            if separator_count == 3 {
+            if separator_count == 3
+                || (separator_count == 2
+                    && (i + 1 == end || source.line_text(i + 1).trim().is_empty()))
+            {
                 return i + 1;
             }
         }

@@ -12,37 +12,146 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-
 SEED = 20260731
 WIDTHS = [20, 40, 72]
 QUARTO_VERSION = "1.10.18"
-KNOWN_PANDOC_TABLE_DIFFERENCES = [
+PANDOC_TABLE_CASES = [
     (
         "simple-table-alignment",
         "A             B\n-----  ------------\nx      y",
     ),
     (
         "grid-table-column-width",
-        "+------+------+\n"
-        "| A    | B    |\n"
-        "+======+======+\n"
-        "| x    | y    |\n"
-        "+------+------+",
+        (
+            "+------+------+\n"
+            "| A    | B    |\n"
+            "+======+======+\n"
+            "| x    | y    |\n"
+            "+------+------+"
+        ),
     ),
     (
         "multiline-table-column-width",
-        "Before.\n\n"
-        "----------  ----------\n"
-        "A           B\n"
-        "----------  ----------\n"
-        "x           y\n"
-        "----------  ----------",
+        (
+            "Before.\n"
+            "\n"
+            "----------  ----------\n"
+            "A           B\n"
+            "----------  ----------\n"
+            "x           y\n"
+            "----------  ----------"
+        ),
+    ),
+    (
+        "simple-table-alignments",
+        (
+            "  Right     Left     Center     Default\n"
+            "-------     ------ ----------   -------\n"
+            "     12     12        12            12\n"
+            "    123     123       123          123"
+        ),
+    ),
+    (
+        "simple-table-header-spacing",
+        "Two  words  Other\n----------  -----\nx           y",
+    ),
+    (
+        "simple-table-headerless",
+        (
+            "-------     ------ ----------   -------\n"
+            "     12     12        12            12\n"
+            "    123     123       123          123\n"
+            "-------     ------ ----------   -------"
+        ),
+    ),
+    (
+        "simple-table-unicode",
+        "Name        Value\n----------  -----\ncafé        one\n漢字        two",
+    ),
+    (
+        "simple-table-emoji-header",
+        "👩‍💻  Bée  End\n----  ---  ---\none   two  end",
+    ),
+    (
+        "grid-table-unequal-widths",
+        (
+            "+----------+------------------+\n"
+            "| A        | B                |\n"
+            "+==========+==================+\n"
+            "| x  one   | y  two           |\n"
+            "+----------+------------------+"
+        ),
+    ),
+    (
+        "grid-table-headerless",
+        (
+            "+----------+------------------+\n"
+            "| x        | y                |\n"
+            "+----------+------------------+"
+        ),
+    ),
+    (
+        "multiline-table-alignments",
+        (
+            "-------------------------------------------------------------\n"
+            "Centered   Default           Right Left\n"
+            " Header    Aligned         Aligned Aligned\n"
+            "---------  -------  -------------- -------------------------\n"
+            "First      row                12.0 Example of a row that\n"
+            "                                   spans multiple lines.\n"
+            "\n"
+            "Second     row                 5.0 Another row.\n"
+            "-------------------------------------------------------------"
+        ),
+    ),
+    (
+        "multiline-table-headerless",
+        (
+            "----------  --------------------\n"
+            "x           y\n"
+            "            z\n"
+            "\n"
+            "a           b\n"
+            "----------  --------------------"
+        ),
+    ),
+    (
+        "multiline-table-unequal-gaps",
+        (
+            "-----------------------------------\n"
+            " A      B          C\n"
+            "----- -----   ---------------------\n"
+            "x     y       z\n"
+            "\n"
+            "one   two     three\n"
+            "-----------------------------------"
+        ),
+    ),
+    (
+        "simple-table-canonical-header",
+        "_Two_  words  Other\n------------  -----\n_x_           __y__",
+    ),
+    (
+        "grid-table-narrow-cells",
+        "+----+-----+\n|Name|Value|\n+====+=====+\n|_x_ |__y__|\n+----+-----+",
+    ),
+    (
+        "multiline-table-canonical-header",
+        (
+            "--------------------------------\n"
+            " _Two_          Other\n"
+            "------------    ----------------\n"
+            "_x_             __y__\n"
+            "\n"
+            "a               b\n"
+            "--------------------------------"
+        ),
     ),
 ]
 
 
 def markdown_cases() -> list[tuple[str, str]]:
-    cases: list[tuple[str, str]] = []
+    cases = list(PANDOC_TABLE_CASES)
 
     unicode_whitespace = {
         "nel": "\u0085",
@@ -100,8 +209,10 @@ def markdown_cases() -> list[tuple[str, str]]:
         cases.append(
             (
                 "titled-link",
-                "See [documentation](https://example.com/really/really/"
-                f"really/long/path {title}) for details after the link.",
+                (
+                    "See [documentation](https://example.com/really/really/"
+                    f"really/long/path {title}) for details after the link."
+                ),
             )
         )
 
@@ -117,17 +228,21 @@ def markdown_cases() -> list[tuple[str, str]]:
                 ("raw-tex-blockquote", f"> before \\{command}\n> after words"),
                 (
                     "raw-tex-footnote",
-                    f"Text.[^tex-{command_index}]\n\n"
-                    f"[^tex-{command_index}]: before \\{command}\n  after words",
+                    (
+                        f"Text.[^tex-{command_index}]\n\n"
+                        f"[^tex-{command_index}]: before \\{command}\n  after words"
+                    ),
                 ),
             ]
         )
     cases.append(
         (
             "protected-raw-looking-inline",
-            "This paragraph includes `C:\\Users\u00a0name`, "
-            "[link \\alpha](dest), $\\beta + x$, and "
-            "<span>HTML\u00a0text</span> while enough words remain to wrap safely.",
+            (
+                "This paragraph includes `C:\\Users\u00a0name`, "
+                "[link \\alpha](dest), $\\beta + x$, and "
+                "<span>HTML\u00a0text</span> while enough words remain to wrap safely."
+            ),
         )
     )
 
@@ -157,8 +272,10 @@ def markdown_cases() -> list[tuple[str, str]]:
             ),
             (
                 "footnote",
-                "Text with a note.[^fuzz-note]\n\n"
-                "[^fuzz-note]: Footnote words that can wrap safely.",
+                (
+                    "Text with a note.[^fuzz-note]\n\n"
+                    "[^fuzz-note]: Footnote words that can wrap safely."
+                ),
             ),
             (
                 "blockquote",
@@ -166,8 +283,10 @@ def markdown_cases() -> list[tuple[str, str]]:
             ),
             (
                 "list",
-                "- First list item with several words that can wrap safely.\n"
-                "- Second item with *emphasis*.",
+                (
+                    "- First list item with several words that can wrap safely.\n"
+                    "- Second item with *emphasis*."
+                ),
             ),
         ]
     )
@@ -195,8 +314,10 @@ def markdown_cases() -> list[tuple[str, str]]:
 
 def markdown_document(cases: list[tuple[str, str]]) -> str:
     sections = [
-        '---\ntitle: "Yamark semantics"\nparams:\n  label: "yes"\n'
-        "  values: [1, 2, 3]\n---\n\n"
+        (
+            '---\ntitle: "Yamark semantics"\nparams:\n  label: "yes"\n'
+            "  values: [1, 2, 3]\n---\n\n"
+        )
     ]
     for index, (_, text) in enumerate(cases):
         text = text.rstrip("\r\n")
@@ -220,8 +341,7 @@ def render_quarto_json(root: Path, stem: str, source: str) -> object:
             output_name,
         ],
         cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
         text=True,
     )
@@ -240,26 +360,6 @@ def canonicalize_quarto_json(value: object) -> object:
         return {key: canonicalize_quarto_json(item) for key, item in value.items()}
     if isinstance(value, list):
         return [canonicalize_quarto_json(item) for item in value]
-    return value
-
-
-def canonicalize_known_pandoc_table_layout(value: object) -> object:
-    if isinstance(value, dict):
-        normalized = {
-            key: canonicalize_known_pandoc_table_layout(item)
-            for key, item in value.items()
-        }
-        if normalized.get("t") == "Table":
-            contents = normalized["c"]
-            assert isinstance(contents, list) and len(contents) == 6
-            columns = contents[2]
-            assert isinstance(columns, list)
-            for column in columns:
-                assert isinstance(column, list) and len(column) == 2
-            contents[2] = [["known-alignment", "known-width"] for _ in columns]
-        return normalized
-    if isinstance(value, list):
-        return [canonicalize_known_pandoc_table_layout(item) for item in value]
     return value
 
 
@@ -283,12 +383,12 @@ def case_blocks(document: object) -> dict[str, object]:
 
 
 @pytest.mark.parametrize("width", WIDTHS)
-def test_formatting_preserves_quarto_document(width: int) -> None:
+@pytest.mark.parametrize("canonical", [False, True])
+def test_formatting_preserves_quarto_document(width: int, canonical: bool) -> None:
     assert shutil.which("quarto") is not None, "quarto is required"
     version = subprocess.run(
         ["quarto", "--version"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
         text=True,
     )
@@ -306,10 +406,16 @@ def test_formatting_preserves_quarto_document(width: int) -> None:
         formatted_path = root / "formatted.qmd"
         formatted_path.write_text(before_text, encoding="utf-8")
         result = subprocess.run(
-            [yamark_bin, "format", "--wrap", str(width), formatted_path.name],
+            [
+                yamark_bin,
+                "format",
+                "--wrap",
+                str(width),
+                *(["--canonical"] if canonical else []),
+                formatted_path.name,
+            ],
             cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             check=False,
             text=True,
         )
@@ -344,51 +450,3 @@ def test_formatting_preserves_quarto_document(width: int) -> None:
         f"seed {SEED}, width {width}: formatting changed Quarto output\n\n"
         + "\n\n".join(failures[:10])
     )
-
-
-@pytest.mark.parametrize(("family", "source"), KNOWN_PANDOC_TABLE_DIFFERENCES)
-def test_known_pandoc_table_difference(family: str, source: str) -> None:
-    version = subprocess.run(
-        ["quarto", "--version"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        text=True,
-    )
-    assert version.returncode == 0, version.stderr
-    assert version.stdout.strip() == QUARTO_VERSION
-    yamark_bin = os.environ.get("YAMARK_BIN")
-    assert yamark_bin is not None, "YAMARK_BIN is not set"
-    document = markdown_document([(family, source)])
-    with TemporaryDirectory(prefix="yamark-quarto-table-") as temp:
-        root = Path(temp)
-        before_document = render_quarto_json(root, "before", document)
-        before = case_blocks(before_document)
-        formatted_path = root / "formatted.qmd"
-        formatted_path.write_text(document, encoding="utf-8")
-        result = subprocess.run(
-            [yamark_bin, "format", "--wrap", "72", formatted_path.name],
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
-        after_document = render_quarto_json(
-            root,
-            "after",
-            formatted_path.read_text(encoding="utf-8"),
-        )
-        after = case_blocks(after_document)
-    assert isinstance(before_document, dict)
-    assert isinstance(after_document, dict)
-    assert canonicalize_quarto_json(
-        before_document["meta"]
-    ) == canonicalize_quarto_json(after_document["meta"])
-    if before == after:
-        pytest.fail(f"known {family} difference is fixed; move it into the main corpus")
-    assert canonicalize_known_pandoc_table_layout(
-        before
-    ) == canonicalize_known_pandoc_table_layout(after)
-    pytest.xfail("Yamark currently changes Pandoc table alignment or column width")

@@ -98,7 +98,7 @@ projection.
 | Quarto source fences with `#| fmt: skip` | Preserves | Leaves the fenced chunk unchanged when the directive appears anywhere in the initial consecutive `#|` option block. |
 | Document Markdown options | Reads | Applies `editor_options.markdown.{wrap,canonical,footnotes}` to the body and nested Markdown that follows. |
 | GFM pipe tables | Formats | Aligns supported tables by display width. Git clean/smudge filters use compact pipe-table output. |
-| Pandoc tables | Formats when supported | Normalizes supported simple, grid, and multiline tables. |
+| Pandoc tables | Formats when supported | Normalizes supported simple, grid, and multiline tables while preserving column alignment, widths, and multiline cell breaks. |
 | Definition lists | Formats when supported | Normalizes marker spacing and wraps definitions. |
 | Display math | Preserves | Keeps own-line `$$` display math blocks byte-for-byte. |
 | Raw HTML, TeX, Hugo shortcodes, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
