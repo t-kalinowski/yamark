@@ -1,8 +1,8 @@
 use crate::config::Config;
 use crate::core::directives::{
     Directive, DirectiveDelta, DirectiveEngine, DirectiveState, DirectiveTargetKind, StateId,
-    TemplateDelimiter, directive_delta_affects_markdown, file_scope_delta,
-    parse_yaml_hash_directive,
+    TemplateDelimiter, contains_markdown_template_span, directive_delta_affects_markdown,
+    file_scope_delta, parse_yaml_hash_directive,
 };
 use crate::core::document::{
     Document, DocumentKind, EmitPlan, FormatOptions, Node, NodeKind, YamlNodeKind,
@@ -8935,7 +8935,13 @@ fn yaml_node_should_preserve_uncached_with_template_possible(
         || (template_spans_possible && yaml_node_preserves_own_template_span(&node.kind) && {
             let text = source.slice(node.span);
             source_may_contain_template_span(text, &state.template_delimiters)
-                && preserves_yaml_template_span(text, &state.template_delimiters)
+                && if let YamlAstKind::Scalar(scalar) = &node.kind
+                    && yaml_scalar_is_markdown_target(source, document, scalar, node)
+                {
+                    contains_markdown_template_span(text, &state.template_delimiters)
+                } else {
+                    preserves_yaml_template_span(text, &state.template_delimiters)
+                }
         })
         || matches!(
             &node.kind,

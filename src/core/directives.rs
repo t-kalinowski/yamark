@@ -1,4 +1,5 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
+use crate::core::wrap::markdown_inline_code_spans;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -50,11 +51,23 @@ fn template_span_in_source(
         return false;
     }
     let mut search_start = 0usize;
+    let mut code_spans = markdown_inline_code_spans(source).peekable();
     while search_start < source.len() {
         let Some(relative_open) = source[search_start..].find(&delimiter.open) else {
             return false;
         };
         let open = search_start + relative_open;
+        if mode == TemplateSpanMode::Markdown {
+            while code_spans.peek().is_some_and(|span| span.end <= open) {
+                code_spans.next();
+            }
+            if let Some(span) = code_spans.peek()
+                && span.start <= open
+            {
+                search_start = span.end;
+                continue;
+            }
+        }
         let content_start = open + delimiter.open.len();
         let Some(relative_close) = source[content_start..].find(&delimiter.close) else {
             return false;

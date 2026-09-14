@@ -1801,15 +1801,10 @@ pub fn canonicalize_inline(source: &str) -> String {
             index = end;
             continue;
         }
-        if rest.starts_with('`') {
-            let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-            let marker = &rest[..tick_count];
-            if let Some(close) = rest[tick_count..].find(marker) {
-                let end = index + tick_count + close + tick_count;
-                out.push_str(&source[index..end]);
-                index = end;
-                continue;
-            }
+        if let Some(end) = inline_code_span_end(source, index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
         }
         if rest.starts_with('$')
             && !escaped_at(source, index)
@@ -3289,10 +3284,7 @@ fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize)
     }
     let rest = &text[index..];
     if rest.starts_with('`') {
-        let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-        let marker = &rest[..tick_count];
-        let close = rest[tick_count..].find(marker)?;
-        return Some(index + tick_count + close + tick_count);
+        return inline_code_span_end(text, index);
     }
     if rest.starts_with('$') {
         let close = find_unescaped(rest, 1, '$')?;
@@ -3740,15 +3732,66 @@ fn strikethrough_span_end(text: &str, start: usize) -> Option<usize> {
     ))
 }
 
+pub(crate) fn markdown_inline_code_spans(
+    text: &str,
+) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+    let mut scan = InlineScan::new(text);
+    let mut link_targets: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut index = 0;
+    std::iter::from_fn(move || {
+        loop {
+            let limit = link_targets.last().map_or(text.len(), |span| span.start);
+            let Some(relative_start) = text[index..limit].find(['`', '[', '<', '$']) else {
+                if let Some(target) = link_targets.pop() {
+                    index = target.end;
+                    continue;
+                }
+                return None;
+            };
+            let start = index + relative_start;
+            index = start + 1;
+            if escaped_at(text, start) {
+                continue;
+            }
+            if text[start..].starts_with('`') {
+                index = start + delimiter_run_len_at(text, start, b'`');
+                if let Some(end) = inline_code_span_end(&text[..limit], start) {
+                    index = end;
+                    return Some(start..end);
+                }
+            } else if let Some(end) = commonmark_autolink_span_end(text, start)
+                .or_else(|| inline_html_tag_span_end(text, start))
+                .or_else(|| inline_math_span_end(text, start))
+            {
+                index = end;
+            } else if text[start..].starts_with('[')
+                && let Some(label_close) = scan.square_close(index)
+                && let Some(end) = link_or_bracket_token_end(&mut scan, start)
+                && end > label_close + 1
+            {
+                // Link labels can contain code; their targets and titles cannot.
+                link_targets.push(label_close + 1..end);
+            }
+        }
+    })
+}
+
 fn inline_code_span_end(text: &str, start: usize) -> Option<usize> {
-    if !text[start..].starts_with('`') {
+    if !text[start..].starts_with('`') || escaped_at(text, start) {
         return None;
     }
-    let rest = &text[start..];
-    let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-    let marker = &rest[..tick_count];
-    let close = rest[tick_count..].find(marker)?;
-    Some(start + tick_count + close + tick_count)
+    let tick_count = delimiter_run_len_at(text, start, b'`');
+    let mut search = start + tick_count;
+    // Longer or shorter backtick runs are code-span contents, not closers.
+    while let Some(relative_close) = text[search..].find('`') {
+        let close = search + relative_close;
+        let close_count = delimiter_run_len_at(text, close, b'`');
+        search = close + close_count;
+        if close_count == tick_count {
+            return Some(search);
+        }
+    }
+    None
 }
 
 fn inline_math_span_end(text: &str, start: usize) -> Option<usize> {
@@ -3924,12 +3967,7 @@ fn raw_semantics_protected_token_end(scan: &mut InlineScan<'_>, index: usize) ->
     let text = scan.text;
     let rest = &text[index..];
     match rest.as_bytes().first()? {
-        b'`' => {
-            let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-            let marker = &rest[..tick_count];
-            let close = rest[tick_count..].find(marker)?;
-            Some(index + tick_count + close + tick_count)
-        }
+        b'`' => inline_code_span_end(text, index),
         b'$' => find_unescaped(rest, 1, '$').map(|close| index + close + 1),
         b'~' => strikethrough_span_end(text, index),
         b'<' => commonmark_autolink_span_end(text, index)

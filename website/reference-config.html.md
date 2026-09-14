@@ -36,6 +36,11 @@ Template delimiters mark regions Yamark must preserve because rendering can
 change the host language. The defaults are `{{ }}`, `{% %}`, `{# #}`, and
 `<% %>`.
 
+In Markdown, template delimiters inside inline code do not prevent formatting
+of the surrounding text. Yamark preserves the code span itself. Generic
+template spans outside inline code still preserve the surrounding paragraph,
+heading, list, or blockquote.
+
 | Key | Type | Effect |
 | --- | --- | --- |
 | `add_delimiters` | Array of `{ open, close }` tables. | Appends to the delimiters active at this layer, after `replace_delimiters` if both keys are present. |
