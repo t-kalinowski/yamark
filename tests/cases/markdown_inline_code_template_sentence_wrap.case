@@ -8,12 +8,26 @@ sentence.
 Third
 sentence with {{ foo }}. Fourth
 sentence.
+
+Fifth
+sentence with ``{{ render("`code`", {"label": "keep   this"}) }}``. Sixth
+sentence.
+
+Seventh
+sentence with {{ render({"label": "keep   this"}) }}. Eighth
+sentence.
 -- stdout
 First sentence with `${{ foo }}`.
 Second sentence.
 
 Third sentence with {{ foo }}.
 Fourth sentence.
+
+Fifth sentence with ``{{ render("`code`", {"label": "keep   this"}) }}``.
+Sixth sentence.
+
+Seventh sentence with {{ render({"label": "keep   this"}) }}.
+Eighth sentence.
 -- stderr
 -- status
 0

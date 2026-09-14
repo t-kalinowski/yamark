@@ -1,0 +1,43 @@
+-- args
+format --stdin-file-path input.md --wrap 40 --verify
+-- stdin
+This paragraph before the template blocks is long enough to wrap at the requested column.
+
+{{< figure src="a-long-image-name.png" caption="An overwide caption that must stay exactly as authored" >}}
+
+The paragraph between these template blocks also has enough ordinary prose to wrap across several lines.
+
+{{% notice title="An overwide template block title that must remain exactly as authored" %}}
+Keep   the original spacing and this deliberately overwide body line inside the template region.
+
+{{% notice %}}
+Nested   template content also stays exactly as authored inside the larger region.
+{{% /notice %}}
+{{% /notice %}}
+
+This paragraph after the template region is long enough to wrap at the requested column.
+-- stdout
+This paragraph before the template
+blocks is long enough to wrap at the
+requested column.
+
+{{< figure src="a-long-image-name.png" caption="An overwide caption that must stay exactly as authored" >}}
+
+The paragraph between these template
+blocks also has enough ordinary prose to
+wrap across several lines.
+
+{{% notice title="An overwide template block title that must remain exactly as authored" %}}
+Keep   the original spacing and this deliberately overwide body line inside the template region.
+
+{{% notice %}}
+Nested   template content also stays exactly as authored inside the larger region.
+{{% /notice %}}
+{{% /notice %}}
+
+This paragraph after the template region
+is long enough to wrap at the requested
+column.
+-- stderr
+-- status
+0

@@ -1,0 +1,34 @@
+-- args
+format --stdin-file-path input.md --wrap 40 --verify
+-- stdin
+This paragraph uses {{ foo }} beside `${{ bar }}` so ordinary prose wraps across several lines without splitting either expression.
+
+Before {{ render_customer_notice( customer.account_name,  customer.preferred_delivery_address ) }} after the overwide expression, the rest of this paragraph wraps normally.
+
+Before `{{ render_customer_notice( customer.account_name,  customer.preferred_delivery_address ) }}` after the overwide code span, the rest of this paragraph wraps normally.
+
+Before {% if customer.account_is_active and customer.preferred_delivery_address_is_verified %} the ordinary prose in this conditional still wraps at the requested column {% endif %} and more prose follows.
+-- stdout
+This paragraph uses {{ foo }} beside
+`${{ bar }}` so ordinary prose wraps
+across several lines without splitting
+either expression.
+
+Before
+{{ render_customer_notice( customer.account_name,  customer.preferred_delivery_address ) }}
+after the overwide expression, the rest
+of this paragraph wraps normally.
+
+Before
+`{{ render_customer_notice( customer.account_name,  customer.preferred_delivery_address ) }}`
+after the overwide code span, the rest
+of this paragraph wraps normally.
+
+Before
+{% if customer.account_is_active and customer.preferred_delivery_address_is_verified %}
+the ordinary prose in this conditional
+still wraps at the requested column
+{% endif %} and more prose follows.
+-- stderr
+-- status
+0
