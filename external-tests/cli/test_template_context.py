@@ -18,6 +18,19 @@ from _support import run_cli_case
         '<span><b title="<span> </span>">x</b><!-- </span> -->keep   _this_ {{ foo }}</span>',
         "<span><span/><span>x</span>keep   _this_ {{ foo }}</span>",
         r"<span>keep   _this_ {{ foo }}\</span>",
+        *[
+            f'<span><{tag}>const x="<span>"</{tag}>keep   _this_ {{{{ foo }}}}</span>'
+            for tag in [
+                "script",
+                "style",
+                "textarea",
+                "title",
+                "iframe",
+                "xmp",
+                "noembed",
+                "noframes",
+            ]
+        ],
     ],
 )
 @pytest.mark.parametrize("wrap", ["sentence", "20"])
@@ -30,6 +43,62 @@ def test_html_regions_stay_opaque_while_prose_wraps(
     for text in [source, expected]:
         run_cli_case(
             f"yamark format {canonical} --wrap {wrap} --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize("tag", ["script", "style", "textarea", "title"])
+def test_raw_text_html_does_not_nest_inside_a_heading(tag: str) -> None:
+    html = f'<{tag}>const x="<{tag}>"; keep   _this_ {{{{ foo }}}}</{tag.upper()}>'
+    source = f"#   Heading {html}   ##\n"
+    expected = f"# Heading {html}\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --canonical --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize("markers", [("<", ">"), ("%", "%")])
+@pytest.mark.parametrize("quote", ['"', "'", "`"])
+@pytest.mark.parametrize("wrap", ["sentence", "20"])
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_inline_shortcodes_keep_quoted_delimiters(
+    markers: tuple[str, str], quote: str, wrap: str, canonical: str
+) -> None:
+    opening, closing = markers
+    shortcode = (
+        f"{{{{{opening} note text={quote}}}}} keep   _this_{quote} {closing}}}}}"
+    )
+    source = f"Before   {shortcode} after.\n"
+    expected = (
+        f"Before {shortcode} after.\n"
+        if wrap == "sentence"
+        else f"Before\n{shortcode}\nafter.\n"
+    )
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format {canonical} --wrap {wrap} --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize("indent", [4, 6])
+@pytest.mark.parametrize("prefix", ["", "> "])
+def test_code_spans_do_not_cross_deeply_indented_list_children(
+    indent: int, prefix: str
+) -> None:
+    paragraph = (
+        f"{prefix}- Before `<% keep   this %>\n{prefix}{' ' * indent}- child `\n"
+    )
+    source = paragraph + "\nFollowing\nprose.\n"
+    expected = paragraph + "\nFollowing prose.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
             stdin=text,
             stdout=expected,
         )

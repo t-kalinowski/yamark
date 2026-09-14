@@ -1882,6 +1882,9 @@ fn paired_inline_html_span_end(source: &str, index: usize) -> Option<usize> {
 }
 
 fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> {
+    if html_raw_text_tag(tag) {
+        return html_raw_text_closing_tag_end(source, start, tag);
+    }
     // A child's closing tag must not end the enclosing opaque region.
     let mut depth = 1usize;
     let mut search_start = start;
@@ -1907,6 +1910,10 @@ fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> 
             .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
             .count();
         let (name, rest) = candidate.split_at(name_len);
+        if !closing && html_raw_text_tag(name) {
+            search_start = html_raw_text_closing_tag_end(source, end, name)?;
+            continue;
+        }
         if name.eq_ignore_ascii_case(tag) {
             if closing && rest.trim().is_empty() {
                 depth -= 1;
@@ -1917,6 +1924,34 @@ fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> 
                 depth += 1;
             }
         }
+    }
+    None
+}
+
+fn html_raw_text_tag(tag: &str) -> bool {
+    // HTML raw-text/RCDATA elements, including legacy raw-text elements.
+    // https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
+    matches!(
+        tag.to_ascii_lowercase().as_str(),
+        "script" | "style" | "textarea" | "title" | "iframe" | "xmp" | "noembed" | "noframes"
+    )
+}
+
+fn html_raw_text_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> {
+    let mut search_start = start;
+    while let Some(relative) = source[search_start..].find("</") {
+        let name_start = search_start + relative + 2;
+        let name_end = name_start + tag.len();
+        if source
+            .get(name_start..name_end)
+            .is_some_and(|name| name.eq_ignore_ascii_case(tag))
+        {
+            let rest = source[name_end..].trim_ascii_start();
+            if rest.starts_with('>') {
+                return Some(source.len() - rest.len() + 1);
+            }
+        }
+        search_start = name_start;
     }
     None
 }
@@ -1935,11 +1970,6 @@ fn protected_inline_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option
     }
     if rest.starts_with('<') {
         return html_tag_span_end(source, index);
-    }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(index + close + 2);
     }
     if rest.starts_with('{')
         && let Some(end) = balanced_brace_end(rest)
@@ -3316,11 +3346,6 @@ fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize)
     if rest.starts_with("![") || rest.starts_with('[') {
         return link_or_bracket_token_end(scan, index);
     }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(index + close + 2);
-    }
     if rest.starts_with('{')
         && let Some(close) = balanced_brace_end(rest)
     {
@@ -3702,11 +3727,6 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
     {
         return Some(end);
     }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(start + close + 2);
-    }
     if rest.starts_with('{')
         && let Some(close) = balanced_brace_end(rest)
     {
@@ -3805,6 +3825,7 @@ pub(crate) fn markdown_inline_block_ranges(text: &str) -> Vec<std::ops::Range<us
         let begins_block = single_line
             || depth != quote_depth
             || markdown_block_start_line(body)
+            || rich_list_child_indent(body).is_some()
             || definition_marker_parts(body).is_some();
         if begins_block && start < line.body_start {
             blocks.push(start..line.body_start);
