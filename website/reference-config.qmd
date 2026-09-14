@@ -36,11 +36,17 @@ Template delimiters mark regions Yamark must preserve because rendering can
 change the host language. The defaults are `{{ }}`, `{% %}`, `{# #}`, and
 `<% %>`.
 
-Yamark keeps inline code and balanced braced template expressions, such as
-`{{ foo }}`, intact while formatting and wrapping the surrounding Markdown.
-It does not introduce line breaks inside these expressions. Template syntax
-that the inline formatter does not support can preserve the surrounding block.
+Yamark formats and wraps surrounding Markdown when a complete template pair
+fits inside one inline code span, or a balanced braced expression such as
+`{{ foo }}` fits on one source line. It does not insert wrap breaks inside
+these expressions.
 
+Within a Markdown block, a template that starts inside a code span and ends
+outside it prevents reflow. So do multiline braced expressions and
+`{% raw %}` or `{% endraw %}` directives outside inline code. These checks do
+not parse template regions across independent Markdown blocks.
+
+Values of `fig-alt` containing braces are not split for column wrapping.
 Standalone Hugo shortcode regions remain unchanged.
 
 | Key | Type | Effect |

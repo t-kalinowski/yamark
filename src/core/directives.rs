@@ -63,6 +63,12 @@ fn template_span_in_source(
             return false;
         };
         let open = search_start + relative_open;
+        let content_start = open + delimiter.open.len();
+        let Some(relative_close) = source[content_start..].find(&delimiter.close) else {
+            return false;
+        };
+        let close = content_start + relative_close;
+        let template_end = close + delimiter.close.len();
         let mut raw_html = false;
         if mode == TemplateSpanMode::Markdown {
             while inline_spans
@@ -75,17 +81,15 @@ fn template_span_in_source(
                 && span.start <= open
             {
                 if *context == MarkdownInlineContext::Code {
-                    search_start = span.end;
+                    if template_end > span.end {
+                        return true;
+                    }
+                    search_start = template_end;
                     continue;
                 }
                 raw_html = true;
             }
         }
-        let content_start = open + delimiter.open.len();
-        let Some(relative_close) = source[content_start..].find(&delimiter.close) else {
-            return false;
-        };
-        let close = content_start + relative_close;
         if raw_html {
             // Raw HTML contents are not Markdown tokens. Preserve the block
             // even when the template itself has balanced braces.
@@ -112,9 +116,10 @@ fn template_span_in_source(
             if let Some(block) = blocks.peek()
                 && block.start <= open
                 && let Some(end) = balanced_brace_span_end(&source[..block.end], open)
-                && close + delimiter.close.len() <= end
+                && template_end <= end
+                && !source[open..end].contains(['\n', '\r'])
             {
-                // Each formatted block must see the complete protected token.
+                // Each block and physical line must see the complete protected token.
                 search_start = end;
                 continue;
             }
@@ -122,7 +127,7 @@ fn template_span_in_source(
         if mode == TemplateSpanMode::Markdown
             && is_hugo_shortcode_template_span(source, delimiter, open, close)
         {
-            search_start = close + delimiter.close.len();
+            search_start = template_end;
             continue;
         }
         return true;

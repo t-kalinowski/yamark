@@ -79,7 +79,6 @@ def test_wrap_around_template_text_in_inline_code(
         "`{{ keep\nthis }}`",
         "`{{ café   λ }}`",
         "`{{ keep   this }}\\`",
-        "`{{ unmatched` then `}}`",
         "`{{ keep }}` and `{% more %}`",
     ],
 )
@@ -138,6 +137,7 @@ def test_wrap_around_protected_template_tokens(template: str, canonical: str) ->
         "``{{ keep   this }}```",
         "\\`{{ keep   this }}\\`",
         "<% keep   this %>",
+        "`{{ unmatched` then `}}`",
     ],
 )
 def test_unsupported_inline_syntax_preserves_paragraph(template: str) -> None:

@@ -3043,6 +3043,11 @@ fn wrap_fig_alt_attribute_lines(attributes: &str, width: usize) -> Option<Vec<St
     let fig_alt_start = find_fig_alt_attribute(attributes)?;
     let value_start = fig_alt_start + FIG_ALT.len();
     let value = attributes[value_start..].strip_suffix('"')?;
+    // Braces may contain templates with significant internal spaces. Keep the
+    // value intact instead of splitting it into words for column wrapping.
+    if value.contains('{') {
+        return None;
+    }
     let words = single_spaced_words(value)?;
     let leading = &attributes[..fig_alt_start];
     if leading.contains(['"', '\'']) {

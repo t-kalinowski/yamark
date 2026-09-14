@@ -7,6 +7,59 @@ from _support import run_cli_case
 
 
 @pytest.mark.parametrize(
+    "template",
+    [
+        "`<% result = `printf 'keep   this'` %>`",
+        "`{{ printf `keep   this` }}`",
+        "`{{ first }} {{ printf `keep   this` }}`",
+    ],
+)
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_template_pairs_crossing_code_spans_preserve_the_block(
+    template: str, canonical: str
+) -> None:
+    paragraph = f"Before\n{template}\nafter.\n"
+    source = paragraph + "\nFollowing\nprose.\n"
+    expected = paragraph + "\nFollowing prose.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format {canonical} --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize(
+    ("suffix", "source"),
+    [
+        ("md", 'First {{ printf "keep   this"\n}} after.\n'),
+        ("md", '> First {{ printf "keep   this"\n> }} after.\n'),
+        ("yaml", 'doc: !markdown |\n  First {{ printf "keep   this"\n  }} after.\n'),
+    ],
+)
+def test_braced_templates_crossing_source_lines_are_preserved(
+    suffix: str, source: str
+) -> None:
+    run_cli_case(
+        f"yamark format --wrap sentence --stdin-file-path input.{suffix} --verify",
+        stdin=source,
+        stdout=source,
+    )
+
+
+@pytest.mark.parametrize("value", ["{{ 'keep this' }}", "one {{ 'keep this' }} two"])
+def test_braced_fig_alt_values_are_not_split(value: str) -> None:
+    source = f'![x](url){{fig-alt="{value}"}}\n'
+    expected = f'![x](url){{\n  fig-alt="{value}"\n}}\n'
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap 20 --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize(
     "expression", ['{{ "keep   this" }}', '{% set x = "keep   this" %}']
 )
 @pytest.mark.parametrize("suffix", ["", "suffix"])
