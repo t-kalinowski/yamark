@@ -405,10 +405,22 @@ def test_shortcode_body_directives_stay_in_the_shortcode() -> None:
         )
 
 
-def test_unterminated_shortcode_arguments_are_preserved() -> None:
-    source = '{{% notice title="unterminated\nFirst   sentence.\n{{% /notice %}}\n'
+@pytest.mark.parametrize(
+    "opening",
+    [
+        "{{% notice",
+        "{{< notice",
+        '{{% notice title="unterminated',
+        '{{% notice title="unterminated\nFirst   sentence.\n{{% /notice %}}',
+    ],
+)
+def test_unterminated_shortcode_arguments_are_preserved(opening: str) -> None:
+    # Until the opening tag is complete, later lines may still be arguments.
+    remainder = opening + "\n\nFollowing\nprose stays unchanged.\n"
+    source = "Before\nthis shortcode.\n\n" + remainder
+    expected = "Before this shortcode.\n\n" + remainder
     run_cli_case(
         "yamark format --wrap sentence --stdin-file-path input.md --verify",
         stdin=source,
-        stdout=source,
+        stdout=expected,
     )

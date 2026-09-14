@@ -2808,6 +2808,9 @@ fn hugo_shortcode_tag_end(
             }
         }
     }
+    // An incomplete tag has no safe boundary: subsequent lines can still be
+    // arguments or a quoted value. Preserve through the end of this fragment
+    // until the tag is complete instead of guessing where Markdown resumes.
     end
 }
 
