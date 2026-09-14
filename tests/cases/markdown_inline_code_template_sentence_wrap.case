@@ -5,16 +5,15 @@ First
 sentence with `${{ foo }}`. Second
 sentence.
 
-First
-sentence with {{ foo }}. Second
+Third
+sentence with {{ foo }}. Fourth
 sentence.
 -- stdout
 First sentence with `${{ foo }}`.
 Second sentence.
 
-First
-sentence with {{ foo }}. Second
-sentence.
+Third sentence with {{ foo }}.
+Fourth sentence.
 -- stderr
 -- status
 0

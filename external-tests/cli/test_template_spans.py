@@ -1,9 +1,29 @@
-"""Template protection distinguishes Markdown code spans from template text."""
+"""Wrap prose around protected code spans and braced template expressions."""
 
 from __future__ import annotations
 
 import pytest
 from _support import format_stdin_and_check, run_cli_case
+
+
+@pytest.mark.parametrize(
+    ("wrap", "expected"),
+    [
+        ("sentence", "Third sentence with {{ foo }}.\nFourth sentence.\n"),
+        ("paragraph", "Third sentence with {{ foo }}. Fourth sentence.\n"),
+        ("20", "Third sentence with\n{{ foo }}. Fourth\nsentence.\n"),
+        ("8", "Third\nsentence\nwith\n{{ foo }}.\nFourth\nsentence.\n"),
+    ],
+)
+def test_wrap_around_braced_template_text(wrap: str, expected: str) -> None:
+    source = "Third\nsentence with {{ foo }}. Fourth\nsentence.\n"
+    for text in [source, expected]:
+        format_stdin_and_check(
+            f"yamark format --wrap {wrap} --stdin-file-path input.md --verify",
+            text,
+            expected,
+            stdin_file_path="input.md",
+        )
 
 
 @pytest.mark.parametrize(
@@ -71,10 +91,9 @@ def test_template_delimiters_inside_complete_code_spans(
         "`{{ code }}` then {{ keep   this }}",
         "`{{ code }}` then {% keep   this %}",
         "{{ keep `code`   this }}",
-        "`{{ keep   this }}",
-        "``{{ keep   this }}`",
-        "``{{ keep   this }}```",
-        "\\`{{ keep   this }}\\`",
+        "{{ keep   _this_ }}",
+        "{% keep   this %}",
+        "{# keep   this #}",
         "[target](https://example.com/`{{key}}`)",
         '[target](url "`{{ title }}`")',
         '[![alt](inner)](outer "`{{ title }}`")',
@@ -82,7 +101,30 @@ def test_template_delimiters_inside_complete_code_spans(
         "$`{{ math }}`$",
     ],
 )
-def test_template_text_outside_code_spans_preserves_paragraph(template: str) -> None:
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_wrap_around_protected_template_tokens(template: str, canonical: str) -> None:
+    source = f"First\nsentence with {template}. Second\nsentence.\n"
+    expected = f"First sentence with {template}.\nSecond sentence.\n"
+    for text in [source, expected]:
+        format_stdin_and_check(
+            f"yamark format {canonical} --wrap sentence --stdin-file-path input.md --verify",
+            text,
+            expected,
+            stdin_file_path="input.md",
+        )
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "`{{ keep   this }}",
+        "``{{ keep   this }}`",
+        "``{{ keep   this }}```",
+        "\\`{{ keep   this }}\\`",
+        "<% keep   this %>",
+    ],
+)
+def test_unsupported_inline_syntax_preserves_paragraph(template: str) -> None:
     source = f"First\nsentence with {template}. Second\nsentence.\n"
     run_cli_case(
         "yamark format --wrap sentence --stdin-file-path input.md --verify",
@@ -155,11 +197,12 @@ def test_inline_code_templates_in_other_markdown_blocks(
         ("yaml", "  ", "# fmt: markdown\ntext: |\n", ""),
     ],
 )
+@pytest.mark.parametrize("template", ["`{{ foo }}`", "{{ foo }}"])
 def test_inline_code_templates_in_marked_markdown(
-    suffix: str, prefix: str, opening: str, closing: str
+    suffix: str, prefix: str, opening: str, closing: str, template: str
 ) -> None:
-    source = "First\nsentence with `{{ foo }}`. Second\nsentence.\n"
-    expected = "First sentence with `{{ foo }}`.\nSecond sentence.\n"
+    source = f"First\nsentence with {template}. Second\nsentence.\n"
+    expected = f"First sentence with {template}.\nSecond sentence.\n"
     source = (
         opening + "".join(prefix + line for line in source.splitlines(True)) + closing
     )

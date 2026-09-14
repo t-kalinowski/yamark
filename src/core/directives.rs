@@ -1,5 +1,5 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
-use crate::core::wrap::markdown_inline_code_spans;
+use crate::core::wrap::{balanced_brace_span_end, markdown_inline_code_spans};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -73,6 +73,14 @@ fn template_span_in_source(
             return false;
         };
         let close = content_start + relative_close;
+        if mode == TemplateSpanMode::Markdown
+            && let Some(end) = balanced_brace_span_end(source, open)
+            && close + delimiter.close.len() <= end
+        {
+            // Braced expressions are already protected inline tokens.
+            search_start = end;
+            continue;
+        }
         if mode == TemplateSpanMode::Markdown
             && is_hugo_shortcode_template_span(source, delimiter, open, close)
         {

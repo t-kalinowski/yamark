@@ -2510,7 +2510,7 @@ fn protected_spacing_span_can_start(source: &str, index: usize) -> bool {
     })
 }
 
-fn balanced_brace_span_end(source: &str, index: usize) -> Option<usize> {
+pub(crate) fn balanced_brace_span_end(source: &str, index: usize) -> Option<usize> {
     if escaped_at(source, index) || !source[index..].starts_with('{') {
         return None;
     }

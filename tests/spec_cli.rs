@@ -651,7 +651,7 @@ Subtitle
 }
 
 #[test]
-fn markdown_template_spans_preserve_headings() {
+fn markdown_braced_template_spans_allow_heading_formatting() {
     let input = "\
 #   Title {{ keep   spacing }}   ##
 
@@ -661,10 +661,9 @@ Setext {{ keep   spacing }}
 #   Normal ##
 ";
     let expected = "\
-#   Title {{ keep   spacing }}   ##
+# Title {{ keep   spacing }}
 
-Setext {{ keep   spacing }}
-====
+# Setext {{ keep   spacing }}
 
 # Normal
 ";
