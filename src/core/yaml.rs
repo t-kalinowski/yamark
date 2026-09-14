@@ -8934,14 +8934,17 @@ fn yaml_node_should_preserve_uncached_with_template_possible(
     state.preserve
         || (template_spans_possible && yaml_node_preserves_own_template_span(&node.kind) && {
             let text = source.slice(node.span);
-            source_may_contain_template_span(text, &state.template_delimiters)
-                && if let YamlAstKind::Scalar(scalar) = &node.kind
-                    && yaml_scalar_is_markdown_target(source, document, scalar, node)
-                {
-                    contains_markdown_template_span(text, &state.template_delimiters)
-                } else {
-                    preserves_yaml_template_span(text, &state.template_delimiters)
-                }
+            if let YamlAstKind::Scalar(scalar) = &node.kind
+                && yaml_scalar_is_markdown_target(source, document, scalar, node)
+            {
+                let metadata = scalar_metadata(source, scalar.value);
+                let content = inline_markdown_scalar_content(source, scalar, metadata.content)
+                    .unwrap_or(Cow::Borrowed(text));
+                contains_markdown_template_span(&content, &state.template_delimiters)
+            } else {
+                source_may_contain_template_span(text, &state.template_delimiters)
+                    && preserves_yaml_template_span(text, &state.template_delimiters)
+            }
         })
         || matches!(
             &node.kind,

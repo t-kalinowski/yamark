@@ -1,4 +1,4 @@
-"""Run via `uv run external-tests/run.py --suite corpus/test_yaml_scaling.py`."""
+"""Run via `uv run external-tests/run.py --suite corpus/test_scaling.py`."""
 
 from __future__ import annotations
 
@@ -21,13 +21,40 @@ def test_flow_heavy_yaml_formatting_scales_near_linearly(tmp_path: Path) -> None
 def measure_flow_heavy_yaml(root: Path, items: int) -> float:
     source = root / f"flow-heavy-{items}.yaml"
     source.write_text(render_flow_heavy_yaml(items), encoding="utf-8")
-    log_path = root / f"yamark-{items}.log"
+    cpu, formatted = measure_formatting_cpu(source)
+    assert formatted.count("ports: [8000, 9000]") == items
+    return cpu
+
+
+def test_unmatched_backticks_scale_with_input_size(tmp_path: Path) -> None:
+    durations = []
+    for runs in [400, 800]:
+        text = "Before " + " ".join("`" * size + "x" for size in range(1, runs + 1))
+        text += " <% keep   this %>\n"
+        source = tmp_path / f"backticks-{runs}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == text
+        durations.append(cpu)
+
+    # Doubling the number of runs quadruples the input size. Repeated suffix
+    # searches instead do roughly eight times as much work.
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "unmatched backtick scanning should scale with input size: "
+        f"400 runs used {small:.6f}s CPU, 800 runs used {large:.6f}s CPU"
+    )
+
+
+def measure_formatting_cpu(source: Path) -> tuple[float, str]:
+    log_path = source.with_suffix(".log")
 
     # Measure this child's CPU use, excluding scheduling and I/O waits. File
     # output lets wait4 reap the child without leaving unread pipes blocked.
     with log_path.open("wb") as log, subprocess.Popen(
         [os.environ["YAMARK_BIN"], "format", os.fspath(source)],
-        cwd=root,
+        cwd=source.parent,
         stdout=log,
         stderr=subprocess.STDOUT,
     ) as child:
@@ -38,9 +65,7 @@ def measure_flow_heavy_yaml(root: Path, items: int) -> float:
         f"yamark failed with exit code {child.returncode}\n"
         f"{log_path.read_text(encoding='utf-8')}"
     )
-    formatted = source.read_text(encoding="utf-8")
-    assert formatted.count("ports: [8000, 9000]") == items
-    return usage.ru_utime + usage.ru_stime
+    return usage.ru_utime + usage.ru_stime, source.read_text(encoding="utf-8")
 
 
 def render_flow_heavy_yaml(items: int) -> str:
