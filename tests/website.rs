@@ -200,12 +200,12 @@ fn ci_runs_public_readiness_checks() {
     for command in [
         "cargo fmt --check",
         "cargo clippy --all-targets --all-features -- -D warnings",
-        "cargo test",
-        "uv run --upgrade external-tests/run.py --serial",
+        "uv run --upgrade --isolated --no-project --with ruff --with py-yaml12 -- cargo test",
+        "uv run --upgrade external-tests/run.py",
         "npm test",
     ] {
         assert!(
-            checks.contains(command),
+            checks.lines().any(|line| line.trim() == command),
             "the shared check script should run public readiness command {command}"
         );
     }
