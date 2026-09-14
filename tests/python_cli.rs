@@ -9,7 +9,6 @@ fn python_cli_cases_pass() {
         .arg("--no-project")
         .arg("--script")
         .arg(manifest_dir.join("external-tests").join("run.py"))
-        .arg("--serial")
         .arg("--suite")
         .arg("cli")
         .arg("--yamark-bin")
