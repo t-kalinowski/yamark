@@ -8,13 +8,9 @@ This paragraph before the template blocks is long enough to wrap at the requeste
 The paragraph between these template blocks also has enough ordinary prose to wrap across several lines.
 
 {{% notice title="An overwide template block title that must remain exactly as authored" %}}
-This   ordinary Markdown paragraph inside the shortcode should have its spacing normalized and wrap at the requested column.
+Keep   the original spacing and this deliberately overwide body line inside the shortcode region.
 
-{{% notice %}}
-Nested   Markdown prose also wraps normally inside the surrounding shortcode.
-{{% /notice %}}
-
-Prose   after the nested shortcode still belongs to the outer Markdown body and wraps normally.
+A second   paragraph in the same region also stays exactly as authored.
 {{% /notice %}}
 
 {{< highlight go >}}
@@ -36,20 +32,9 @@ blocks also has enough ordinary prose to
 wrap across several lines.
 
 {{% notice title="An overwide template block title that must remain exactly as authored" %}}
-This ordinary Markdown paragraph inside
-the shortcode should have its spacing
-normalized and wrap at the requested
-column.
+Keep   the original spacing and this deliberately overwide body line inside the shortcode region.
 
-{{% notice %}}
-Nested Markdown prose also wraps
-normally inside the surrounding
-shortcode.
-{{% /notice %}}
-
-Prose after the nested shortcode still
-belongs to the outer Markdown body and
-wraps normally.
+A second   paragraph in the same region also stays exactly as authored.
 {{% /notice %}}
 
 {{< highlight go >}}

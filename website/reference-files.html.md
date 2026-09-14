@@ -101,8 +101,7 @@ projection.
 | Pandoc tables | Formats when supported | Fits supported simple, grid, and multiline tables to their contents while preserving column alignment and multiline cell breaks. `table-widths=preserve` retains source widths. |
 | Definition lists | Formats when supported | Normalizes marker spacing and wraps definitions. |
 | Display math | Preserves | Keeps own-line `$$` display math blocks byte-for-byte. |
-| Hugo shortcodes | Formats Markdown bodies | Formats the Markdown between standalone `{{% ... %}}` tags while preserving the tags and arguments. Preserves `{{< ... >}}` bodies and `.inline` template definitions. |
-| Raw HTML, TeX, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
+| Raw HTML, TeX, Hugo shortcodes, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
 | Template spans | Preserves | Recognizes default and configured template delimiters. |
 
 For Quarto header promotion, a supported fence is a YAML or Markdown fence, a

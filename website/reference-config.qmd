@@ -41,10 +41,7 @@ Yamark keeps inline code and balanced braced template expressions, such as
 It does not introduce line breaks inside these expressions. Template syntax
 that the inline formatter does not support can preserve the surrounding block.
 
-For [Hugo shortcodes](https://gohugo.io/content-management/shortcodes/#notation),
-Yamark formats the Markdown between standalone `{{% name %}}` and
-`{{% /name %}}` tags while preserving the tags and their arguments. Standard
-`{{< name >}}` shortcode bodies and `.inline` template definitions are preserved.
+Standalone Hugo shortcode regions remain unchanged.
 
 | Key | Type | Effect |
 | --- | --- | --- |

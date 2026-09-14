@@ -261,11 +261,6 @@ fn emit_document_inner(
                 opening,
                 closing,
                 nested,
-            }
-            | EmitPlan::MarkdownShortcode {
-                opening,
-                closing,
-                nested,
             } => {
                 out.push_str(source.slice(*opening));
                 let mut nested_output = emit_document_inner(
