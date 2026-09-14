@@ -12,11 +12,17 @@ from _support import run_cli_case
         '<span title="> {{ foo }} _keep_"/>',
         '<span title="> {{ foo }}">keep   _this_</span>',
         '<span title="> </span> {{ foo }} _keep_">keep   _this_</span>',
+        "<span><span>x</span>keep   _this_ {{ foo }}</span>",
+        "<span><SPAN><span>x</span></SPAN>keep   _this_ {{ foo }}</sPaN>",
+        '<span><span title="> </span>">x</span>keep   _this_ {{ foo }}</span>',
+        '<span><b title="<span> </span>">x</b><!-- </span> -->keep   _this_ {{ foo }}</span>',
+        "<span><span/><span>x</span>keep   _this_ {{ foo }}</span>",
+        r"<span>keep   _this_ {{ foo }}\</span>",
     ],
 )
 @pytest.mark.parametrize("wrap", ["sentence", "20"])
 @pytest.mark.parametrize("canonical", ["", "--canonical"])
-def test_quoted_html_regions_stay_opaque_while_prose_wraps(
+def test_html_regions_stay_opaque_while_prose_wraps(
     html: str, wrap: str, canonical: str
 ) -> None:
     source = f"Before\n{html}\nafter.\n"

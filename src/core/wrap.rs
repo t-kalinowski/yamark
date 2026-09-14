@@ -1882,21 +1882,41 @@ fn paired_inline_html_span_end(source: &str, index: usize) -> Option<usize> {
 }
 
 fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> {
+    // A child's closing tag must not end the enclosing opaque region.
+    let mut depth = 1usize;
     let mut search_start = start;
     while search_start < source.len() {
-        let relative = source[search_start..].find("</")?;
-        let candidate_start = search_start + relative + 2;
-        let candidate = &source[candidate_start..];
+        let relative = source[search_start..].find('<')?;
+        let candidate_start = search_start + relative;
+        search_start = candidate_start + 1;
+        if let Some(end) = raw_inline_html_span_end(source, candidate_start) {
+            search_start = end;
+            continue;
+        }
+        // Inside HTML, a backslash does not escape a tag as it does in Markdown.
+        if !html_tag_at(source, candidate_start) {
+            continue;
+        }
+        let end = html_tag_span_end(source, candidate_start)?;
+        search_start = end;
+        let candidate = &source[candidate_start + 1..end - 1];
+        let closing = candidate.starts_with('/');
+        let candidate = candidate.strip_prefix('/').unwrap_or(candidate);
         let name_len = candidate
             .bytes()
             .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
             .count();
-        let name = &candidate[..name_len];
-        let rest = candidate[name_len..].trim_start();
-        if !name.is_empty() && name.eq_ignore_ascii_case(tag) && rest.starts_with('>') {
-            return Some(candidate_start + name_len + candidate[name_len..].find('>')? + 1);
+        let (name, rest) = candidate.split_at(name_len);
+        if name.eq_ignore_ascii_case(tag) {
+            if closing && rest.trim().is_empty() {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(end);
+                }
+            } else if !closing && !rest.trim_end().ends_with('/') {
+                depth += 1;
+            }
         }
-        search_start = candidate_start + name_len;
     }
     None
 }
@@ -3313,9 +3333,10 @@ fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize)
 }
 
 fn inline_html_tag_at(text: &str, index: usize) -> bool {
-    if escaped_at(text, index) {
-        return false;
-    }
+    !escaped_at(text, index) && html_tag_at(text, index)
+}
+
+fn html_tag_at(text: &str, index: usize) -> bool {
     let rest = &text[index..];
     if !rest.starts_with('<') {
         return false;
