@@ -6,6 +6,29 @@ import pytest
 from _support import run_cli_case
 
 
+@pytest.mark.parametrize(
+    "expression", ['{{ "keep   this" }}', '{% set x = "keep   this" %}']
+)
+@pytest.mark.parametrize("suffix", ["", "suffix"])
+@pytest.mark.parametrize("wrap", ["sentence", "20"])
+def test_attached_templates_stay_in_one_token(
+    expression: str, suffix: str, wrap: str
+) -> None:
+    token = "prefix" + expression + suffix
+    source = f"First\nsentence with {token}. Second\nsentence.\n"
+    expected = (
+        f"First sentence with {token}.\nSecond sentence.\n"
+        if wrap == "sentence"
+        else f"First sentence with\n{token}.\nSecond sentence.\n"
+    )
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format --wrap {wrap} --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
 @pytest.mark.parametrize("prefix", ["", "λ "])
 @pytest.mark.parametrize(
     "link",

@@ -3696,8 +3696,7 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
                 || slice.starts_with("![")
                 || slice.starts_with('[')
                 || slice.starts_with('<')
-                || slice.starts_with("{{<")
-                || slice.starts_with("{{%"))
+                || slice.starts_with('{'))
         {
             break;
         }
@@ -4248,8 +4247,8 @@ fn citation_key_end(text: &str, mut index: usize) -> Option<usize> {
     Some(index)
 }
 
-// Ordinary matched delimiters need no cache. After a failed search, index the
-// remaining pairs once so later openers do not rescan the same suffix.
+// Index bracket pairs once: both successful nested matches and unmatched
+// openers would otherwise rescan the same suffix.
 struct InlineScan<'a> {
     text: &'a str,
     cached_from: Option<usize>,
@@ -4301,12 +4300,10 @@ impl<'a> InlineScan<'a> {
         if self.cached_from.is_some_and(|start| label_start >= start) {
             return self.square_closes.get(&label_start).copied();
         }
-        if let Some(close) = find_balanced_square_close(self.text, label_start) {
-            return Some(close);
-        }
         let mut closes = Vec::new();
-        for (offset, ch) in self.text[label_start..].char_indices().rev() {
-            let index = label_start + offset;
+        let opening = label_start - 1;
+        for (offset, ch) in self.text[opening..].char_indices().rev() {
+            let index = opening + offset;
             if ch == '[' {
                 if let Some(&close) = closes.last() {
                     self.square_closes.insert(index + 1, close);
@@ -4319,7 +4316,7 @@ impl<'a> InlineScan<'a> {
             }
         }
         self.cached_from = Some(label_start);
-        None
+        self.square_closes.get(&label_start).copied()
     }
 }
 
