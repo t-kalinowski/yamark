@@ -6,6 +6,12 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    not hasattr(os, "wait4"), reason="Child CPU accounting requires os.wait4"
+)
+
 
 def test_flow_heavy_yaml_formatting_scales_near_linearly(tmp_path: Path) -> None:
     small = measure_flow_heavy_yaml(tmp_path, 400)
