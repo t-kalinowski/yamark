@@ -19,7 +19,14 @@ pub fn parse_markdown(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document> {
-    parse_markdown_with_mode(source, range, options, config, MarkdownParseMode::Concrete)
+    parse_markdown_with_mode(
+        source,
+        range,
+        options,
+        config,
+        MarkdownParseMode::Concrete,
+        MarkdownParseContext::Document,
+    )
 }
 
 pub(crate) fn parse_markdown_for_formatting(
@@ -34,6 +41,7 @@ pub(crate) fn parse_markdown_for_formatting(
         options,
         config,
         MarkdownParseMode::SemanticOnly,
+        MarkdownParseContext::Document,
     )
 }
 
@@ -49,6 +57,7 @@ pub(crate) fn parse_markdown_for_validation(
         options,
         config,
         MarkdownParseMode::SemanticOnlyValidation,
+        MarkdownParseContext::Document,
     )
 }
 
@@ -64,6 +73,7 @@ pub(crate) fn parse_markdown_for_concrete_validation(
         options,
         config,
         MarkdownParseMode::ConcreteValidation,
+        MarkdownParseContext::Document,
     )
 }
 
@@ -73,6 +83,12 @@ enum MarkdownParseMode {
     SemanticOnly,
     ConcreteValidation,
     SemanticOnlyValidation,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MarkdownParseContext {
+    Document,
+    Fragment,
 }
 
 impl MarkdownParseMode {
@@ -87,6 +103,7 @@ fn parse_markdown_with_mode(
     options: FormatOptions,
     config: &Config,
     mode: MarkdownParseMode,
+    context: MarkdownParseContext,
 ) -> Result<Document> {
     let mut options = options;
     if !matches!(
@@ -103,7 +120,8 @@ fn parse_markdown_with_mode(
     let mut i = start_line;
     let end_line = end_line_index(source, range);
 
-    if i < end_line
+    if context == MarkdownParseContext::Document
+        && i < end_line
         && front_matter_opening(source.line_text(i))
         && let Some(closing) = find_front_matter_closing(source, i + 1, end_line)
     {
@@ -274,6 +292,7 @@ fn parse_markdown_with_mode(
                 nested_options,
                 &nested_config,
                 mode,
+                MarkdownParseContext::Fragment,
             )?);
             let span = Span::new(opening.start(), closing_span.end());
             validate_markdown_format_target(source, &doc, state, span, true)?;
@@ -605,6 +624,7 @@ fn parse_markdown_with_mode(
                     state_value.markdown_options(options),
                     &nested_config,
                     mode,
+                    MarkdownParseContext::Fragment,
                 )?);
                 EmitPlan::MarkdownShortcode {
                     opening,
@@ -764,6 +784,7 @@ fn parse_markdown_with_mode(
                         nested_options,
                         &nested_config,
                         mode,
+                        MarkdownParseContext::Document,
                     )?)),
                     _ => None,
                 }
@@ -1526,6 +1547,7 @@ fn setext_heading_at(
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
         || list_item_at(text)
+        || shortcode_block_at(text)
     {
         return None;
     }
@@ -2805,11 +2827,17 @@ fn find_hugo_shortcode_close(
             }
         } else if let Some(nested) = hugo_shortcode_opening(text) {
             let tag_end = hugo_shortcode_tag_end(source, line, end, nested);
-            if nested.delimiter == opening.delimiter
-                && nested.name == opening.name
-                && !hugo_shortcode_self_closing(source.line_text(tag_end - 1), nested)
-            {
-                depth += 1;
+            if !hugo_shortcode_self_closing(source.line_text(tag_end - 1), nested) {
+                if nested.delimiter == opening.delimiter && nested.name == opening.name {
+                    depth += 1;
+                } else if (nested.delimiter == '>' || nested.name.ends_with(".inline"))
+                    && let Some(close) = find_hugo_shortcode_close(source, tag_end, end, nested)
+                {
+                    // A raw body can contain literal tags that look like the
+                    // surrounding Markdown shortcode's closing delimiter.
+                    line = close;
+                    continue;
+                }
             }
             line = tag_end;
             continue;
