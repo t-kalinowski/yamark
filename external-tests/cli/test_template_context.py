@@ -141,10 +141,14 @@ def test_balanced_templates_crossing_child_blocks_are_preserved(
         "{% raw %}keep   this{% endraw %}",
         "{%- raw -%}keep   this{%- endraw -%}",
         "{%raw%}keep   this\nand   this{%endraw%}",
+        "{% verbatim %}keep   this{% endverbatim %}",
+        "{%- verbatim -%}keep   this{%- endverbatim -%}",
+        "{% verbatim example %}keep   this{% endverbatim example %}",
+        "keep   this{% endverbatim example %}",
     ],
 )
 @pytest.mark.parametrize("canonical", ["", "--canonical"])
-def test_jinja_raw_region_preserves_its_markdown_block(
+def test_literal_template_region_preserves_its_markdown_block(
     region: str, canonical: str
 ) -> None:
     paragraph = f"Before\n{region}\nafter.\n"
@@ -158,8 +162,9 @@ def test_jinja_raw_region_preserves_its_markdown_block(
         )
 
 
-def test_jinja_raw_region_inside_inline_code_allows_wrapping() -> None:
-    code = "`{% raw %}keep   this{% endraw %}`"
+@pytest.mark.parametrize("tag", ["raw", "verbatim", "verbatim example"])
+def test_literal_template_region_inside_inline_code_allows_wrapping(tag: str) -> None:
+    code = f"`{{% {tag} %}}keep   this{{% end{tag} %}}`"
     source = f"Before\n{code}\nafter.\n"
     expected = f"Before {code} after.\n"
     for text in [source, expected]:

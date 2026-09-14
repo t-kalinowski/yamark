@@ -102,11 +102,12 @@ fn template_span_in_source(
                     source[content_start..close]
                         .trim()
                         .trim_matches(['-', '+'])
-                        .trim(),
-                    "raw" | "endraw"
+                        .split_whitespace()
+                        .next(),
+                    Some("raw" | "endraw" | "verbatim" | "endverbatim")
                 )
             {
-                // Separate brace tokens do not protect a raw region's literal
+                // Separate brace tokens do not protect a literal region's
                 // payload. Keep the containing Markdown block opaque.
                 return true;
             }

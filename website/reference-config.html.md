@@ -43,8 +43,9 @@ these expressions.
 
 Within a Markdown block, a template that starts inside a code span and ends
 outside it prevents reflow. So do multiline braced expressions and
-`{% raw %}` or `{% endraw %}` directives outside inline code. These checks do
-not parse template regions across independent Markdown blocks.
+`raw`, `endraw`, `verbatim`, or `endverbatim` template directives outside
+inline code, including named verbatim boundaries. These checks do not parse
+template regions across independent Markdown blocks.
 
 Values of `fig-alt` containing braces are not split for column wrapping.
 Standalone Hugo shortcode regions remain unchanged.
