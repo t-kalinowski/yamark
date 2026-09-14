@@ -1,6 +1,7 @@
 <!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
 
 - Markdown prose now wraps around inline code and balanced braced template expressions such as `{{ foo }}`, while preserving their contents and keeping each expression together.
+- Markdown bodies between standalone Hugo `{{% ... %}}` shortcode tags now format normally. Shortcode tags and arguments are preserved, as are standard `{{< ... >}}` bodies and `.inline` template definitions.
 - Markdown tables fit their contents by default while retaining column alignment. Use `table-widths=preserve` in a scoped directive or document setting, `[format].table_widths` in `yamark.toml`, or `--table-widths preserve` to retain intentional source widths. Fitting can change Pandoc's rendered column proportions. Multiline cells retain their line breaks, and headerless tables end at their closing border.
 - Building from source now requires Rust 1.98.1 or newer.
 - Fix a panic when formatting headings with non-ASCII text and attached attributes, such as `# Café{#id}`.

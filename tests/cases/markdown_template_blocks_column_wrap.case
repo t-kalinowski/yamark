@@ -8,12 +8,20 @@ This paragraph before the template blocks is long enough to wrap at the requeste
 The paragraph between these template blocks also has enough ordinary prose to wrap across several lines.
 
 {{% notice title="An overwide template block title that must remain exactly as authored" %}}
-Keep   the original spacing and this deliberately overwide body line inside the template region.
+This   ordinary Markdown paragraph inside the shortcode should have its spacing normalized and wrap at the requested column.
 
 {{% notice %}}
-Nested   template content also stays exactly as authored inside the larger region.
+Nested   Markdown prose also wraps normally inside the surrounding shortcode.
 {{% /notice %}}
+
+Prose   after the nested shortcode still belongs to the outer Markdown body and wraps normally.
 {{% /notice %}}
+
+{{< highlight go >}}
+func main() {
+    fmt.Println("This overwide string stays exactly as authored inside the raw shortcode.")
+}
+{{< /highlight >}}
 
 This paragraph after the template region is long enough to wrap at the requested column.
 -- stdout
@@ -28,12 +36,27 @@ blocks also has enough ordinary prose to
 wrap across several lines.
 
 {{% notice title="An overwide template block title that must remain exactly as authored" %}}
-Keep   the original spacing and this deliberately overwide body line inside the template region.
+This ordinary Markdown paragraph inside
+the shortcode should have its spacing
+normalized and wrap at the requested
+column.
 
 {{% notice %}}
-Nested   template content also stays exactly as authored inside the larger region.
+Nested Markdown prose also wraps
+normally inside the surrounding
+shortcode.
 {{% /notice %}}
+
+Prose after the nested shortcode still
+belongs to the outer Markdown body and
+wraps normally.
 {{% /notice %}}
+
+{{< highlight go >}}
+func main() {
+    fmt.Println("This overwide string stays exactly as authored inside the raw shortcode.")
+}
+{{< /highlight >}}
 
 This paragraph after the template region
 is long enough to wrap at the requested
