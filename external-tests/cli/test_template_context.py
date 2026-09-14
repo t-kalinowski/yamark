@@ -6,6 +6,57 @@ import pytest
 from _support import run_cli_case
 
 
+@pytest.mark.parametrize("prefix", ["", "λ "])
+@pytest.mark.parametrize(
+    "link",
+    ["[[x](foo](outer))", "[$x](outer)$", '[<span title="](outer)">]'],
+)
+def test_template_detection_respects_link_label_boundaries(
+    prefix: str, link: str
+) -> None:
+    source = prefix + link + " <% value %>\n"
+    run_cli_case(
+        "yamark format --wrap sentence --stdin-file-path input.md --verify",
+        stdin=source,
+        stdout=source,
+    )
+
+
+@pytest.mark.parametrize(
+    "argument", ["don't   alter", 'a "   quote', "a `   tick", "nested {don't   alter}"]
+)
+@pytest.mark.parametrize("prefix", ["", "\\mycommand"])
+def test_generic_brace_groups_keep_literal_quotes(argument: str, prefix: str) -> None:
+    command = prefix + "{" + argument + "}"
+    source = f"#   H {command}   ##\n"
+    expected = f"# H {command}\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize(
+    ("suffix", "source"),
+    [
+        ("yaml", 'doc: !markdown |\n  {{ printf "keep   this"\n\n  }}\n'),
+        ("md", '> {{ printf "keep   this"\n>\n> }}\n'),
+        ("md", '- {{ printf "keep   this"\n\n  }}\n'),
+        ("md", '> {{ printf "keep   this"\n> # Heading\n> }}\n'),
+    ],
+)
+def test_balanced_templates_crossing_child_blocks_are_preserved(
+    suffix: str, source: str
+) -> None:
+    run_cli_case(
+        f"yamark format --wrap sentence --stdin-file-path input.{suffix} --verify",
+        stdin=source,
+        stdout=source,
+    )
+
+
 @pytest.mark.parametrize(
     "raw_html",
     [

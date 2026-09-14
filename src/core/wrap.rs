@@ -3748,7 +3748,7 @@ pub(crate) fn markdown_inline_context_spans(
         })
 }
 
-fn markdown_inline_block_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
+pub(crate) fn markdown_inline_block_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
     let lines = markdown_lines(text).collect::<Vec<_>>();
     let mut blocks = Vec::new();
     let mut start = 0;
@@ -3847,13 +3847,14 @@ fn inline_context_spans(
             } else if let Some(end) = raw_inline_html_span_end(&text[..limit], start) {
                 index = end;
                 return Some((start..end, MarkdownInlineContext::RawHtml));
-            } else if let Some(end) = commonmark_autolink_span_end(text, start)
-                .or_else(|| inline_html_tag_span_end(text, start))
-                .or_else(|| inline_math_span_end(text, start))
+            } else if let Some(end) = commonmark_autolink_span_end(&text[..limit], start)
+                .or_else(|| inline_html_tag_span_end(&text[..limit], start))
+                .or_else(|| inline_math_span_end(&text[..limit], start))
             {
                 index = end;
             } else if (text[start..].starts_with('[') || text[start..].starts_with("!["))
                 && let Some(target) = markdown_link_target_span(&mut scan, start)
+                && target.end <= limit
             {
                 // Link labels can contain code; their targets and titles cannot.
                 index = start
@@ -4045,7 +4046,7 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
         end += ch.len_utf8();
     }
     while text[end..].starts_with('{') {
-        let brace_end = balanced_brace_end(&text[end..])?;
+        let brace_end = scan_balanced_brace_end(&text[end..], false)?;
         end += brace_end;
     }
     Some(end)
@@ -4491,6 +4492,11 @@ fn find_unescaped(text: &str, mut index: usize, target: char) -> Option<usize> {
 }
 
 fn balanced_brace_end(text: &str) -> Option<usize> {
+    let template = text.starts_with("{{") || text.starts_with("{%") || text.starts_with("{#");
+    scan_balanced_brace_end(text, template)
+}
+
+fn scan_balanced_brace_end(text: &str, template_quotes: bool) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
     let mut chars = text.char_indices();
@@ -4504,7 +4510,7 @@ fn balanced_brace_end(text: &str) -> Option<usize> {
             continue;
         }
         match ch {
-            '\'' | '"' | '`' => quote = Some(ch),
+            '\'' | '"' | '`' if template_quotes => quote = Some(ch),
             '{' => depth += 1,
             '}' => {
                 depth = depth.checked_sub(1)?;

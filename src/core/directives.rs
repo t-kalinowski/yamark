@@ -1,6 +1,7 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::wrap::{
-    MarkdownInlineContext, balanced_brace_span_end, markdown_inline_context_spans,
+    MarkdownInlineContext, balanced_brace_span_end, markdown_inline_block_ranges,
+    markdown_inline_context_spans,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,6 +55,9 @@ fn template_span_in_source(
     }
     let mut search_start = 0usize;
     let mut inline_spans = markdown_inline_context_spans(source).peekable();
+    let mut blocks = std::iter::once_with(|| markdown_inline_block_ranges(source))
+        .flatten()
+        .peekable();
     while search_start < source.len() {
         let Some(relative_open) = source[search_start..].find(&delimiter.open) else {
             return false;
@@ -87,13 +91,19 @@ fn template_span_in_source(
             // even when the template itself has balanced braces.
             return true;
         }
-        if mode == TemplateSpanMode::Markdown
-            && let Some(end) = balanced_brace_span_end(source, open)
-            && close + delimiter.close.len() <= end
-        {
-            // Braced expressions are already protected inline tokens.
-            search_start = end;
-            continue;
+        if mode == TemplateSpanMode::Markdown {
+            while blocks.peek().is_some_and(|block| block.end <= open) {
+                blocks.next();
+            }
+            if let Some(block) = blocks.peek()
+                && block.start <= open
+                && let Some(end) = balanced_brace_span_end(&source[..block.end], open)
+                && close + delimiter.close.len() <= end
+            {
+                // Each formatted block must see the complete protected token.
+                search_start = end;
+                continue;
+            }
         }
         if mode == TemplateSpanMode::Markdown
             && is_hugo_shortcode_template_span(source, delimiter, open, close)
