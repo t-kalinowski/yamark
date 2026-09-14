@@ -201,7 +201,7 @@ fn ci_runs_public_readiness_checks() {
         "cargo fmt --check",
         "cargo clippy --all-targets --all-features -- -D warnings",
         "cargo test",
-        "uv run external-tests/run.py --serial",
+        "uv run --upgrade external-tests/run.py --serial",
         "npm test",
     ] {
         assert!(
@@ -1596,7 +1596,7 @@ fn website_showcase_generates_after_examples_with_yamark() {
     assert!(helper.contains("yamark_bin"));
 
     for command in [
-        "uv tool install ruff==0.16.7",
+        "uv tool install ruff@latest",
         "npm install --global prettier@3.9.6",
     ] {
         assert!(

@@ -73,6 +73,7 @@ through the end of the region.
 | `fmt: markdown` | Next | Mark the next supported target as Markdown: a Markdown block, including a supported fence; a YAML scalar; or a source string or comment block. |
 | `fmt: markdown wrap=sentence canonical=true` | Next | Mark the next supported target as Markdown and set its options. |
 | `fmt: wrap=sentence` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Change wrapping for an already recognized Markdown region without marking unrelated content. |
+| `fmt: table-widths=preserve` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Preserve widths in supported Markdown tables while formatting contents. Use `scope=next` immediately before one table. |
 | `fmt: canonical` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Enable canonical Markdown spelling. `canonical=true` is equivalent. |
 | `fmt: footnotes=preserve` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Preserve footnote definitions in the affected Markdown. |
 
@@ -94,6 +95,7 @@ Accepted option values:
 | Option | Values |
 | --- | --- |
 | `wrap` | `none`, `paragraph`, `sentence`, `sentence:<n>`, or a positive integer. |
+| `table-widths` | `fit` (the default) or `preserve`. Both preserve alignment. |
 | `canonical` | `true`, `false`, `yes`, `no`, `1`, or `0`. A bare `canonical` means `true`. |
 | `footnotes` | `wrap`, `format`, `preserve`, `none`, `true`, `false`, `yes`, `no`, `1`, or `0`. |
 

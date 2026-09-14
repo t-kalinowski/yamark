@@ -236,8 +236,8 @@ fn check_script_runs_the_ci_commands() {
         format!(
             "cargo fmt --check\n\
              cargo clippy --all-targets --all-features -- -D warnings\n\
-             cargo test\n\
-             uv run external-tests/run.py --serial\n\
+             uv run --upgrade --isolated --no-project --with ruff --with py-yaml12 -- cargo test\n\
+             uv run --upgrade external-tests/run.py --serial\n\
              npm {} test\n",
             repo.join("editors/vscode").display(),
         )

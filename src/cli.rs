@@ -10,7 +10,7 @@ use clap::{
     CommandFactory, FromArgMatches, Parser, Subcommand, error::ErrorKind, parser::ValueSource,
 };
 
-use crate::core::document::{FormatOptions, MarkdownWrap};
+use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::workspace::{
     FormatExecutionOptions, FormatMode, format_paths_with_trace_and_overrides,
     format_source_for_path_with_overrides, project_source_to_yaml,
@@ -59,6 +59,8 @@ enum Command {
         config: Option<PathBuf>,
         #[arg(long, default_value = "72", value_parser = parse_wrap)]
         wrap: MarkdownWrap,
+        #[arg(long, value_parser = parse_table_widths, help = "Table widths: fit contents or preserve source widths [default: fit]")]
+        table_widths: Option<MarkdownTableWidths>,
         #[arg(long)]
         canonical: bool,
         #[arg(long)]
@@ -251,6 +253,7 @@ where
             None,
             MarkdownWrap::Column(72),
             false,
+            None,
             false,
             false,
             80,
@@ -323,6 +326,7 @@ where
             stdin_file_path,
             config,
             wrap,
+            table_widths,
             canonical,
             preserve_footnotes,
             line_width,
@@ -340,6 +344,7 @@ where
             config,
             wrap,
             wrap_from_cli,
+            table_widths,
             canonical,
             preserve_footnotes,
             line_width,
@@ -457,6 +462,7 @@ fn run_format(
     config: Option<PathBuf>,
     wrap: MarkdownWrap,
     wrap_from_cli: bool,
+    table_widths: Option<MarkdownTableWidths>,
     canonical: bool,
     preserve_footnotes: bool,
     line_width: usize,
@@ -481,6 +487,7 @@ fn run_format(
         indent_width,
         yaml_compact: compact,
         markdown_wrap: wrap,
+        markdown_table_widths: table_widths.unwrap_or_default(),
         markdown_canonical: canonical,
         markdown_format_footnotes: !preserve_footnotes,
         markdown_preserve_footnotes: preserve_footnotes,
@@ -492,6 +499,7 @@ fn run_format(
         collect_trace: diagnostics,
         verify_output: verify,
         markdown_wrap_override,
+        markdown_table_widths_override: table_widths,
     };
 
     if let Some(path) = stdin_file_path {
@@ -1526,4 +1534,8 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
 
 fn parse_wrap(value: &str) -> Result<MarkdownWrap, String> {
     MarkdownWrap::parse(value).map_err(str::to_owned)
+}
+
+fn parse_table_widths(value: &str) -> Result<MarkdownTableWidths, String> {
+    MarkdownTableWidths::parse(value).map_err(str::to_owned)
 }

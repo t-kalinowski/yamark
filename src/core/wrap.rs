@@ -1,4 +1,4 @@
-use crate::core::document::{FormatOptions, MarkdownWrap};
+use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
 use std::borrow::Cow;
@@ -179,6 +179,46 @@ pub fn format_markdown_table(source: &str, options: FormatOptions) -> String {
         row.resize(columns, String::new());
     }
     canonicalize_table_rows(&mut rows, options);
+    if options.markdown_table_widths == MarkdownTableWidths::Preserve {
+        // Pandoc uses delimiter lengths for relative widths and total source
+        // line lengths to decide whether pipe cells wrap. Retain both, even
+        // when rows were not originally aligned with one another.
+        let mut out = String::new();
+        let mut formatted_rows = rows.iter();
+        for (index, line) in markdown_line_bodies(source).enumerate() {
+            if index == 1 {
+                out.push_str(line);
+            } else {
+                let row = formatted_rows.next().expect("table row");
+                let mut cursor = 0;
+                for ((range, cell), alignment) in
+                    pipe_cell_ranges(line).iter().zip(row).zip(&alignments)
+                {
+                    out.push_str(&line[cursor..range.start]);
+                    let width = display_width(&line[range.clone()]);
+                    if display_width(cell) > width {
+                        return source.to_owned();
+                    }
+                    let padding = width - display_width(cell);
+                    let left = match alignment {
+                        Alignment::None | Alignment::Left => padding.min(1),
+                        Alignment::Right => padding.saturating_sub(1),
+                        Alignment::Center => padding / 2,
+                    };
+                    out.push_str(&" ".repeat(left));
+                    out.push_str(cell);
+                    out.push_str(&" ".repeat(padding - left));
+                    cursor = range.end;
+                }
+                out.push_str(&line[cursor..]);
+            }
+            out.push_str(join_newline);
+        }
+        if newline.is_empty() {
+            trim_trailing_line_ending(&mut out);
+        }
+        return out;
+    }
     let mut widths = vec![0usize; columns];
     for row in &rows {
         for (index, cell) in row.iter().enumerate() {
@@ -205,97 +245,69 @@ pub fn format_markdown_table(source: &str, options: FormatOptions) -> String {
 }
 
 pub fn format_markdown_pandoc_table(source: &str, options: FormatOptions) -> String {
-    if let Some(formatted) = format_markdown_multiline_table(source, options) {
+    let expanded = expand_pandoc_table_tabs(source);
+    let table_source = expanded.as_ref();
+    if let Some(formatted) = format_markdown_multiline_table(table_source, options) {
         return formatted;
     }
-    if let Some(formatted) = format_markdown_grid_table(source, options) {
+    if let Some(formatted) = format_markdown_grid_table(table_source, options) {
         return formatted;
     }
 
-    let newline = final_newline(source);
-    let join_newline = newline_for_join(newline, options);
-    let lines = markdown_line_bodies(source).collect::<Vec<_>>();
+    let lines = markdown_line_bodies(table_source).collect::<Vec<_>>();
     if lines.len() < 2 {
         return source.to_owned();
     }
     let Some(columns) = pandoc_separator_columns(lines[1]) else {
         return source.to_owned();
     };
-    let has_closing_separator = lines.len() > 2
-        && pandoc_separator_columns(lines[lines.len() - 1])
-            .is_some_and(|closing| closing.len() == columns.len());
-    let row_end = if has_closing_separator {
-        lines.len() - 1
-    } else {
-        lines.len()
-    };
-    let mut rows = Vec::with_capacity(row_end.saturating_sub(1));
-    for (index, line) in lines.iter().enumerate() {
-        if index == 1 {
-            continue;
-        }
-        if index >= row_end {
-            break;
-        }
-        let Some(cells) = pandoc_table_cells(line, &columns) else {
-            return source.to_owned();
-        };
-        rows.push(cells);
-    }
-    if rows.is_empty() {
-        return source.to_owned();
-    }
-    canonicalize_table_rows(&mut rows, options);
-    let mut widths = vec![0usize; columns.len()];
-    for (index, column) in columns.iter().enumerate() {
-        widths[index] = widths[index].max(column.min_width);
-    }
-    for row in &rows {
-        for (index, cell) in row.iter().enumerate() {
-            widths[index] = widths[index].max(display_width(cell));
-        }
-    }
+    format_pandoc_table_lines(table_source, &lines, columns, 0..1, options)
+}
 
-    let mut out = String::new();
-    if let Some((header, body)) = rows.split_first() {
-        emit_pandoc_table_row(&mut out, header, &widths, join_newline);
-        emit_pandoc_delimiter_row(&mut out, &columns, &widths, join_newline);
-        for row in body {
-            emit_pandoc_table_row(&mut out, row, &widths, join_newline);
-        }
-        if has_closing_separator {
-            emit_pandoc_delimiter_row(&mut out, &columns, &widths, join_newline);
+fn expand_pandoc_table_tabs(source: &str) -> Cow<'_, str> {
+    if !source.contains('\t') {
+        return Cow::Borrowed(source);
+    }
+    // Match Pandoc's tabFilter with its default four-character tab stops.
+    // It counts characters here, then splits table cells by display width.
+    let mut out = String::with_capacity(source.len());
+    let mut column = 0usize;
+    for ch in source.chars() {
+        match ch {
+            '\t' => {
+                let padding = 4 - column % 4;
+                out.push_str(&" ".repeat(padding));
+                column += padding;
+            }
+            '\r' | '\n' => {
+                out.push(ch);
+                column = 0;
+            }
+            _ => {
+                out.push(ch);
+                column += 1;
+            }
         }
     }
-    if newline.is_empty() {
-        trim_trailing_line_ending(&mut out);
-    }
-    out
+    Cow::Owned(out)
 }
 
 fn format_markdown_multiline_table(source: &str, options: FormatOptions) -> Option<String> {
-    let newline = final_newline(source);
-    let join_newline = newline_for_join(newline, options);
     let lines = markdown_line_bodies(source).collect::<Vec<_>>();
-    if lines.len() < 4 {
+    if lines.len() < 3 {
         return None;
     }
-
-    let (columns, header_lines, body_lines) = if pandoc_separator_token_line(lines[0]) {
-        let columns = pandoc_separator_columns(lines[0])?;
+    let (separator, header) = if pandoc_separator_token_line(lines[0]) {
         let separators = lines
             .iter()
             .enumerate()
             .filter_map(|(index, line)| pandoc_separator_token_line(line).then_some(index))
             .collect::<Vec<_>>();
-        if separators.len() != 3 || separators[0] != 0 {
-            return None;
+        match separators.as_slice() {
+            [0, _] => (0, 1..2), // Headerless: the first body line sets alignment.
+            [0, separator, _] => (*separator, 1..*separator),
+            _ => return None,
         }
-        (
-            columns,
-            &lines[separators[0] + 1..separators[1]],
-            &lines[separators[1] + 1..separators[2]],
-        )
     } else if pandoc_continuous_multiline_bound(lines[0])
         && pandoc_continuous_multiline_bound(lines[lines.len() - 1])
     {
@@ -303,93 +315,149 @@ fn format_markdown_multiline_table(source: &str, options: FormatOptions) -> Opti
             .iter()
             .position(|line| pandoc_separator_token_line(line))?
             + 1;
-        let columns = pandoc_separator_columns(lines[separator])?;
-        (
-            columns,
-            &lines[1..separator],
-            &lines[separator + 1..lines.len() - 1],
-        )
+        (separator, 1..separator)
     } else {
         return None;
     };
+    let columns = pandoc_separator_columns(lines[separator])?;
+    Some(format_pandoc_table_lines(
+        source, &lines, columns, header, options,
+    ))
+}
 
-    let mut header_rows = pandoc_multiline_rows(header_lines, &columns)?;
-    let mut body_rows = pandoc_multiline_rows(body_lines, &columns)?;
-    if !header_rows.iter().any(Option::is_some) || !body_rows.iter().any(Option::is_some) {
-        return None;
+fn format_pandoc_table_lines(
+    source: &str,
+    lines: &[&str],
+    mut columns: Vec<PandocColumn>,
+    header: std::ops::Range<usize>,
+    options: FormatOptions,
+) -> String {
+    // Pandoc derives alignment from the shortest nonempty header line in each
+    // column. Delimiter lengths and gaps also encode multiline column widths.
+    let header_cells = lines[header.clone()]
+        .iter()
+        .map(|line| pandoc_table_cells(line, &columns))
+        .collect::<Vec<_>>();
+    for (index, column) in columns.iter_mut().enumerate() {
+        let shortest = header_cells
+            .iter()
+            .map(|row| row[index].trim_end())
+            .filter(|cell| !cell.is_empty())
+            .min_by_key(|cell| cell.chars().count());
+        column.alignment = shortest.map_or(Alignment::None, |cell| {
+            match (cell.starts_with(' '), display_width(cell) < column.width) {
+                (true, true) => Alignment::Center,
+                (true, false) => Alignment::Right,
+                (false, true) => Alignment::Left,
+                (false, false) => Alignment::None,
+            }
+        });
     }
-    canonicalize_optional_table_rows(&mut header_rows, options);
-    canonicalize_optional_table_rows(&mut body_rows, options);
 
-    let mut widths = vec![0usize; columns.len()];
-    for row in header_rows.iter().chain(body_rows.iter()).flatten() {
-        for (index, cell) in row.iter().enumerate() {
-            widths[index] = widths[index].max(display_width(cell));
-        }
-    }
-    for (index, column) in columns.iter().enumerate() {
-        widths[index] = widths[index].max(column.min_width);
+    let rows = lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| {
+            if line.trim().is_empty()
+                || pandoc_separator_token_line(line)
+                || pandoc_continuous_multiline_bound(line)
+            {
+                return Vec::new();
+            }
+            let cells = pandoc_table_cells(line, &columns);
+            let mut row = cells
+                .iter()
+                .map(|cell| normalize_spaces_preserving_protected_spans(cell.trim()).into_owned())
+                .collect::<Vec<_>>();
+            canonicalize_table_row(&mut row, options);
+            if options.markdown_table_widths == MarkdownTableWidths::Preserve
+                && header.contains(&index)
+            {
+                for ((cell, original), column) in row.iter_mut().zip(&cells).zip(&columns) {
+                    let width = display_width(cell);
+                    let fits_alignment = match column.alignment {
+                        Alignment::None => width >= column.width,
+                        Alignment::Left | Alignment::Right => width < column.width,
+                        Alignment::Center => width + 1 < column.width,
+                    };
+                    if !fits_alignment {
+                        // Internal padding can make a header flush with its
+                        // delimiter. Keep that padding when it sets alignment.
+                        *cell = if options.markdown_canonical {
+                            canonicalize_inline(original.trim())
+                        } else {
+                            original.trim().to_owned()
+                        };
+                    }
+                }
+            }
+            row
+        })
+        .collect::<Vec<_>>();
+    if options.markdown_table_widths == MarkdownTableWidths::Fit {
+        fit_pandoc_columns(&mut columns, &rows, header);
     }
 
+    let newline = final_newline(source);
+    let join_newline = newline_for_join(newline, options);
     let mut out = String::new();
-    emit_pandoc_delimiter_row(&mut out, &columns, &widths, join_newline);
-    for row in &header_rows {
-        match row {
-            Some(row) => emit_pandoc_table_row(&mut out, row, &widths, join_newline),
-            None => out.push_str(join_newline),
+    for (line, row) in lines.iter().zip(&rows) {
+        if !row.is_empty() {
+            emit_pandoc_table_row(&mut out, row, &columns);
+        } else if options.markdown_table_widths == MarkdownTableWidths::Preserve
+            || line.trim().is_empty()
+        {
+            out.push_str(line);
+        } else {
+            let marker = if line.contains('=') { '=' } else { '-' };
+            if pandoc_continuous_multiline_bound(line) {
+                let last = columns.last().expect("table has columns");
+                out.push_str(&marker.to_string().repeat(last.start + last.width));
+            } else {
+                let separators = columns
+                    .iter()
+                    .map(|column| marker.to_string().repeat(column.width))
+                    .collect::<Vec<_>>();
+                emit_pandoc_table_row(&mut out, &separators, &columns);
+            }
         }
+        out.push_str(join_newline);
     }
-    emit_pandoc_delimiter_row(&mut out, &columns, &widths, join_newline);
-    for row in &body_rows {
-        match row {
-            Some(row) => emit_pandoc_table_row(&mut out, row, &widths, join_newline),
-            None => out.push_str(join_newline),
-        }
-    }
-    emit_pandoc_delimiter_row(&mut out, &columns, &widths, join_newline);
     if newline.is_empty() {
         trim_trailing_line_ending(&mut out);
     }
-    Some(out)
+    out
 }
 
-fn pandoc_multiline_rows(
-    lines: &[&str],
-    columns: &[PandocColumn],
-) -> Option<Vec<Option<Vec<String>>>> {
-    let mut rows = Vec::<Option<Vec<String>>>::new();
-    for line in lines {
-        if line.trim().is_empty() {
-            rows.push(None);
-            continue;
-        }
-        let cells = pandoc_table_cells(line, columns)?;
-        push_pandoc_multiline_row(&mut rows, cells)?;
+fn fit_pandoc_columns(
+    columns: &mut [PandocColumn],
+    rows: &[Vec<String>],
+    header: std::ops::Range<usize>,
+) {
+    let mut start = 0;
+    for (index, column) in columns.iter_mut().enumerate() {
+        let header_width = rows[header.clone()]
+            .iter()
+            .filter_map(|row| row.get(index))
+            .filter(|cell| !cell.is_empty())
+            .min_by_key(|cell| cell.chars().count())
+            .map_or(0, |cell| display_width(cell));
+        let content_width = rows
+            .iter()
+            .filter_map(|row| row.get(index))
+            .map(|cell| pandoc_source_width(cell).max(display_width(cell)))
+            .max()
+            .unwrap_or(0);
+        column.start = start;
+        column.width = match column.alignment {
+            // Default alignment requires a header flush with its underline.
+            // Wider body text can use the gap before the next column.
+            Alignment::None => header_width.max(3),
+            Alignment::Left | Alignment::Right => content_width.max(header_width + 1).max(3),
+            Alignment::Center => content_width.max(header_width + 2).max(3),
+        };
+        start += content_width.max(column.width) + 2;
     }
-    Some(rows)
-}
-
-fn push_pandoc_multiline_row(
-    rows: &mut Vec<Option<Vec<String>>>,
-    cells: Vec<String>,
-) -> Option<()> {
-    let first_nonempty = cells.iter().position(|cell| !cell.is_empty())?;
-    if first_nonempty > 0
-        && let Some(previous) = rows.last_mut().and_then(Option::as_mut)
-    {
-        for (index, cell) in cells.into_iter().enumerate().skip(first_nonempty) {
-            if cell.is_empty() {
-                continue;
-            }
-            if !previous[index].is_empty() {
-                previous[index].push(' ');
-            }
-            previous[index].push_str(&cell);
-        }
-        return Some(());
-    }
-    rows.push(Some(cells));
-    Some(())
 }
 
 fn pandoc_continuous_multiline_bound(line: &str) -> bool {
@@ -409,7 +477,9 @@ fn format_markdown_grid_table(source: &str, options: FormatOptions) -> Option<St
     if lines.len() < 3 {
         return None;
     }
-    let column_count = grid_border_columns(lines[0])?;
+    let mut widths = grid_border_widths(lines[0])?;
+    let top_alignments = grid_border_alignments(lines[0]);
+    let column_count = widths.len();
     let mut sections = Vec::<GridSection>::new();
     let mut index = 1usize;
     while index < lines.len() {
@@ -418,18 +488,26 @@ fn format_markdown_grid_table(source: &str, options: FormatOptions) -> Option<St
             if index >= lines.len() {
                 return None;
             }
-            if let Some(border) = grid_border_kind(lines[index], column_count) {
+            if let Some(border) = grid_border_kind(lines[index], &widths) {
                 if rows.is_empty() {
                     return None;
                 }
                 sections.push(GridSection {
                     rows,
                     border_after: border,
+                    border_alignments: grid_border_alignments(lines[index]),
                 });
                 index += 1;
                 break;
             }
             let mut row = grid_row_cells(lines[index], column_count)?;
+            for (cell, width) in row.iter().zip(&widths) {
+                if display_width(cell) > *width {
+                    // Repairing a row wider than its border would change the
+                    // layout. Preserve this malformed table instead.
+                    return None;
+                }
+            }
             canonicalize_table_row(&mut row, options);
             rows.push(row);
             index += 1;
@@ -438,23 +516,34 @@ fn format_markdown_grid_table(source: &str, options: FormatOptions) -> Option<St
     if sections.is_empty() {
         return None;
     }
-
-    let mut widths = vec![0usize; column_count];
-    for section in &sections {
-        for row in &section.rows {
-            for (column, cell) in row.iter().enumerate() {
-                widths[column] = widths[column].max(display_width(cell));
+    if options.markdown_table_widths == MarkdownTableWidths::Fit {
+        widths.fill(3);
+        for row in sections.iter().flat_map(|section| &section.rows) {
+            for (width, cell) in widths.iter_mut().zip(row) {
+                *width = (*width).max(display_width(cell) + 2);
             }
         }
     }
 
     let mut out = String::new();
-    emit_grid_border(&mut out, &widths, GridBorderKind::Normal, join_newline);
+    emit_grid_border(
+        &mut out,
+        &widths,
+        GridBorderKind::Normal,
+        &top_alignments,
+        join_newline,
+    );
     for section in &sections {
         for row in &section.rows {
             emit_grid_row(&mut out, row, &widths, join_newline);
         }
-        emit_grid_border(&mut out, &widths, section.border_after, join_newline);
+        emit_grid_border(
+            &mut out,
+            &widths,
+            section.border_after,
+            &section.border_alignments,
+            join_newline,
+        );
     }
     if newline.is_empty() {
         trim_trailing_line_ending(&mut out);
@@ -466,6 +555,7 @@ fn format_markdown_grid_table(source: &str, options: FormatOptions) -> Option<St
 struct GridSection {
     rows: Vec<Vec<String>>,
     border_after: GridBorderKind,
+    border_alignments: Vec<Alignment>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -474,26 +564,30 @@ enum GridBorderKind {
     Strong,
 }
 
-fn grid_border_columns(line: &str) -> Option<usize> {
+fn grid_border_widths(line: &str) -> Option<Vec<usize>> {
     let trimmed = line.trim();
-    if !trimmed.starts_with('+') || !trimmed.ends_with('+') {
-        return None;
-    }
-    let mut columns = 0usize;
-    for part in trimmed.split('+').skip(1) {
-        if part.is_empty() {
-            continue;
-        }
-        if !part.chars().all(|ch| matches!(ch, '-' | '=')) {
+    let inner = trimmed.strip_prefix('+')?.strip_suffix('+')?;
+    let mut widths = Vec::new();
+    for part in inner.split('+') {
+        let marker = part.trim_matches(':');
+        if marker.is_empty() || !marker.chars().all(|ch| matches!(ch, '-' | '=')) {
             return None;
         }
-        columns += 1;
+        widths.push(part.len());
     }
-    (columns > 0).then_some(columns)
+    Some(widths)
 }
 
-fn grid_border_kind(line: &str, column_count: usize) -> Option<GridBorderKind> {
-    (grid_border_columns(line)? == column_count).then_some(())?;
+fn grid_border_alignments(line: &str) -> Vec<Alignment> {
+    line.trim()
+        .trim_matches('+')
+        .split('+')
+        .map(table_alignment)
+        .collect()
+}
+
+fn grid_border_kind(line: &str, widths: &[usize]) -> Option<GridBorderKind> {
+    (grid_border_widths(line)? == widths).then_some(())?;
     if line.contains('=') {
         Some(GridBorderKind::Strong)
     } else {
@@ -503,25 +597,37 @@ fn grid_border_kind(line: &str, column_count: usize) -> Option<GridBorderKind> {
 
 fn grid_row_cells(line: &str, column_count: usize) -> Option<Vec<String>> {
     let trimmed = line.trim();
-    if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
-        return None;
-    }
-    let cells = trimmed[1..trimmed.len() - 1]
+    let inner = trimmed.strip_prefix('|')?.strip_suffix('|')?;
+    let cells = inner
         .split('|')
-        .map(|cell| normalize_spaces(cell.trim()))
+        .map(|cell| normalize_spaces_preserving_protected_spans(cell.trim()).into_owned())
         .collect::<Vec<_>>();
     (cells.len() == column_count).then_some(cells)
 }
 
-fn emit_grid_border(out: &mut String, widths: &[usize], kind: GridBorderKind, newline: &str) {
+fn emit_grid_border(
+    out: &mut String,
+    widths: &[usize],
+    kind: GridBorderKind,
+    alignments: &[Alignment],
+    newline: &str,
+) {
     let marker = match kind {
         GridBorderKind::Normal => '-',
         GridBorderKind::Strong => '=',
     };
     out.push('+');
-    for width in widths {
-        for _ in 0..width + 2 {
+    for (width, alignment) in widths.iter().zip(alignments) {
+        let left = matches!(alignment, Alignment::Left | Alignment::Center);
+        let right = matches!(alignment, Alignment::Right | Alignment::Center);
+        if left {
+            out.push(':');
+        }
+        for _ in 0..width - usize::from(left) - usize::from(right) {
             out.push(marker);
+        }
+        if right {
+            out.push(':');
         }
         out.push('+');
     }
@@ -531,10 +637,13 @@ fn emit_grid_border(out: &mut String, widths: &[usize], kind: GridBorderKind, ne
 fn emit_grid_row(out: &mut String, row: &[String], widths: &[usize], newline: &str) {
     out.push('|');
     for (cell, width) in row.iter().zip(widths) {
-        out.push(' ');
+        let padding = width - display_width(cell);
+        // Grid colons carry alignment. Indenting cell text to match that
+        // alignment can turn prose into an indented code block in Pandoc.
+        let left = padding.min(1);
+        out.push_str(&" ".repeat(left));
         out.push_str(cell);
-        out.push_str(&" ".repeat(width.saturating_sub(display_width(cell))));
-        out.push(' ');
+        out.push_str(&" ".repeat(padding - left));
         out.push('|');
     }
     out.push_str(newline);
@@ -1944,6 +2053,13 @@ fn final_newline(source: &str) -> &str {
 }
 
 fn split_pipe_row(line: &str) -> Vec<String> {
+    pipe_cell_ranges(line)
+        .into_iter()
+        .map(|range| normalize_spaces_preserving_protected_spans(line[range].trim()).into_owned())
+        .collect()
+}
+
+fn pipe_cell_ranges(line: &str) -> Vec<std::ops::Range<usize>> {
     let (body, _) = strip_final_newline(line);
     let mut trimmed = body.trim();
     if let Some(rest) = trimmed.strip_prefix('|') {
@@ -1955,7 +2071,8 @@ fn split_pipe_row(line: &str) -> Vec<String> {
 
     let mut scan = InlineScan::new(trimmed);
     let mut cells = Vec::new();
-    let mut cell = String::new();
+    let offset = trimmed.as_ptr() as usize - line.as_ptr() as usize;
+    let mut start = 0;
     let mut escaped = false;
     let mut index = 0usize;
     while index < trimmed.len() {
@@ -1963,7 +2080,6 @@ fn split_pipe_row(line: &str) -> Vec<String> {
             && protected_spacing_span_can_start(trimmed, index)
             && let Some(end) = protected_spacing_span_end(&mut scan, index)
         {
-            cell.push_str(&trimmed[index..end]);
             index = end;
             continue;
         }
@@ -1972,19 +2088,18 @@ fn split_pipe_row(line: &str) -> Vec<String> {
             .next()
             .expect("index is on a char boundary");
         if ch == '|' && !escaped {
-            cells.push(normalize_spaces_preserving_protected_spans(cell.trim()).into_owned());
-            cell.clear();
+            cells.push(offset + start..offset + index);
             index += ch.len_utf8();
+            start = index;
             continue;
         }
-        cell.push(ch);
         escaped = ch == '\\' && !escaped;
         if ch != '\\' {
             escaped = false;
         }
         index += ch.len_utf8();
     }
-    cells.push(normalize_spaces_preserving_protected_spans(cell.trim()).into_owned());
+    cells.push(offset + start..offset + trimmed.len());
     cells
 }
 
@@ -1993,15 +2108,6 @@ fn canonicalize_table_rows(rows: &mut [Vec<String>], options: FormatOptions) {
         return;
     }
     for row in rows {
-        canonicalize_table_row(row, options);
-    }
-}
-
-fn canonicalize_optional_table_rows(rows: &mut [Option<Vec<String>>], options: FormatOptions) {
-    if !options.markdown_canonical {
-        return;
-    }
-    for row in rows.iter_mut().flatten() {
         canonicalize_table_row(row, options);
     }
 }
@@ -2034,7 +2140,7 @@ fn render_table(
 #[derive(Debug, Clone)]
 struct PandocColumn {
     start: usize,
-    min_width: usize,
+    width: usize,
     alignment: Alignment,
 }
 
@@ -2059,8 +2165,8 @@ fn pandoc_separator_columns(line: &str) -> Option<Vec<PandocColumn>> {
         }
         columns.push(PandocColumn {
             start,
-            min_width: 3,
-            alignment: table_alignment(token),
+            width: token.len(),
+            alignment: Alignment::None,
         });
     }
     (columns.len() >= 2).then_some(columns)
@@ -2072,71 +2178,55 @@ fn pandoc_separator_token(token: &str) -> bool {
         && token.chars().any(|ch| matches!(ch, '-' | '='))
 }
 
-fn pandoc_table_cells(line: &str, columns: &[PandocColumn]) -> Option<Vec<String>> {
-    let mut cells = Vec::with_capacity(columns.len());
-    for (index, column) in columns.iter().enumerate() {
-        let start = clamp_to_char_boundary(line, column.start.min(line.len()));
-        let end = columns
-            .get(index + 1)
-            .map(|next| clamp_to_char_boundary(line, next.start.min(line.len())))
-            .unwrap_or(line.len());
-        if start > end {
-            return None;
-        }
-        cells.push(normalize_spaces(line.get(start..end)?.trim()));
-    }
-    Some(cells)
+fn pandoc_table_cells<'a>(line: &'a str, columns: &[PandocColumn]) -> Vec<&'a str> {
+    let offsets = columns
+        .iter()
+        .map(|column| byte_offset_at_display_width(line, column.start))
+        .chain(std::iter::once(line.len()))
+        .collect::<Vec<_>>();
+    offsets
+        .windows(2)
+        .map(|pair| &line[pair[0]..pair[1]])
+        .collect()
 }
 
-fn clamp_to_char_boundary(line: &str, mut index: usize) -> usize {
-    while index > 0 && !line.is_char_boundary(index) {
-        index -= 1;
+fn byte_offset_at_display_width(line: &str, width: usize) -> usize {
+    let mut current = 0;
+    for (offset, ch) in line.char_indices() {
+        if current >= width {
+            // Match Pandoc's splitAtWidth, including a combining mark at the
+            // boundary belonging to the next cell. Consuming it here would
+            // move that cell's alignment padding after the mark.
+            return offset;
+        }
+        current += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
     }
-    index
+    line.len()
 }
 
-fn emit_pandoc_table_row(out: &mut String, row: &[String], widths: &[usize], newline: &str) {
-    for (index, cell) in row.iter().enumerate() {
-        if index > 0 {
-            out.push_str("  ");
-        }
+fn emit_pandoc_table_row(out: &mut String, row: &[String], columns: &[PandocColumn]) {
+    let mut position = 0;
+    for (cell, column) in row.iter().zip(columns) {
+        let width = display_width(cell);
+        let padding = column.width.saturating_sub(width);
+        let left = match column.alignment {
+            Alignment::None | Alignment::Left => 0,
+            Alignment::Right => padding,
+            Alignment::Center => padding / 2,
+        };
+        let start = column.start + left;
+        out.push_str(&" ".repeat(start.saturating_sub(position)));
         out.push_str(cell);
-        if index + 1 < row.len() {
-            let padding = widths[index].saturating_sub(display_width(cell));
-            out.push_str(&" ".repeat(padding));
-        }
+        // Pandoc splits source columns by character widths, even when a
+        // sequence such as a joined emoji renders as a single glyph.
+        position = start.max(position) + pandoc_source_width(cell);
     }
-    out.push_str(newline);
 }
 
-fn emit_pandoc_delimiter_row(
-    out: &mut String,
-    columns: &[PandocColumn],
-    widths: &[usize],
-    newline: &str,
-) {
-    for (index, column) in columns.iter().enumerate() {
-        if index > 0 {
-            out.push_str("  ");
-        }
-        out.push_str(&pandoc_delimiter_cell(
-            widths[index].max(3),
-            column.alignment,
-        ));
-    }
-    out.push_str(newline);
-}
-
-fn pandoc_delimiter_cell(width: usize, alignment: Alignment) -> String {
-    match alignment {
-        Alignment::None => "-".repeat(width),
-        Alignment::Left => format!(":{}", "-".repeat(width.saturating_sub(1).max(2))),
-        Alignment::Right => format!("{}:", "-".repeat(width.saturating_sub(1).max(2))),
-        Alignment::Center => {
-            let middle = width.saturating_sub(2).max(1);
-            format!(":{}:", "-".repeat(middle))
-        }
-    }
+fn pandoc_source_width(cell: &str) -> usize {
+    cell.chars()
+        .filter_map(unicode_width::UnicodeWidthChar::width)
+        .sum()
 }
 
 fn trim_trailing_line_ending(out: &mut String) {

@@ -1,4 +1,4 @@
-use crate::core::document::{Document, FormatOptions, MarkdownWrap};
+use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -89,6 +89,7 @@ pub struct DirectiveState {
     pub markdown_target: bool,
     pub yaml_compact: Option<bool>,
     pub markdown_wrap: Option<MarkdownWrap>,
+    pub markdown_table_widths: Option<MarkdownTableWidths>,
     pub markdown_canonical: Option<bool>,
     pub markdown_format_footnotes: Option<bool>,
     pub table_compact: Option<bool>,
@@ -101,6 +102,9 @@ impl DirectiveState {
         let mut options = base;
         if let Some(wrap) = self.markdown_wrap {
             options.markdown_wrap = wrap;
+        }
+        if let Some(widths) = self.markdown_table_widths {
+            options.markdown_table_widths = widths;
         }
         if let Some(canonical) = self.markdown_canonical {
             options.markdown_canonical = canonical;
@@ -129,6 +133,7 @@ pub struct DirectiveDelta {
     pub markdown_target: Option<bool>,
     pub yaml_compact: Option<bool>,
     pub markdown_wrap: Option<MarkdownWrap>,
+    pub markdown_table_widths: Option<MarkdownTableWidths>,
     pub markdown_canonical: Option<bool>,
     pub markdown_format_footnotes: Option<bool>,
     pub table_compact: Option<bool>,
@@ -163,6 +168,9 @@ impl DirectiveDelta {
         if let Some(value) = self.markdown_wrap {
             state.markdown_wrap = Some(value);
         }
+        if let Some(value) = self.markdown_table_widths {
+            state.markdown_table_widths = Some(value);
+        }
         if let Some(value) = self.markdown_canonical {
             state.markdown_canonical = Some(value);
         }
@@ -194,6 +202,9 @@ impl DirectiveDelta {
         }
         if other.markdown_wrap.is_some() {
             self.markdown_wrap = other.markdown_wrap;
+        }
+        if other.markdown_table_widths.is_some() {
+            self.markdown_table_widths = other.markdown_table_widths;
         }
         if other.markdown_canonical.is_some() {
             self.markdown_canonical = other.markdown_canonical;
@@ -342,6 +353,7 @@ pub(crate) fn file_scope_delta(directive: &Directive) -> Option<DirectiveDelta> 
 pub(crate) fn directive_delta_affects_markdown(delta: &DirectiveDelta) -> bool {
     delta.markdown_target.is_some()
         || delta.markdown_wrap.is_some()
+        || delta.markdown_table_widths.is_some()
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
         || !delta.add_template_delimiters.is_empty()
@@ -782,6 +794,8 @@ fn parse_scope_and_options(
             if let Ok(wrap) = MarkdownWrap::parse(value) {
                 delta.markdown_wrap = Some(wrap);
             }
+        } else if let Some(value) = field.strip_prefix("table-widths=") {
+            delta.markdown_table_widths = MarkdownTableWidths::parse(value).ok();
         } else if let Some(value) = field.strip_prefix("canonical=") {
             delta.markdown_canonical = Some(matches!(value, "true" | "yes" | "1"));
         } else if field == "canonical" {
@@ -1042,6 +1056,10 @@ fn parse_scope_and_options_checked(
         } else if let Some(value) = field.strip_prefix("wrap=") {
             delta.markdown_wrap =
                 Some(MarkdownWrap::parse(value).map_err(|message| format!("fmt: {message}"))?);
+        } else if let Some(value) = field.strip_prefix("table-widths=") {
+            delta.markdown_table_widths = Some(
+                MarkdownTableWidths::parse(value).map_err(|message| format!("fmt: {message}"))?,
+            );
         } else if let Some(value) = field.strip_prefix("canonical=") {
             delta.markdown_canonical = Some(parse_bool_option(value, "canonical")?);
         } else if field == "canonical" {
@@ -1196,6 +1214,7 @@ fn reject_markdown_without_options_for_broad_scope(
 fn markdown_delta_has_actual_options(delta: &DirectiveDelta) -> bool {
     delta.yaml_compact.is_some()
         || delta.markdown_wrap.is_some()
+        || delta.markdown_table_widths.is_some()
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
         || delta.table_compact.is_some()

@@ -2582,6 +2582,142 @@ This one too.
 }
 
 #[test]
+fn markdown_pandoc_tables_handle_incomplete_grid_markers() {
+    for input in ["+\n---  ---\nx    y\n", "+---+---+\n|\n+---+---+\n"] {
+        let (status, _, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
+        assert_eq!(status, 0, "{stderr}");
+    }
+}
+
+#[test]
+fn markdown_pandoc_grid_tables_preserve_unrepresentable_rows() {
+    let input = "+---+---+\n| too wide | B |\n+===+===+\n| x | y |\n+---+---+\n";
+    let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
+    assert_eq!(status, 0, "{stderr}");
+    assert_eq!(stdout, input);
+}
+
+#[test]
+fn markdown_pandoc_headerless_tables_keep_their_borders_and_following_blocks() {
+    for newline in ["\n", "\r\n"] {
+        for following in [
+            "",
+            "Table: keep    caption spacing\n\nFirst sentence. Second sentence.\n",
+            ": keep    caption spacing\n\nFirst sentence. Second sentence.\n",
+            "#   Following heading\n\nFirst sentence. Second sentence.\n",
+        ] {
+            for body in ["a  b    c\n", "a  b    c\n        d\n\ne       f\n"] {
+                let input = format!("------  ------\n{body}------  ------\n{following}")
+                    .replace('\n', newline);
+                let expected = input
+                    .replace("a  b    c", "a b     c")
+                    .replace("#   Following heading", "# Following heading")
+                    .replace(
+                        "First sentence. Second sentence.",
+                        &format!("First sentence.{newline}Second sentence."),
+                    );
+                let args = [
+                    "format",
+                    "--table-widths",
+                    "preserve",
+                    "--stdin-file-path",
+                    "input.qmd",
+                    "--wrap",
+                    "sentence",
+                ];
+                let (status, stdout, stderr) = run_stdin(&args, &input);
+                assert_eq!(status, 0, "{stderr}");
+                assert_eq!(stdout, expected, "input: {input:?}");
+                let (status, second, stderr) = run_stdin(&args, &stdout);
+                assert_eq!(status, 0, "{stderr}");
+                assert_eq!(second, stdout, "table formatting must be idempotent");
+            }
+        }
+    }
+}
+
+#[test]
+fn markdown_pandoc_tables_expand_tabs_before_splitting_cells() {
+    let cases = [
+        ("A\tB\n---\t---\nx\ty\n", "A   B\n--- ---\nx   y\n"),
+        ("A\tB\n--- ---\nx\ty\n", "A   B\n--- ---\nx   y\n"),
+        (
+            "A\t\tB\n---\t\t---\nx\t\ty\n",
+            "A       B\n---     ---\nx       y\n",
+        ),
+        ("---\t---\na\tb\n---\t---\n", "--- ---\na   b\n--- ---\n"),
+        (
+            "------------\nA\tB\n---\t---\nx\ty\n\na\tb\n------------\n",
+            "------------\nA   B\n--- ---\nx   y\n\na   b\n------------\n",
+        ),
+        (
+            "+-------+-------+\n| A\t\t| B\t\t|\n+=======+=======+\n| x\t\t| y\t\t|\n+-------+-------+\n",
+            "+-------+-------+\n| A     | B     |\n+=======+=======+\n| x     | y     |\n+-------+-------+\n",
+        ),
+    ];
+    for (input, expected) in cases {
+        for newline in ["\n", "\r\n"] {
+            let input = input.replace('\n', newline);
+            let expected = expected.replace('\n', newline);
+            let args = [
+                "format",
+                "--table-widths",
+                "preserve",
+                "--stdin-file-path",
+                "input.qmd",
+            ];
+            let (status, stdout, stderr) = run_stdin(&args, &input);
+            assert_eq!(status, 0, "{stderr}");
+            assert_eq!(stdout, expected, "input: {input:?}");
+            let (status, second, stderr) = run_stdin(&args, &stdout);
+            assert_eq!(status, 0, "{stderr}");
+            assert_eq!(second, stdout, "table formatting must be idempotent");
+        }
+    }
+}
+
+#[test]
+fn markdown_pandoc_tables_preserve_alignment_and_widths() {
+    let cases = [
+        (
+            "A             B\n-----  ------------\nx      y\n",
+            "A           B\n-----  ------------\nx           y\n",
+        ),
+        (
+            "+----------+------------------+\n| A        | B                |\n+==========+==================+\n| x  one   | y  two           |\n+----------+------------------+\n",
+            "+----------+------------------+\n| A        | B                |\n+==========+==================+\n| x one    | y two            |\n+----------+------------------+\n",
+        ),
+        (
+            "Before.\n\n----------  ----------\nA           B\n----------  ----------\nx  one      y  two\n----------  ----------\n",
+            "Before.\n\n----------  ----------\nA           B\n----------  ----------\nx one       y two\n----------  ----------\n",
+        ),
+    ];
+    for (input, expected) in cases {
+        for width in ["20", "72"] {
+            for newline in ["\n", "\r\n"] {
+                let input = input.replace('\n', newline);
+                let expected = expected.replace('\n', newline);
+                let args = [
+                    "format",
+                    "--table-widths",
+                    "preserve",
+                    "--stdin-file-path",
+                    "input.qmd",
+                    "--wrap",
+                    width,
+                ];
+                let (status, stdout, stderr) = run_stdin(&args, &input);
+                assert_eq!(status, 0, "{stderr}");
+                assert_eq!(stdout, expected);
+                let (status, second, stderr) = run_stdin(&args, &stdout);
+                assert_eq!(status, 0, "{stderr}");
+                assert_eq!(second, stdout, "table formatting must be idempotent");
+            }
+        }
+    }
+}
+
+#[test]
 fn markdown_pandoc_simple_tables_and_definition_lists_are_formatted() {
     let input = "\
 Name        Value
@@ -2643,9 +2779,9 @@ _x_         __y__
 ----------  ----------
 ";
     let expected = "\
-Name  Value
-----  -----
-*x*   **y**
+Name   Value
+-----  -----
+*x*    **y**
 
 +------+-------+
 | Name | Value |
@@ -2653,11 +2789,11 @@ Name  Value
 | *x*  | **y** |
 +------+-------+
 
-----  -----
-Name  Value
-----  -----
-*x*   **y**
-----  -----
+-----  ------
+Name   Value
+-----  ------
+*x*    **y**
+-----  ------
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--canonical"],
@@ -2918,13 +3054,13 @@ long name   two
 ----------  ----------
 ";
     let expected = "\
----------  -----
+---------  ------
 Name       Value
----------  -----
+---------  ------
 short      one
 
 long name  two
----------  -----
+---------  ------
 ";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
     assert_eq!(status, 0, "{stderr}");
@@ -2946,14 +3082,15 @@ Second     row                 5.0 Another row.
 -------------------------------------------------------------
 ";
     let expected = "\
---------  -------  -------  -------------------------------------------
-Centered  Default  Right    Left
+-------------------------------------------------
+Centered  Default    Right  Left
 Header    Aligned  Aligned  Aligned
---------  -------  -------  -------------------------------------------
-First     row      12.0     Example of a row that spans multiple lines.
+--------  -------  -------  ---------------------
+First     row         12.0  Example of a row that
+                            spans multiple lines.
 
-Second    row      5.0      Another row.
---------  -------  -------  -------------------------------------------
+Second    row          5.0  Another row.
+-------------------------------------------------
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "20"],
