@@ -1,0 +1,20 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --verify
+-- stdin
+First
+sentence with `${{ foo }}`. Second
+sentence.
+
+First
+sentence with {{ foo }}. Second
+sentence.
+-- stdout
+First sentence with `${{ foo }}`.
+Second sentence.
+
+First
+sentence with {{ foo }}. Second
+sentence.
+-- stderr
+-- status
+0
