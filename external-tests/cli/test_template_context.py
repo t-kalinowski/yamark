@@ -6,6 +6,44 @@ import pytest
 from _support import run_cli_case
 
 
+@pytest.mark.parametrize(
+    "raw_html",
+    [
+        "<!-- `{% raw %}` keep   _this_ `{% endraw %}` -->",
+        "<!-- {% raw %} keep   _this_ {% endraw %} -->",
+        r"<!-- \`{% raw %}\` keep   _this_ \`{% endraw %}\` -->",
+        "<?check `{% raw %}` keep   _this_ `{% endraw %}` ?>",
+        "<![CDATA[`{% raw %}` keep   _this_ `{% endraw %}`]]>",
+        "<!YAMARK `{% raw %}` keep   _this_ `{% endraw %}`>",
+    ],
+)
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_templates_in_raw_inline_html_preserve_the_block(
+    raw_html: str, canonical: str
+) -> None:
+    heading = f"#   H {raw_html}   ##\n"
+    source = heading + "\nFollowing\nprose.\n"
+    expected = heading + "\nFollowing prose.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format {canonical} --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+def test_raw_html_spelling_inside_inline_code_still_allows_wrapping() -> None:
+    code = "`<!-- <% keep   this %> -->`"
+    source = f"First\nsentence with {code}. Second\nsentence.\n"
+    expected = f"First sentence with {code}.\nSecond sentence.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
 @pytest.mark.parametrize("quote", ['"', "'"])
 @pytest.mark.parametrize("heading", [False, True])
 def test_template_in_quoted_html_attribute_is_not_code(

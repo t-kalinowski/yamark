@@ -3730,14 +3730,21 @@ fn strikethrough_span_end(text: &str, start: usize) -> Option<usize> {
     ))
 }
 
-pub(crate) fn markdown_inline_code_spans(
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MarkdownInlineContext {
+    Code,
+    RawHtml,
+}
+
+pub(crate) fn markdown_inline_context_spans(
     text: &str,
-) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+) -> impl Iterator<Item = (std::ops::Range<usize>, MarkdownInlineContext)> + '_ {
     std::iter::once_with(move || markdown_inline_block_ranges(text))
         .flatten()
         .flat_map(move |block| {
-            inline_code_spans(&text[block.clone()])
-                .map(move |span| block.start + span.start..block.start + span.end)
+            inline_context_spans(&text[block.clone()]).map(move |(span, context)| {
+                (block.start + span.start..block.start + span.end, context)
+            })
         })
 }
 
@@ -3810,7 +3817,9 @@ fn inline_block_line_content(mut body: &str) -> &str {
     }
 }
 
-fn inline_code_spans(text: &str) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+fn inline_context_spans(
+    text: &str,
+) -> impl Iterator<Item = (std::ops::Range<usize>, MarkdownInlineContext)> + '_ {
     let mut scan = InlineScan::new(text);
     let mut link_targets: Vec<std::ops::Range<usize>> = Vec::new();
     let mut index = 0;
@@ -3833,8 +3842,11 @@ fn inline_code_spans(text: &str) -> impl Iterator<Item = std::ops::Range<usize>>
                 index = start + delimiter_run_len_at(text, start, b'`');
                 if let Some(end) = scan.code_span_end(start, limit) {
                     index = end;
-                    return Some(start..end);
+                    return Some((start..end, MarkdownInlineContext::Code));
                 }
+            } else if let Some(end) = raw_inline_html_span_end(&text[..limit], start) {
+                index = end;
+                return Some((start..end, MarkdownInlineContext::RawHtml));
             } else if let Some(end) = commonmark_autolink_span_end(text, start)
                 .or_else(|| inline_html_tag_span_end(text, start))
                 .or_else(|| inline_math_span_end(text, start))
@@ -3854,6 +3866,25 @@ fn inline_code_spans(text: &str) -> impl Iterator<Item = std::ops::Range<usize>>
             }
         }
     })
+}
+
+fn raw_inline_html_span_end(text: &str, start: usize) -> Option<usize> {
+    let rest = &text[start..];
+    let (opening, closing) = if rest.starts_with("<!--") {
+        ("<!--", "-->")
+    } else if rest.starts_with("<?") {
+        ("<?", "?>")
+    } else if rest.starts_with("<![CDATA[") {
+        ("<![CDATA[", "]]>")
+    } else if rest.starts_with("<!") && rest.as_bytes().get(2).is_some_and(u8::is_ascii_alphabetic)
+    {
+        ("<!", ">")
+    } else {
+        return None;
+    };
+    rest[opening.len()..]
+        .find(closing)
+        .map(|end| start + opening.len() + end + closing.len())
 }
 
 fn markdown_link_target_span(

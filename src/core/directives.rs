@@ -1,5 +1,7 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
-use crate::core::wrap::{balanced_brace_span_end, markdown_inline_code_spans};
+use crate::core::wrap::{
+    MarkdownInlineContext, balanced_brace_span_end, markdown_inline_context_spans,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -51,21 +53,28 @@ fn template_span_in_source(
         return false;
     }
     let mut search_start = 0usize;
-    let mut code_spans = markdown_inline_code_spans(source).peekable();
+    let mut inline_spans = markdown_inline_context_spans(source).peekable();
     while search_start < source.len() {
         let Some(relative_open) = source[search_start..].find(&delimiter.open) else {
             return false;
         };
         let open = search_start + relative_open;
+        let mut raw_html = false;
         if mode == TemplateSpanMode::Markdown {
-            while code_spans.peek().is_some_and(|span| span.end <= open) {
-                code_spans.next();
+            while inline_spans
+                .peek()
+                .is_some_and(|(span, _)| span.end <= open)
+            {
+                inline_spans.next();
             }
-            if let Some(span) = code_spans.peek()
+            if let Some((span, context)) = inline_spans.peek()
                 && span.start <= open
             {
-                search_start = span.end;
-                continue;
+                if *context == MarkdownInlineContext::Code {
+                    search_start = span.end;
+                    continue;
+                }
+                raw_html = true;
             }
         }
         let content_start = open + delimiter.open.len();
@@ -73,6 +82,11 @@ fn template_span_in_source(
             return false;
         };
         let close = content_start + relative_close;
+        if raw_html {
+            // Raw HTML contents are not Markdown tokens. Preserve the block
+            // even when the template itself has balanced braces.
+            return true;
+        }
         if mode == TemplateSpanMode::Markdown
             && let Some(end) = balanced_brace_span_end(source, open)
             && close + delimiter.close.len() <= end
