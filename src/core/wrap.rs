@@ -3773,7 +3773,7 @@ pub(crate) fn markdown_inline_block_ranges(text: &str) -> Vec<std::ops::Range<us
         let single_line =
             trimmed.is_empty() || term || heading || indent <= 3 && thematic_break_line(trimmed);
         let begins_block = single_line
-            || depth > quote_depth
+            || depth != quote_depth
             || markdown_block_start_line(body)
             || definition_marker_parts(body).is_some();
         if begins_block && start < line.body_start {

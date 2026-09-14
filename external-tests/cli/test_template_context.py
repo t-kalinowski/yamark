@@ -68,6 +68,8 @@ def test_generic_brace_groups_keep_literal_quotes(argument: str, prefix: str) ->
         ("md", '> {{ printf "keep   this"\n>\n> }}\n'),
         ("md", '- {{ printf "keep   this"\n\n  }}\n'),
         ("md", '> {{ printf "keep   this"\n> # Heading\n> }}\n'),
+        ("md", '> Intro.\n>\n> > {{ printf "keep   this"\n> outer }}\n'),
+        ("md", '> Intro.\n>\n> > > {{ printf "keep   this"\n> outer }}\n'),
     ],
 )
 def test_balanced_templates_crossing_child_blocks_are_preserved(
@@ -78,6 +80,41 @@ def test_balanced_templates_crossing_child_blocks_are_preserved(
         stdin=source,
         stdout=source,
     )
+
+
+@pytest.mark.parametrize(
+    "region",
+    [
+        "{% raw %}keep   this{% endraw %}",
+        "{%- raw -%}keep   this{%- endraw -%}",
+        "{%raw%}keep   this\nand   this{%endraw%}",
+    ],
+)
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_jinja_raw_region_preserves_its_markdown_block(
+    region: str, canonical: str
+) -> None:
+    paragraph = f"Before\n{region}\nafter.\n"
+    source = paragraph + "\nFollowing\nprose.\n"
+    expected = paragraph + "\nFollowing prose.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format {canonical} --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+def test_jinja_raw_region_inside_inline_code_allows_wrapping() -> None:
+    code = "`{% raw %}keep   this{% endraw %}`"
+    source = f"Before\n{code}\nafter.\n"
+    expected = f"Before {code} after.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
 
 
 @pytest.mark.parametrize(

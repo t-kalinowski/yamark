@@ -92,6 +92,20 @@ fn template_span_in_source(
             return true;
         }
         if mode == TemplateSpanMode::Markdown {
+            if delimiter.open == "{%"
+                && delimiter.close == "%}"
+                && matches!(
+                    source[content_start..close]
+                        .trim()
+                        .trim_matches(['-', '+'])
+                        .trim(),
+                    "raw" | "endraw"
+                )
+            {
+                // Separate brace tokens do not protect a raw region's literal
+                // payload. Keep the containing Markdown block opaque.
+                return true;
+            }
             while blocks.peek().is_some_and(|block| block.end <= open) {
                 blocks.next();
             }
