@@ -7,6 +7,55 @@ from _support import run_cli_case
 
 
 @pytest.mark.parametrize(
+    "html",
+    [
+        '<span title="> {{ foo }} _keep_"/>',
+        '<span title="> {{ foo }}">keep   _this_</span>',
+        '<span title="> </span> {{ foo }} _keep_">keep   _this_</span>',
+    ],
+)
+@pytest.mark.parametrize("wrap", ["sentence", "20"])
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_quoted_html_regions_stay_opaque_while_prose_wraps(
+    html: str, wrap: str, canonical: str
+) -> None:
+    source = f"Before\n{html}\nafter.\n"
+    expected = f"Before {html} after.\n" if wrap == "sentence" else source
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format {canonical} --wrap {wrap} --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "`{{ keep  \nthis }}`",
+        "`{{ keep\\\nthis }}`",
+        "`before  \n{{ foo }}`",
+        "`{{ foo }}\nafter  \ncode`",
+        "Before {{ foo }}  \nafter.",
+    ],
+)
+@pytest.mark.parametrize("prefix", ["", "> ", "- "])
+def test_template_blocks_with_apparent_hard_breaks_are_preserved(
+    content: str, prefix: str
+) -> None:
+    continuation = "  " if prefix == "- " else prefix
+    paragraph = prefix + ("\n" + continuation).join(content.splitlines()) + "\n"
+    source = paragraph + "\nFollowing\nprose.\n"
+    expected = paragraph + "\nFollowing prose.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize(
     "template",
     [
         "`<% result = `printf 'keep   this'` %>`",

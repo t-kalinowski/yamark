@@ -41,11 +41,18 @@ fits inside one inline code span, or a balanced braced expression such as
 `{{ foo }}` fits on one source line. It does not insert wrap breaks inside
 these expressions.
 
+Supported inline HTML regions remain opaque tokens: surrounding Markdown can
+wrap before or after them, while their attributes and contents stay intact.
+Yamark does not reflow text inside these regions as Markdown prose.
+
 Within a Markdown block, a template that starts inside a code span and ends
 outside it prevents reflow. So do multiline braced expressions and
 `raw`, `endraw`, `verbatim`, or `endverbatim` template directives outside
 inline code, including named verbatim boundaries. These checks do not parse
 template regions across independent Markdown blocks.
+
+Template-bearing blocks with apparent hard-break markers (two trailing spaces
+or a trailing backslash) are preserved, including their trailing whitespace.
 
 Values of `fig-alt` containing braces are not split for column wrapping.
 Standalone Hugo shortcode regions remain unchanged.

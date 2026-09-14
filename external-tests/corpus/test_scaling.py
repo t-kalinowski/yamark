@@ -71,6 +71,26 @@ def test_nested_brackets_scale_with_input_size(tmp_path: Path) -> None:
     )
 
 
+def test_incomplete_html_before_templates_scales_with_input_size(
+    tmp_path: Path,
+) -> None:
+    durations = []
+    for count in [20_000, 80_000]:
+        text = "Before " + "<!-- " * count + "{{ foo }}\n"
+        source = tmp_path / f"incomplete-html-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == text
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "incomplete HTML before templates should scale with input size: "
+        f"20000 openers used {small:.6f}s CPU, 80000 openers used {large:.6f}s CPU"
+    )
+
+
 def measure_formatting_cpu(source: Path) -> tuple[float, str]:
     log_path = source.with_suffix(".log")
 

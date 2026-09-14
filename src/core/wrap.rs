@@ -1348,7 +1348,7 @@ fn markdown_hard_break_line_content(line: &str) -> (&str, Option<MarkdownHardBre
     }
 }
 
-fn has_hard_break(source: &str) -> bool {
+pub(crate) fn has_hard_break(source: &str) -> bool {
     markdown_line_bodies(source).any(|line| line.ends_with("  ") || line.ends_with('\\'))
 }
 
@@ -1874,7 +1874,7 @@ fn paired_inline_html_span_end(source: &str, index: usize) -> Option<usize> {
         break;
     }
     let tag = &rest[1..tag_end];
-    let open_end = rest.find('>')? + 1;
+    let open_end = inline_html_tag_span_end(source, index)? - index;
     if rest[..open_end].trim_end().ends_with("/>") {
         return None;
     }
@@ -1914,7 +1914,7 @@ fn protected_inline_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option
         return link_or_bracket_token_end(scan, index);
     }
     if rest.starts_with('<') {
-        return rest.find('>').map(|close| index + close + 1);
+        return html_tag_span_end(source, index);
     }
     if (rest.starts_with("{{<") || rest.starts_with("{{%"))
         && let Some(close) = rest.find("}}")
@@ -3358,6 +3358,10 @@ fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
     if !inline_html_tag_at(text, index) {
         return None;
     }
+    html_tag_span_end(text, index)
+}
+
+fn html_tag_span_end(text: &str, index: usize) -> Option<usize> {
     let mut quote = None;
     for (offset, ch) in text[index..].char_indices() {
         if let Some(delimiter) = quote {
@@ -3887,9 +3891,15 @@ fn raw_inline_html_span_end(text: &str, start: usize) -> Option<usize> {
     } else {
         return None;
     };
-    rest[opening.len()..]
-        .find(closing)
-        .map(|end| start + opening.len() + end + closing.len())
+    // An unterminated construct makes the rest of this block opaque. Stop
+    // here instead of rescanning its suffix at every later opener.
+    Some(
+        rest[opening.len()..]
+            .find(closing)
+            .map_or(text.len(), |end| {
+                start + opening.len() + end + closing.len()
+            }),
+    )
 }
 
 fn markdown_link_target_span(

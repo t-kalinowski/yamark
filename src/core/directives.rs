@@ -1,6 +1,6 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::wrap::{
-    MarkdownInlineContext, balanced_brace_span_end, markdown_inline_block_ranges,
+    MarkdownInlineContext, balanced_brace_span_end, has_hard_break, markdown_inline_block_ranges,
     markdown_inline_context_spans,
 };
 
@@ -34,6 +34,10 @@ pub fn contains_template_span(source: &str, delimiters: &[TemplateDelimiter]) ->
 }
 
 pub fn contains_markdown_template_span(source: &str, delimiters: &[TemplateDelimiter]) -> bool {
+    // Preserve template-bearing blocks before line-based hard-break handling.
+    if has_hard_break(source) {
+        return contains_template_span(source, delimiters);
+    }
     delimiters
         .iter()
         .any(|delimiter| template_span_in_source(source, delimiter, TemplateSpanMode::Markdown))
