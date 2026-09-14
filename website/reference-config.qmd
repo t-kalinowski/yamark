@@ -36,6 +36,11 @@ Template delimiters mark regions Yamark must preserve because rendering can
 change the host language. The defaults are `{{ }}`, `{% %}`, `{# #}`, and
 `<% %>`.
 
+For [Hugo shortcodes](https://gohugo.io/content-management/shortcodes/#notation),
+Yamark formats the Markdown between standalone `{{% name %}}` and
+`{{% /name %}}` tags while preserving the tags and their arguments. Standard
+`{{< name >}}` shortcode bodies and `.inline` template definitions are preserved.
+
 | Key | Type | Effect |
 | --- | --- | --- |
 | `add_delimiters` | Array of `{ open, close }` tables. | Appends to the delimiters active at this layer, after `replace_delimiters` if both keys are present. |

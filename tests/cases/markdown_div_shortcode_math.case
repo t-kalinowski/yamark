@@ -1,5 +1,5 @@
 -- args
-format --stdin-file-path input.md --wrap 40
+format --stdin-file-path input.md --wrap 40 --verify
 -- stdin
 ::: {.callout-tip}
 ## Learn more
@@ -30,7 +30,7 @@ This paragraph is intentionally long enough to be considered for wrapping before
 This paragraph is intentionally long enough to be considered for wrapping after an opaque shortcode block.
 
 {{% notice %}}
-Do   not format this body.
+Format   this Markdown body.
 {{% /notice %}}
 
 $$
@@ -93,7 +93,7 @@ enough to be considered for wrapping
 after an opaque shortcode block.
 
 {{% notice %}}
-Do   not format this body.
+Format this Markdown body.
 {{% /notice %}}
 
 $$
