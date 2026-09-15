@@ -124,7 +124,7 @@ fn emit_document_inner(
             continue;
         }
         if markdown_emit_should_preserve_template_span(source, node.span, state, &node.emit) {
-            out.push_str(source.slice(node.span));
+            out.push_verbatim_str(source.slice(node.span));
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
             index += 1;
@@ -281,6 +281,11 @@ fn emit_document_inner(
                 }
                 out.push_str(&nested_output);
                 out.push_str(source.slice(*closing));
+            }
+            EmitPlan::MarkdownOpaque
+                if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode)) =>
+            {
+                out.push_verbatim_str(source.slice(node.span));
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
             EmitPlan::YamlDocument => {
@@ -472,6 +477,10 @@ impl EmitOutput {
             text.is_empty() || text.ends_with('\n') || text.ends_with('\r'),
             "verbatim line block must end at a line boundary"
         );
+        self.push_verbatim_str(text);
+    }
+
+    fn push_verbatim_str(&mut self, text: &str) {
         self.text.push_str(text);
         self.line_trim_end = self.text.len();
     }
@@ -577,7 +586,8 @@ fn markdown_emit_should_preserve_template_span(
 ) -> bool {
     matches!(
         emit,
-        EmitPlan::MarkdownHeading { .. }
+        EmitPlan::Copy
+            | EmitPlan::MarkdownHeading { .. }
             | EmitPlan::MarkdownSetextHeading { .. }
             | EmitPlan::MarkdownParagraph
             | EmitPlan::MarkdownList

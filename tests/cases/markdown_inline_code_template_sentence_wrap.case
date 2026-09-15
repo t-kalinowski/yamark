@@ -1,0 +1,42 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --verify
+-- stdin
+First
+sentence with `${{ foo }}`. Second
+sentence.
+
+Third
+sentence with {{ foo }}. Fourth
+sentence.
+
+Fifth
+sentence with ``{{ render("`code`", {"label": "keep   this"}) }}``. Sixth
+sentence.
+
+Seventh
+sentence with {{ render({"label": "keep   this"}) }}. Eighth
+sentence.
+
+The delivery
+instructions for this account use
+{{ render_customer_notice( customer.account_name,  customer.preferred_delivery_address ) }} before
+shipping. Confirmation
+follows.
+-- stdout
+First sentence with `${{ foo }}`.
+Second sentence.
+
+Third sentence with {{ foo }}.
+Fourth sentence.
+
+Fifth sentence with ``{{ render("`code`", {"label": "keep   this"}) }}``.
+Sixth sentence.
+
+Seventh sentence with {{ render({"label": "keep   this"}) }}.
+Eighth sentence.
+
+The delivery instructions for this account use {{ render_customer_notice( customer.account_name,  customer.preferred_delivery_address ) }} before shipping.
+Confirmation follows.
+-- stderr
+-- status
+0

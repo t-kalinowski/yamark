@@ -24,63 +24,18 @@ pub struct TemplateDelimiter {
 }
 
 pub fn contains_template_span(source: &str, delimiters: &[TemplateDelimiter]) -> bool {
-    delimiters
-        .iter()
-        .any(|delimiter| template_span_in_source(source, delimiter, TemplateSpanMode::Generic))
+    delimiters.iter().any(|delimiter| {
+        !delimiter.open.is_empty()
+            && !delimiter.close.is_empty()
+            && source.find(&delimiter.open).is_some_and(|open| {
+                source[open + delimiter.open.len()..].contains(&delimiter.close)
+            })
+    })
 }
 
 pub fn contains_markdown_template_span(source: &str, delimiters: &[TemplateDelimiter]) -> bool {
-    delimiters
-        .iter()
-        .any(|delimiter| template_span_in_source(source, delimiter, TemplateSpanMode::Markdown))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TemplateSpanMode {
-    Generic,
-    Markdown,
-}
-
-fn template_span_in_source(
-    source: &str,
-    delimiter: &TemplateDelimiter,
-    mode: TemplateSpanMode,
-) -> bool {
-    if delimiter.open.is_empty() || delimiter.close.is_empty() {
-        return false;
-    }
-    let mut search_start = 0usize;
-    while search_start < source.len() {
-        let Some(relative_open) = source[search_start..].find(&delimiter.open) else {
-            return false;
-        };
-        let open = search_start + relative_open;
-        let content_start = open + delimiter.open.len();
-        let Some(relative_close) = source[content_start..].find(&delimiter.close) else {
-            return false;
-        };
-        let close = content_start + relative_close;
-        if mode == TemplateSpanMode::Markdown
-            && is_hugo_shortcode_template_span(source, delimiter, open, close)
-        {
-            search_start = close + delimiter.close.len();
-            continue;
-        }
-        return true;
-    }
-    false
-}
-
-fn is_hugo_shortcode_template_span(
-    source: &str,
-    delimiter: &TemplateDelimiter,
-    open: usize,
-    close: usize,
-) -> bool {
-    delimiter.open == "{{"
-        && delimiter.close == "}}"
-        && source[open + delimiter.open.len()..].starts_with(['<', '%'])
-        && source[..close].trim_end().ends_with(['>', '%'])
+    contains_template_span(source, delimiters)
+        && !crate::core::wrap::markdown_templates_are_protected(source, delimiters)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

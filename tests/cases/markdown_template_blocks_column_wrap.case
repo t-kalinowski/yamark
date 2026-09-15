@@ -1,0 +1,58 @@
+-- args
+format --stdin-file-path input.md --wrap 40 --verify
+-- stdin
+This paragraph before the template blocks is long enough to wrap at the requested column.
+
+{{< figure src="a-long-image-name.png" caption="An overwide caption that must stay exactly as authored" >}}
+
+The paragraph between these template blocks also has enough ordinary prose to wrap across several lines.
+
+{{% notice title="An overwide template block title that must remain exactly as authored" %}}
+This paragraph between the tags has irregular   spacing and enough ordinary prose to wrap at the requested column.
+
+A second   paragraph between the tags also wraps as ordinary Markdown.
+{{% /notice %}}
+
+{{< highlight go >}}
+```go
+func main() {
+    fmt.Println("This overwide string is preserved by the Markdown code fence.")
+}
+```
+{{< /highlight >}}
+
+This paragraph after the template region is long enough to wrap at the requested column.
+-- stdout
+This paragraph before the template
+blocks is long enough to wrap at the
+requested column.
+
+{{< figure src="a-long-image-name.png" caption="An overwide caption that must stay exactly as authored" >}}
+
+The paragraph between these template
+blocks also has enough ordinary prose to
+wrap across several lines.
+
+{{% notice title="An overwide template block title that must remain exactly as authored" %}}
+This paragraph between the tags has
+irregular spacing and enough ordinary
+prose to wrap at the requested column.
+
+A second paragraph between the tags also
+wraps as ordinary Markdown.
+{{% /notice %}}
+
+{{< highlight go >}}
+```go
+func main() {
+    fmt.Println("This overwide string is preserved by the Markdown code fence.")
+}
+```
+{{< /highlight >}}
+
+This paragraph after the template region
+is long enough to wrap at the requested
+column.
+-- stderr
+-- status
+0

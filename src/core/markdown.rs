@@ -12,6 +12,7 @@ use crate::core::markdown_marker::markdown_list_marker_len;
 use crate::core::source::{SourceBuffer, Span};
 use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlNodeId, YamlScalar};
 use crate::diagnostic::Result;
+use std::collections::HashSet;
 
 pub fn parse_markdown(
     source: &SourceBuffer,
@@ -102,6 +103,7 @@ fn parse_markdown_with_mode(
     let start_line = first_line_index(source, range);
     let mut i = start_line;
     let end_line = end_line_index(source, range);
+    let mut unmatched_shortcode_braces = HashSet::new();
 
     if i < end_line
         && front_matter_opening(source.line_text(i))
@@ -577,7 +579,24 @@ fn parse_markdown_with_mode(
 
         if shortcode_block_at(text) {
             let start = i;
-            i = raw_sensitive_end(source, i, end_line);
+            // Incomplete openers do not claim following Markdown. A complete
+            // tag is opaque, but its name does not define a Markdown region.
+            i += 1;
+            let trimmed = text.trim_start();
+            let tag_start = source.lines[start].text.start() + text.len() - trimmed.len();
+            let closing = if trimmed.starts_with("{{<") {
+                ">}}"
+            } else {
+                "%}}"
+            };
+            if let Some(tag_end) = crate::core::wrap::cached_balanced_brace_span_end(
+                &source.as_str()[..range.end],
+                tag_start,
+                &mut unmatched_shortcode_braces,
+            ) && source.as_str()[..tag_end].ends_with(closing)
+            {
+                i = source.line_at_byte(tag_end - 1) + 1;
+            }
             let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
@@ -2620,11 +2639,6 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     if multiline_html_tag_start(source.line_text(line)) {
         return find_until_contains(source, line + 1, end, ">");
     }
-    if let Some(shortcode) = hugo_shortcode_opening(trimmed)
-        && let Some(close) = find_hugo_shortcode_close(source, line + 1, end, shortcode)
-    {
-        return close;
-    }
     if display_math_delimiter(trimmed) {
         if trimmed[2..].contains("$$") {
             return line + 1;
@@ -2699,69 +2713,6 @@ fn raw_continuation(first: &str, candidate: &str) -> bool {
         return !candidate_trimmed.is_empty();
     }
     first_indent >= 4 && candidate_indent >= 4
-}
-
-#[derive(Debug, Clone, Copy)]
-struct HugoShortcodeOpening<'a> {
-    delimiter: char,
-    name: &'a str,
-}
-
-fn hugo_shortcode_opening(trimmed: &str) -> Option<HugoShortcodeOpening<'_>> {
-    let (delimiter, rest) = if let Some(rest) = trimmed.strip_prefix("{{<") {
-        ('>', rest)
-    } else {
-        ('%', trimmed.strip_prefix("{{%")?)
-    };
-    let rest = rest.trim_start();
-    if rest.starts_with('/') {
-        return None;
-    }
-    let name_end = rest
-        .char_indices()
-        .find_map(|(index, ch)| (ch.is_whitespace() || ch == delimiter).then_some(index))
-        .unwrap_or(rest.len());
-    let name = &rest[..name_end];
-    (!name.is_empty()).then_some(HugoShortcodeOpening { delimiter, name })
-}
-
-fn find_hugo_shortcode_close(
-    source: &SourceBuffer,
-    mut line: usize,
-    end: usize,
-    opening: HugoShortcodeOpening<'_>,
-) -> Option<usize> {
-    while line < end {
-        if hugo_shortcode_closes(source.line_text(line).trim_start(), opening) {
-            return Some(line + 1);
-        }
-        line += 1;
-    }
-    None
-}
-
-fn hugo_shortcode_closes(trimmed: &str, opening: HugoShortcodeOpening<'_>) -> bool {
-    let rest = match opening.delimiter {
-        '>' => trimmed.strip_prefix("{{<"),
-        '%' => trimmed.strip_prefix("{{%"),
-        _ => None,
-    };
-    let Some(rest) = rest else {
-        return false;
-    };
-    let Some(rest) = rest.trim_start().strip_prefix('/') else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(after_name) = rest.strip_prefix(opening.name) else {
-        return false;
-    };
-    let after_name = after_name.trim_start();
-    match opening.delimiter {
-        '>' => after_name.starts_with(">}}"),
-        '%' => after_name.starts_with("%}}"),
-        _ => false,
-    }
 }
 
 fn link_definition_start(trimmed: &str) -> bool {

@@ -1,8 +1,9 @@
+use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use unicode_width::UnicodeWidthStr;
 
 pub fn format_markdown_paragraph(source: &str, options: FormatOptions) -> String {
@@ -658,6 +659,9 @@ pub(crate) fn markdown_list_format_supported(source: &str, options: FormatOption
 }
 
 fn try_format_markdown_list(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     let lines = markdown_lines(source).collect::<Vec<_>>();
     if list_needs_rich_format(&lines) {
         try_format_rich_markdown_list(&lines, options)
@@ -951,6 +955,9 @@ pub(crate) fn markdown_definition_list_format_supported(
 }
 
 fn try_format_markdown_definition_list(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     let lines = markdown_lines(source).collect::<Vec<_>>();
     let mut out = String::new();
     let mut index = 0usize;
@@ -1006,6 +1013,9 @@ pub(crate) fn markdown_blockquote_format_supported(source: &str, options: Format
 }
 
 fn try_format_markdown_blockquote(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     try_format_simple_markdown_blockquote(source, options)
         .or_else(|| try_format_rich_markdown_blockquote(source, options))
 }
@@ -1538,6 +1548,9 @@ fn footnote_definition(source: &str) -> bool {
 }
 
 fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     let (body, newline) = strip_final_newline(source);
     let mut lines = markdown_line_bodies(body);
     let first_line = lines.next()?;
@@ -1679,22 +1692,30 @@ fn newline_for_join(final_newline: &str, options: FormatOptions) -> &str {
 #[derive(Debug, Clone)]
 struct InlineToken<'a> {
     text: Cow<'a, str>,
+    // Only the first line shares space with preceding prose.
     width: usize,
+    last_line_width: Option<usize>,
 }
 
 impl<'a> InlineToken<'a> {
     fn borrowed(text: &'a str) -> Self {
-        Self {
-            text: Cow::Borrowed(text),
-            width: token_width(text),
-        }
+        Self::new(Cow::Borrowed(text))
     }
 
     fn owned(text: String) -> Self {
-        let width = token_width(&text);
+        Self::new(Cow::Owned(text))
+    }
+
+    fn new(text: Cow<'a, str>) -> Self {
+        let first_line_end = text.find(['\r', '\n']).unwrap_or(text.len());
+        let width = token_width(&text[..first_line_end]);
+        let last_line_width = text
+            .rsplit_once(['\r', '\n'])
+            .map(|(_, last)| token_width(last));
         Self {
-            text: Cow::Owned(text),
+            text,
             width,
+            last_line_width,
         }
     }
 
@@ -1801,15 +1822,10 @@ pub fn canonicalize_inline(source: &str) -> String {
             index = end;
             continue;
         }
-        if rest.starts_with('`') {
-            let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-            let marker = &rest[..tick_count];
-            if let Some(close) = rest[tick_count..].find(marker) {
-                let end = index + tick_count + close + tick_count;
-                out.push_str(&source[index..end]);
-                index = end;
-                continue;
-            }
+        if let Some(end) = inline_code_span_end(source, index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
         }
         if rest.starts_with('$')
             && !escaped_at(source, index)
@@ -1920,11 +1936,6 @@ fn protected_inline_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option
     }
     if rest.starts_with('<') {
         return rest.find('>').map(|close| index + close + 1);
-    }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(index + close + 2);
     }
     if rest.starts_with('{')
         && let Some(end) = balanced_brace_end(rest)
@@ -2419,23 +2430,6 @@ fn definition_continuation_indent(prefix: &str) -> String {
     " ".repeat(prefix.chars().count())
 }
 
-fn normalize_spaces(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut pending_space = false;
-    for ch in source.chars() {
-        if ch.is_ascii_whitespace() {
-            pending_space = true;
-        } else {
-            if pending_space && !out.is_empty() {
-                out.push(' ');
-            }
-            out.push(ch);
-            pending_space = false;
-        }
-    }
-    out
-}
-
 fn normalize_spaces_preserving_protected_spans(source: &str) -> Cow<'_, str> {
     let mut scan = InlineScan::new(source);
 
@@ -2522,9 +2516,38 @@ fn balanced_brace_span_end(source: &str, index: usize) -> Option<usize> {
     balanced_brace_end(&source[index..]).map(|end| index + end)
 }
 
+pub(crate) fn cached_balanced_brace_span_end(
+    source: &str,
+    index: usize,
+    unmatched: &mut HashSet<(usize, bool)>,
+) -> Option<usize> {
+    let text = &source[index..];
+    if !text.starts_with('{') || escaped_at(source, index) {
+        return None;
+    }
+    let template_quotes =
+        text.starts_with("{{") || text.starts_with("{%") || text.starts_with("{#");
+    if unmatched.contains(&(index, template_quotes)) {
+        return None;
+    }
+    let mut openers = Vec::new();
+    let end = scan_balanced_brace_end(text, template_quotes, Some(&mut openers));
+    if end.is_none() {
+        // Every still-open brace failed under the same quoting rules. Reuse
+        // those failures without hiding balanced tokens later in the region.
+        unmatched.extend(
+            openers
+                .into_iter()
+                .map(|open| (index + open, template_quotes)),
+        );
+    }
+    end.map(|end| index + end)
+}
+
 #[derive(Debug, Clone, Default)]
 struct TokenLine<'a> {
     tokens: Vec<InlineToken<'a>>,
+    // The column after the final token, accounting for its internal line breaks.
     width: usize,
 }
 
@@ -2542,10 +2565,9 @@ impl<'a> TokenLine<'a> {
     }
 
     fn push(&mut self, token: InlineToken<'a>) {
-        if !self.tokens.is_empty() {
-            self.width += 1;
-        }
-        self.width += token.width;
+        self.width = token
+            .last_line_width
+            .unwrap_or(self.width + usize::from(!self.tokens.is_empty()) + token.width);
         self.tokens.push(token);
     }
 
@@ -2754,9 +2776,10 @@ impl<'a> WrapLineBuffer<'a> {
             return Some(());
         }
         let previous = self.pending.as_mut()?;
+        let current_first_width = token_slice_first_line_width(&self.current.tokens);
         for split in (1..previous.len()).rev() {
             let suffix_width = previous.suffix_width(split);
-            let candidate_width = suffix_width + 1 + self.current.width;
+            let candidate_width = suffix_width + 1 + current_first_width;
             if candidate_width > self.continuation_width {
                 continue;
             }
@@ -2795,6 +2818,9 @@ fn write_wrapped_tokens_with_first_width(
         } else {
             lines.commit_current(writer)?;
             lines.current.push(token.clone());
+        }
+        if token.last_line_width.is_some() {
+            lines.width = lines.continuation_width;
         }
         lines.repair_current_line_if_markdown_block_start()?;
     }
@@ -2849,7 +2875,19 @@ fn write_markdown_token_lines(
 }
 
 fn token_slice_width(tokens: &[InlineToken<'_>]) -> usize {
-    tokens.iter().map(|token| token.width).sum::<usize>() + tokens.len().saturating_sub(1)
+    tokens.iter().enumerate().fold(0, |width, (index, token)| {
+        token
+            .last_line_width
+            .unwrap_or(width + usize::from(index > 0) + token.width)
+    })
+}
+
+fn token_slice_first_line_width(tokens: &[InlineToken<'_>]) -> usize {
+    let end = tokens
+        .iter()
+        .position(|token| token.last_line_width.is_some())
+        .map_or(tokens.len(), |index| index + 1);
+    tokens[..end].iter().map(|token| token.width).sum::<usize>() + end.saturating_sub(1)
 }
 
 fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>]) -> bool {
@@ -3065,6 +3103,11 @@ fn wrap_fig_alt_attribute_lines(attributes: &str, width: usize) -> Option<Vec<St
     let fig_alt_start = find_fig_alt_attribute(attributes)?;
     let value_start = fig_alt_start + FIG_ALT.len();
     let value = attributes[value_start..].strip_suffix('"')?;
+    // Braces may contain templates with significant internal spaces. Keep the
+    // value intact instead of splitting it into words for column wrapping.
+    if value.contains('{') {
+        return None;
+    }
     let words = single_spaced_words(value)?;
     let leading = &attributes[..fig_alt_start];
     if leading.contains(['"', '\'']) {
@@ -3198,8 +3241,6 @@ fn format_prefixed_markdown_segment(
 }
 
 fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
-    let mut scan = InlineScan::new(text);
-
     if simple_inline_tokens_supported(text) {
         return Some(simple_inline_tokens(text));
     }
@@ -3207,24 +3248,20 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
         return None;
     }
     let mut tokens = Vec::new();
-    let mut index = 0usize;
-    while index < text.len() {
-        while index < text.len() {
-            let ch = text[index..].chars().next()?;
-            if !ch.is_ascii_whitespace() {
-                break;
-            }
-            index += ch.len_utf8();
+    let mut word: Option<std::ops::Range<usize>> = None;
+    for fragment in inline_fragments(text) {
+        let fragment = fragment?;
+        if let Some(word) = &mut word
+            && word.end == fragment.start
+        {
+            word.end = fragment.end;
+        } else if let Some(word) = word.replace(fragment) {
+            tokens.push(InlineToken::borrowed(&text[word]));
         }
-        if index >= text.len() {
-            break;
-        }
-
-        let end = inline_token_end(&mut scan, index)?;
-        tokens.push(InlineToken::borrowed(&text[index..end]));
-        index = end;
     }
-
+    if let Some(word) = word {
+        tokens.push(InlineToken::borrowed(&text[word]));
+    }
     Some(tokens)
 }
 
@@ -3289,10 +3326,7 @@ fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize)
     }
     let rest = &text[index..];
     if rest.starts_with('`') {
-        let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-        let marker = &rest[..tick_count];
-        let close = rest[tick_count..].find(marker)?;
-        return Some(index + tick_count + close + tick_count);
+        return inline_code_span_end(text, index);
     }
     if rest.starts_with('$') {
         let close = find_unescaped(rest, 1, '$')?;
@@ -3315,11 +3349,6 @@ fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize)
     }
     if rest.starts_with("![") || rest.starts_with('[') {
         return link_or_bracket_token_end(scan, index);
-    }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(index + close + 2);
     }
     if rest.starts_with('{')
         && let Some(close) = balanced_brace_end(rest)
@@ -3629,25 +3658,25 @@ fn normalize_attribute_token(token: &str) -> String {
     else {
         return token.to_owned();
     };
-    format!("fig-alt=\"{}\"", normalize_spaces(value))
+    format!(
+        "fig-alt=\"{}\"",
+        normalize_spaces_preserving_protected_spans(value)
+    )
 }
 
-fn inline_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
-    let text = scan.text;
-    // Inline syntax protects its contents; only surrounding whitespace creates
-    // a prose wrapping boundary.
-    let mut end = start;
-    loop {
-        end = inline_token_fragment_end(scan, end)?;
-        if end == text.len()
-            || text[end..]
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_whitespace())
-        {
-            return Some(end);
+fn inline_fragments(text: &str) -> impl Iterator<Item = Option<std::ops::Range<usize>>> + '_ {
+    let mut scan = InlineScan::new(text);
+    let mut index = 0;
+    std::iter::from_fn(move || {
+        index = text.len() - text[index..].trim_ascii_start().len();
+        if index == text.len() {
+            return None;
         }
-    }
+        let start = index;
+        let end = inline_token_fragment_end(&mut scan, start);
+        index = end.unwrap_or(text.len());
+        Some(end.map(|end| start..end))
+    })
 }
 
 fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
@@ -3682,11 +3711,6 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
     {
         return Some(end);
     }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(start + close + 2);
-    }
     if rest.starts_with('{')
         && let Some(close) = balanced_brace_end(rest)
     {
@@ -3706,8 +3730,7 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
                 || slice.starts_with("![")
                 || slice.starts_with('[')
                 || slice.starts_with('<')
-                || slice.starts_with("{{<")
-                || slice.starts_with("{{%"))
+                || slice.starts_with('{'))
         {
             break;
         }
@@ -3740,15 +3763,181 @@ fn strikethrough_span_end(text: &str, start: usize) -> Option<usize> {
     ))
 }
 
+// Template protection uses the wrapper's fragments. Only whitespace between
+// fragments is available for reflow; a template must fit inside one fragment.
+pub(crate) fn markdown_templates_are_protected(
+    source: &str,
+    delimiters: &[TemplateDelimiter],
+) -> bool {
+    if has_hard_break(source) {
+        return false;
+    }
+    // HTML mixed with templates stays verbatim. Code and braced fragments
+    // preserve their own contents, including literal tag spellings.
+    let mut fragments = Vec::new();
+    for span in inline_fragments(source) {
+        let Some(span) = span else {
+            return false;
+        };
+        let text = &source[span.clone()];
+        if !text.starts_with(['`', '{'])
+            && text.match_indices('<').any(|(start, _)| {
+                inline_html_tag_at(text, start)
+                    || text[start..].starts_with("<!")
+                    || text[start..].starts_with("<?")
+            })
+        {
+            return false;
+        }
+        fragments.push(span);
+    }
+    let mut scan = InlineScan::new(source);
+    for delimiter in delimiters {
+        if delimiter.open.is_empty() || delimiter.close.is_empty() {
+            continue;
+        }
+        let mut fragments = fragments.iter().peekable();
+        let mut search = 0;
+        while let Some(relative) = source[search..].find(&delimiter.open) {
+            let open = search + relative;
+            let content = open + delimiter.open.len();
+            let Some(close) = source[content..].find(&delimiter.close) else {
+                break;
+            };
+            let close = content + close + delimiter.close.len();
+            let braced = balanced_brace_span_end(source, open);
+            let template_end = braced.map_or(close, |end| end.max(close));
+            while fragments.peek().is_some_and(|span| span.end <= open) {
+                fragments.next();
+            }
+            let Some(fragment) = fragments.peek() else {
+                return false;
+            };
+            let Some(fragment) = template_fragment(&mut scan, (*fragment).clone(), open) else {
+                return false;
+            };
+            let text = &source[fragment.clone()];
+            let code = text.starts_with('`');
+            if open < fragment.start
+                || template_end > fragment.end
+                || !code && (braced.is_none() || source[open..template_end].contains(['\n', '\r']))
+                || !code && template_occupies_line(source, open, template_end)
+                || code
+                    && markdown_lines(text).skip(1).any(|line| {
+                        line.body.trim().is_empty()
+                            || line.body.trim().bytes().all(|ch| ch == b'=')
+                            || line.body.trim().bytes().all(|ch| ch == b'-')
+                            || markdown_block_start_line(line.body)
+                            || rich_list_child_indent(line.body).is_some()
+                    })
+            {
+                return false;
+            }
+            search = template_end;
+        }
+    }
+    true
+}
+
+// Link labels and emphasis contain Markdown; their destinations/attributes do
+// not. Refine a containing fragment using the same inline parser as wrapping.
+fn template_fragment(
+    scan: &mut InlineScan<'_>,
+    mut span: std::ops::Range<usize>,
+    open: usize,
+) -> Option<std::ops::Range<usize>> {
+    let source = scan.text;
+    loop {
+        let inner = if let Some(emphasis) = emphasis_span_at(source, span.start) {
+            span.start + emphasis.run..emphasis.close
+        } else if source[span.start..].starts_with('[') || source[span.start..].starts_with("![") {
+            let start = span.start
+                + if source[span.start..].starts_with('!') {
+                    2
+                } else {
+                    1
+                };
+            start..scan.square_close(start)?
+        } else if source[span.start..].starts_with("~~") {
+            let start = span.start + 2;
+            start..start + source[start..span.end].find("~~")?
+        } else {
+            return Some(span);
+        };
+        if !inner.contains(&open) {
+            return Some(span);
+        }
+        let mut start = inner.start;
+        loop {
+            start = inner.end - source[start..inner.end].trim_ascii_start().len();
+            if start > open {
+                return None;
+            }
+            let label_start = if source[start..].starts_with("![") {
+                Some(start + 2)
+            } else if source[start..].starts_with('[') {
+                Some(start + 1)
+            } else {
+                None
+            };
+            // Descend through indexed labels without rebuilding their index
+            // or rescanning each label's entire contents to recognize it.
+            let end = if let Some(close) = label_start.and_then(|start| scan.square_close(start))
+                && open < close
+                && close < inner.end
+            {
+                close + 1
+            } else {
+                inline_token_fragment_end(scan, start).filter(|end| *end <= inner.end)?
+            };
+            if open < end {
+                span = start..end;
+                break;
+            }
+            start = end;
+        }
+    }
+}
+
+fn template_occupies_line(source: &str, start: usize, end: usize) -> bool {
+    let before = source[..start].rsplit(['\n', '\r']).next().unwrap();
+    let after = source[end..].split(['\n', '\r']).next().unwrap();
+    before
+        .bytes()
+        .all(|ch| ch.is_ascii_whitespace() || ch == b'>')
+        && after.trim().is_empty()
+}
+
+fn has_multiline_inline_code(source: &str) -> bool {
+    inline_fragments(source).any(|span| {
+        span.is_some_and(|span| {
+            let before = source[..span.start].rsplit(['\n', '\r']).next().unwrap();
+            let text = &source[span];
+            text.starts_with('`')
+                && text.contains(['\n', '\r'])
+                // Fenced code belongs to the container's block formatter.
+                && !(code_fence_line(text)
+                    && before.trim_matches([' ', '\t', '>']).is_empty())
+        })
+    })
+}
+
 fn inline_code_span_end(text: &str, start: usize) -> Option<usize> {
-    if !text[start..].starts_with('`') {
+    if !text[start..].starts_with('`') || escaped_at(text, start) {
         return None;
     }
-    let rest = &text[start..];
-    let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-    let marker = &rest[..tick_count];
-    let close = rest[tick_count..].find(marker)?;
-    Some(start + tick_count + close + tick_count)
+    let tick_count = delimiter_run_len_at(text, start, b'`');
+    let mut search = start + tick_count;
+    // Longer or shorter backtick runs are code-span contents, not closers.
+    while let Some(relative_close) = text[search..].find('`') {
+        let close = search + relative_close;
+        let close_count = delimiter_run_len_at(text, close, b'`');
+        search = close + close_count;
+        if close_count == tick_count {
+            return Some(search);
+        }
+    }
+    None
 }
 
 fn inline_math_span_end(text: &str, start: usize) -> Option<usize> {
@@ -3866,7 +4055,7 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
         end += ch.len_utf8();
     }
     while text[end..].starts_with('{') {
-        let brace_end = balanced_brace_end(&text[end..])?;
+        let brace_end = scan_balanced_brace_end(&text[end..], false, None)?;
         end += brace_end;
     }
     Some(end)
@@ -3924,12 +4113,7 @@ fn raw_semantics_protected_token_end(scan: &mut InlineScan<'_>, index: usize) ->
     let text = scan.text;
     let rest = &text[index..];
     match rest.as_bytes().first()? {
-        b'`' => {
-            let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-            let marker = &rest[..tick_count];
-            let close = rest[tick_count..].find(marker)?;
-            Some(index + tick_count + close + tick_count)
-        }
+        b'`' => inline_code_span_end(text, index),
         b'$' => find_unescaped(rest, 1, '$').map(|close| index + close + 1),
         b'~' => strikethrough_span_end(text, index),
         b'<' => commonmark_autolink_span_end(text, index)
@@ -4073,8 +4257,8 @@ fn citation_key_end(text: &str, mut index: usize) -> Option<usize> {
     Some(index)
 }
 
-// Ordinary matched labels need no cache. After a failed search, index the
-// remaining bracket pairs once so later openers do not rescan the same suffix.
+// Index bracket pairs once: both successful nested matches and unmatched
+// openers would otherwise rescan the same suffix.
 struct InlineScan<'a> {
     text: &'a str,
     cached_from: Option<usize>,
@@ -4094,12 +4278,10 @@ impl<'a> InlineScan<'a> {
         if self.cached_from.is_some_and(|start| label_start >= start) {
             return self.square_closes.get(&label_start).copied();
         }
-        if let Some(close) = find_balanced_square_close(self.text, label_start) {
-            return Some(close);
-        }
         let mut closes = Vec::new();
-        for (offset, ch) in self.text[label_start..].char_indices().rev() {
-            let index = label_start + offset;
+        let opening = label_start - 1;
+        for (offset, ch) in self.text[opening..].char_indices().rev() {
+            let index = opening + offset;
             if ch == '[' {
                 if let Some(&close) = closes.last() {
                     self.square_closes.insert(index + 1, close);
@@ -4112,7 +4294,7 @@ impl<'a> InlineScan<'a> {
             }
         }
         self.cached_from = Some(label_start);
-        None
+        self.square_closes.get(&label_start).copied()
     }
 }
 
@@ -4285,21 +4467,46 @@ fn find_unescaped(text: &str, mut index: usize, target: char) -> Option<usize> {
 }
 
 fn balanced_brace_end(text: &str) -> Option<usize> {
+    let template = text.starts_with("{{") || text.starts_with("{%") || text.starts_with("{#");
+    scan_balanced_brace_end(text, template, None)
+}
+
+fn scan_balanced_brace_end(
+    text: &str,
+    template_quotes: bool,
+    mut unmatched_openers: Option<&mut Vec<usize>>,
+) -> Option<usize> {
     let mut depth = 0usize;
-    let mut index = 0usize;
-    while index < text.len() {
-        let ch = text[index..].chars().next()?;
+    let mut quote = None;
+    let mut chars = text.char_indices();
+    while let Some((index, ch)) = chars.next() {
+        if let Some(delimiter) = quote {
+            if ch == '\\' && delimiter != '`' {
+                chars.next();
+            } else if ch == delimiter {
+                quote = None;
+            }
+            continue;
+        }
         match ch {
-            '{' => depth += 1,
+            '\'' | '"' | '`' if template_quotes => quote = Some(ch),
+            '{' => {
+                depth += 1;
+                if let Some(openers) = unmatched_openers.as_deref_mut() {
+                    openers.push(index);
+                }
+            }
             '}' => {
                 depth = depth.checked_sub(1)?;
+                if let Some(openers) = unmatched_openers.as_deref_mut() {
+                    openers.pop();
+                }
                 if depth == 0 {
                     return Some(index + ch.len_utf8());
                 }
             }
             _ => {}
         }
-        index += ch.len_utf8();
     }
     None
 }

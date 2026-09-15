@@ -36,6 +36,42 @@ Template delimiters mark regions Yamark must preserve because rendering can
 change the host language. The defaults are `{{ }}`, `{% %}`, `{# #}`, and
 `<% %>`.
 
+Yamark formats and wraps surrounding Markdown when a complete template pair
+fits inside one inline code span, or a balanced braced expression such as
+`{{ foo }}` fits on one source line. It does not insert wrap breaks inside
+these expressions.
+
+In paragraphs, multiline inline code keeps its existing line breaks. Its first
+line can share a line with preceding prose, and following prose can fit beside
+its last line. Lists, definition lists, blockquotes, and footnotes containing
+multiline inline code remain unchanged.
+
+Blocks mixing templates and HTML remain unchanged. A bare template expression
+on its own physical line also preserves its containing block, so an intentional
+line break around `{{ foo }}` stays in place. A line containing both a template
+and prose can reflow normally, including inside blockquotes and lists.
+
+Within a Markdown block, a template that crosses inline-token boundaries
+prevents reflow. So do multiline braced expressions. These checks do not parse
+template regions across independent Markdown blocks.
+
+Quarto is a first-class supported format. Other template systems receive
+best-effort delimiter preservation: Yamark does not interpret tag names such
+as Jinja's `raw` or Django/Twig's `verbatim`. Text between those tags is
+formatted as ordinary Markdown.
+
+Template-bearing blocks with apparent hard-break markers (two trailing spaces
+or a trailing backslash) are preserved, including their trailing whitespace.
+
+Values of `fig-alt` containing braces are not split for column wrapping.
+
+Standalone shortcode tags such as `{{% notice %}}` and `{{% /notice %}}`
+are preserved independently, including complete tags spanning multiple lines.
+The tag ends at `%}}` or `>}}` outside quoted arguments. The text between tags
+is ordinary Markdown; Yamark does not look for matching shortcode names. Use
+Markdown code fences or explicit preservation directives for content that
+must stay unchanged.
+
 | Key | Type | Effect |
 | --- | --- | --- |
 | `add_delimiters` | Array of `{ open, close }` tables. | Appends to the delimiters active at this layer, after `replace_delimiters` if both keys are present. |
