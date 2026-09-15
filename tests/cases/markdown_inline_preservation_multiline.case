@@ -1,0 +1,61 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:80 --canonical
+-- stdin
+Before `first  
+  second [x]( url )` after _outside_. Next sentence.
+
+- Before `first  
+    second [x]( url )` after _outside_. Next sentence.
+
+> Before $first  
+>   second \$ [x]( url )$ after _outside_. Next sentence.
+
+> > Before `first\
+> >   second [x]( url )` after _outside_. Next sentence.
+
+Term
+: Before `first  
+      second [x]( url )` after _outside_.
+
+[^note]: Before `first  
+    second [x]( url )` after _outside_.
+
+- Béfore <kbd>`first  
+    second [x]( url )`</kbd> after _outside_ [real](  target  ).
+
+- Before <kbd><span>$first\
+    second [x]( url )$</span></kbd> after _outside_ [real](  target  ).
+-- stdout
+Before `first  
+  second [x]( url )` after *outside*.
+Next sentence.
+
+- Before `first  
+    second [x]( url )` after *outside*.
+  Next sentence.
+
+> Before $first  
+>   second \$ [x]( url )$ after *outside*.
+> Next sentence.
+
+> > Before `first\
+> >   second [x]( url )` after *outside*.
+> > Next sentence.
+
+Term
+: Before `first  
+      second [x]( url )` after *outside*.
+
+[^note]: Before `first  
+    second [x]( url )` after *outside*.
+
+- Béfore <kbd>`first  
+    second [x]( url )`</kbd> after *outside*
+  [real](target).
+
+- Before <kbd><span>$first\
+    second [x]( url )$</span></kbd> after *outside*
+  [real](target).
+-- stderr
+-- status
+0

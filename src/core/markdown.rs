@@ -1096,7 +1096,11 @@ fn markdown_block_format_supported(
     kind: MarkdownBlockFormatKind,
 ) -> bool {
     let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
+    if matches!(
+        kind,
+        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+    ) && crate::core::wrap::markdown_reflow_changes_raw_semantics(input)
+    {
         return false;
     }
     if contains_markdown_template_span(input, &state.template_delimiters)
@@ -1227,7 +1231,11 @@ pub(crate) fn render_markdown_format(
     kind: MarkdownBlockFormatKind,
 ) -> String {
     let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
+    if matches!(
+        kind,
+        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+    ) && crate::core::wrap::markdown_reflow_changes_raw_semantics(input)
+    {
         return input.to_owned();
     }
     match kind {
@@ -2271,7 +2279,7 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
-    let mut split_link_destinations: Option<Vec<std::ops::Range<usize>>> = None;
+    let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
     for line in start + 1..end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
@@ -2308,16 +2316,15 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
             if list_item_at(text.trim_start()) {
                 return false;
             }
-            // Multiline link destinations are rare. Keep this whole-block
-            // scan off the ordinary-list hot path and cache it when needed.
+            // A continuation inside an inline fragment is paragraph content.
+            // Reuse the inline classification instead of searching raw link syntax.
             let block_start = source.lines[start].full.start();
-            let split_link_destinations = split_link_destinations.get_or_insert_with(|| {
+            let multiline_inlines = multiline_inlines.get_or_insert_with(|| {
                 let block = source.slice(Span::new(block_start, source.lines[end - 1].full.end()));
-                crate::core::wrap::markdown_multiline_link_destination_spans(block)
-                    .collect::<Vec<_>>()
+                crate::core::wrap::markdown_multiline_inline_spans(block)
             });
             let line_offset = source.lines[line].text.start() - block_start;
-            if split_link_destinations
+            if multiline_inlines
                 .iter()
                 .any(|span| span.contains(&line_offset))
             {
