@@ -41,6 +41,9 @@ fits inside one inline code span, or a balanced braced expression such as
 `{{ foo }}` fits on one source line. It does not insert wrap breaks inside
 these expressions.
 
+Multiline inline code keeps its existing line breaks. Its first line can share
+a line with preceding prose, and following prose can fit beside its last line.
+
 Supported inline HTML regions remain opaque tokens: surrounding Markdown can
 wrap before or after them, while their attributes and contents stay intact.
 Yamark does not reflow text inside these regions as Markdown prose.

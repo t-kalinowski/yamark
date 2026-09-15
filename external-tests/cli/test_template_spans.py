@@ -6,6 +6,40 @@ import pytest
 from _support import format_stdin_and_check, run_cli_case
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (
+            "`{{\n  render(customer.delivery_address)\n}}`",
+            "Before `{{\n  render(customer.delivery_address)\n}}` after the\n"
+            "template and more\nprose.\n",
+        ),
+        (
+            "`{{ render_customer_notice(\n  address\n) }}`",
+            "Before\n`{{ render_customer_notice(\n  address\n) }}` after the\n"
+            "template and more\nprose.\n",
+        ),
+        (
+            "`{{\n  render(customer.delivery_address) }}`",
+            "Before `{{\n  render(customer.delivery_address) }}`\n"
+            "after the template\nand more prose.\n",
+        ),
+    ],
+)
+def test_multiline_template_code_wraps_by_its_first_and_last_lines(
+    code: str, expected: str, newline: str
+) -> None:
+    source = f"Before   {code} after the template and more prose.\n"
+    expected = expected.replace("\n", newline)
+    for text in [source.replace("\n", newline), expected]:
+        run_cli_case(
+            "yamark format --wrap 20 --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
 @pytest.mark.parametrize(
     ("opening", "closing"),
     [

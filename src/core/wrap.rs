@@ -1679,22 +1679,30 @@ fn newline_for_join(final_newline: &str, options: FormatOptions) -> &str {
 #[derive(Debug, Clone)]
 struct InlineToken<'a> {
     text: Cow<'a, str>,
+    // Only the first line shares space with preceding prose.
     width: usize,
+    last_line_width: Option<usize>,
 }
 
 impl<'a> InlineToken<'a> {
     fn borrowed(text: &'a str) -> Self {
-        Self {
-            text: Cow::Borrowed(text),
-            width: token_width(text),
-        }
+        Self::new(Cow::Borrowed(text))
     }
 
     fn owned(text: String) -> Self {
-        let width = token_width(&text);
+        Self::new(Cow::Owned(text))
+    }
+
+    fn new(text: Cow<'a, str>) -> Self {
+        let first_line_end = text.find(['\r', '\n']).unwrap_or(text.len());
+        let width = token_width(&text[..first_line_end]);
+        let last_line_width = text
+            .rsplit_once(['\r', '\n'])
+            .map(|(_, last)| token_width(last));
         Self {
-            text: Cow::Owned(text),
+            text,
             width,
+            last_line_width,
         }
     }
 
@@ -2553,6 +2561,7 @@ pub(crate) fn balanced_brace_span_end(source: &str, index: usize) -> Option<usiz
 #[derive(Debug, Clone, Default)]
 struct TokenLine<'a> {
     tokens: Vec<InlineToken<'a>>,
+    // The column after the final token, accounting for its internal line breaks.
     width: usize,
 }
 
@@ -2570,10 +2579,9 @@ impl<'a> TokenLine<'a> {
     }
 
     fn push(&mut self, token: InlineToken<'a>) {
-        if !self.tokens.is_empty() {
-            self.width += 1;
-        }
-        self.width += token.width;
+        self.width = token
+            .last_line_width
+            .unwrap_or(self.width + usize::from(!self.tokens.is_empty()) + token.width);
         self.tokens.push(token);
     }
 
@@ -2782,9 +2790,10 @@ impl<'a> WrapLineBuffer<'a> {
             return Some(());
         }
         let previous = self.pending.as_mut()?;
+        let current_first_width = token_slice_first_line_width(&self.current.tokens);
         for split in (1..previous.len()).rev() {
             let suffix_width = previous.suffix_width(split);
-            let candidate_width = suffix_width + 1 + self.current.width;
+            let candidate_width = suffix_width + 1 + current_first_width;
             if candidate_width > self.continuation_width {
                 continue;
             }
@@ -2823,6 +2832,9 @@ fn write_wrapped_tokens_with_first_width(
         } else {
             lines.commit_current(writer)?;
             lines.current.push(token.clone());
+        }
+        if token.last_line_width.is_some() {
+            lines.width = lines.continuation_width;
         }
         lines.repair_current_line_if_markdown_block_start()?;
     }
@@ -2877,7 +2889,19 @@ fn write_markdown_token_lines(
 }
 
 fn token_slice_width(tokens: &[InlineToken<'_>]) -> usize {
-    tokens.iter().map(|token| token.width).sum::<usize>() + tokens.len().saturating_sub(1)
+    tokens.iter().enumerate().fold(0, |width, (index, token)| {
+        token
+            .last_line_width
+            .unwrap_or(width + usize::from(index > 0) + token.width)
+    })
+}
+
+fn token_slice_first_line_width(tokens: &[InlineToken<'_>]) -> usize {
+    let end = tokens
+        .iter()
+        .position(|token| token.last_line_width.is_some())
+        .map_or(tokens.len(), |index| index + 1);
+    tokens[..end].iter().map(|token| token.width).sum::<usize>() + end.saturating_sub(1)
 }
 
 fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>]) -> bool {

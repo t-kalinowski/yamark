@@ -27,12 +27,10 @@ render_customer_notice(
 )
 }}
 
-This paragraph has multiline code
-`{{
+This paragraph has multiline code `{{
   render_customer_notice( customer.account_name,  customer.preferred_delivery_address )
-}}`
-followed by ordinary prose that still
-wraps at the requested column.
+}}` followed by ordinary prose that
+still wraps at the requested column.
 -- stderr
 -- status
 0
