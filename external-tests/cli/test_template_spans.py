@@ -8,12 +8,23 @@ from _support import format_stdin_and_check, run_cli_case
 
 @pytest.mark.parametrize(
     ("opening", "closing"),
-    [("{{% notice %}}", "{{% /notice %}}"), ("{{< notice >}}", "{{< /notice >}}")],
+    [
+        ("{{% notice %}}", "{{% /notice %}}"),
+        ("{{< notice >}}", "{{< /notice >}}"),
+        ("{{% notice %}}", "{{% unrelated %}}"),
+    ],
 )
-def test_shortcode_regions_remain_unchanged(opening: str, closing: str) -> None:
-    region = opening + "\nKeep   this body\nexactly as authored.\n" + closing + "\n"
-    source = "Before\nthis region.\n\n" + region + "\nAfter\nthis region.\n"
-    expected = "Before this region.\n\n" + region + "\nAfter this region.\n"
+def test_shortcode_tags_leave_intervening_markdown_to_format(
+    opening: str, closing: str
+) -> None:
+    source = (
+        f"{opening}\nFormat   this paragraph\nas Markdown.\n\n"
+        f"#   A heading\n\n{closing}\nFollowing\nprose.\n"
+    )
+    expected = (
+        f"{opening}\nFormat this paragraph as Markdown.\n\n"
+        f"# A heading\n\n{closing}\nFollowing prose.\n"
+    )
     for text in [source, expected]:
         run_cli_case(
             "yamark format --wrap sentence --stdin-file-path input.md --verify",

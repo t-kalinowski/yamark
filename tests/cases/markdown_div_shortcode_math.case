@@ -30,7 +30,7 @@ This paragraph is intentionally long enough to be considered for wrapping before
 This paragraph is intentionally long enough to be considered for wrapping after an opaque shortcode block.
 
 {{% notice %}}
-Do   not format this body.
+Format   this body as Markdown.
 {{% /notice %}}
 
 $$
@@ -93,7 +93,7 @@ enough to be considered for wrapping
 after an opaque shortcode block.
 
 {{% notice %}}
-Do   not format this body.
+Format this body as Markdown.
 {{% /notice %}}
 
 $$

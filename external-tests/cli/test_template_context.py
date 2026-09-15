@@ -259,25 +259,14 @@ def test_balanced_templates_crossing_child_blocks_are_preserved(
     )
 
 
-@pytest.mark.parametrize(
-    "region",
-    [
-        "{% raw %}keep   this{% endraw %}",
-        "{%- raw -%}keep   this{%- endraw -%}",
-        "{%raw%}keep   this\nand   this{%endraw%}",
-        "{% verbatim %}keep   this{% endverbatim %}",
-        "{%- verbatim -%}keep   this{%- endverbatim -%}",
-        "{% verbatim example %}keep   this{% endverbatim example %}",
-        "keep   this{% endverbatim example %}",
-    ],
-)
+@pytest.mark.parametrize("tag", ["raw", "verbatim", "verbatim example"])
 @pytest.mark.parametrize("canonical", ["", "--canonical"])
-def test_literal_template_region_preserves_its_markdown_block(
-    region: str, canonical: str
+def test_template_tag_names_do_not_change_markdown_formatting(
+    tag: str, canonical: str
 ) -> None:
-    paragraph = f"Before\n{region}\nafter.\n"
-    source = paragraph + "\nFollowing\nprose.\n"
-    expected = paragraph + "\nFollowing prose.\n"
+    opening, closing = f"{{% {tag} %}}", f"{{% end{tag} %}}"
+    source = f"Before\n{opening}keep   this{closing}\nafter.\n"
+    expected = f"Before {opening}keep this{closing} after.\n"
     for text in [source, expected]:
         run_cli_case(
             f"yamark format {canonical} --wrap sentence --stdin-file-path input.md --verify",
@@ -287,7 +276,7 @@ def test_literal_template_region_preserves_its_markdown_block(
 
 
 @pytest.mark.parametrize("tag", ["raw", "verbatim", "verbatim example"])
-def test_literal_template_region_inside_inline_code_allows_wrapping(tag: str) -> None:
+def test_template_tags_inside_inline_code_allow_wrapping(tag: str) -> None:
     code = f"`{{% {tag} %}}keep   this{{% end{tag} %}}`"
     source = f"Before\n{code}\nafter.\n"
     expected = f"Before {code} after.\n"

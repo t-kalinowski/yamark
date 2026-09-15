@@ -46,16 +46,23 @@ wrap before or after them, while their attributes and contents stay intact.
 Yamark does not reflow text inside these regions as Markdown prose.
 
 Within a Markdown block, a template that starts inside a code span and ends
-outside it prevents reflow. So do multiline braced expressions and
-`raw`, `endraw`, `verbatim`, or `endverbatim` template directives outside
-inline code, including named verbatim boundaries. These checks do not parse
-template regions across independent Markdown blocks.
+outside it prevents reflow. So do multiline braced expressions. These checks
+do not parse template regions across independent Markdown blocks.
+
+Quarto is a first-class supported format. Other template systems receive
+best-effort delimiter preservation: Yamark does not interpret tag names such
+as Jinja's `raw` or Django/Twig's `verbatim`. Text between those tags is
+formatted as ordinary Markdown.
 
 Template-bearing blocks with apparent hard-break markers (two trailing spaces
 or a trailing backslash) are preserved, including their trailing whitespace.
 
 Values of `fig-alt` containing braces are not split for column wrapping.
-Standalone Hugo shortcode regions remain unchanged.
+
+Standalone shortcode lines such as `{{% notice %}}` and `{{% /notice %}}`
+are preserved independently. The text between them is ordinary Markdown;
+Yamark does not look for matching shortcode names. Use Markdown code fences
+or explicit preservation directives for content that must stay unchanged.
 
 | Key | Type | Effect |
 | --- | --- | --- |

@@ -1016,14 +1016,16 @@ Expected behavior:
 
 Recognize shortcode and include lines as supported opaque block nodes. Preserve
 the shortcode line exactly. Do not let a shortcode block cause adjacent
-paragraphs, lists, or divs to be copied. Paired shortcodes should preserve their
-body unless a later feature explicitly models the body as Markdown.
+paragraphs, lists, or divs to be copied. Shortcode names do not define Markdown
+regions: format the text between shortcode lines as ordinary Markdown, without
+looking for a matching closing name. Use Markdown code fences or explicit
+preservation directives for content that should remain unchanged.
 
 Implementation checklist:
 
 - [x] Parse single-line shortcode blocks.
-- [x] Parse paired shortcode blocks.
-- [x] Preserve shortcode internals byte-for-byte.
+- [x] Treat opening and closing shortcode lines independently.
+- [x] Preserve each shortcode line byte-for-byte.
 - [x] Keep surrounding Markdown format decisions independent.
 
 Example 1:

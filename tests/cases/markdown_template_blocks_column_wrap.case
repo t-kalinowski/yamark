@@ -8,15 +8,17 @@ This paragraph before the template blocks is long enough to wrap at the requeste
 The paragraph between these template blocks also has enough ordinary prose to wrap across several lines.
 
 {{% notice title="An overwide template block title that must remain exactly as authored" %}}
-Keep   the original spacing and this deliberately overwide body line inside the shortcode region.
+This paragraph between the tags has irregular   spacing and enough ordinary prose to wrap at the requested column.
 
-A second   paragraph in the same region also stays exactly as authored.
+A second   paragraph between the tags also wraps as ordinary Markdown.
 {{% /notice %}}
 
 {{< highlight go >}}
+```go
 func main() {
-    fmt.Println("This overwide string stays exactly as authored inside the raw shortcode.")
+    fmt.Println("This overwide string is preserved by the Markdown code fence.")
 }
+```
 {{< /highlight >}}
 
 This paragraph after the template region is long enough to wrap at the requested column.
@@ -32,15 +34,20 @@ blocks also has enough ordinary prose to
 wrap across several lines.
 
 {{% notice title="An overwide template block title that must remain exactly as authored" %}}
-Keep   the original spacing and this deliberately overwide body line inside the shortcode region.
+This paragraph between the tags has
+irregular spacing and enough ordinary
+prose to wrap at the requested column.
 
-A second   paragraph in the same region also stays exactly as authored.
+A second paragraph between the tags also
+wraps as ordinary Markdown.
 {{% /notice %}}
 
 {{< highlight go >}}
+```go
 func main() {
-    fmt.Println("This overwide string stays exactly as authored inside the raw shortcode.")
+    fmt.Println("This overwide string is preserved by the Markdown code fence.")
 }
+```
 {{< /highlight >}}
 
 This paragraph after the template region

@@ -100,21 +100,6 @@ fn template_span_in_source(
             return true;
         }
         if mode == TemplateSpanMode::Markdown {
-            if delimiter.open == "{%"
-                && delimiter.close == "%}"
-                && matches!(
-                    source[content_start..close]
-                        .trim()
-                        .trim_matches(['-', '+'])
-                        .split_whitespace()
-                        .next(),
-                    Some("raw" | "endraw" | "verbatim" | "endverbatim")
-                )
-            {
-                // Separate brace tokens do not protect a literal region's
-                // payload. Keep the containing Markdown block opaque.
-                return true;
-            }
             while blocks.peek().is_some_and(|block| block.end <= open) {
                 blocks.next();
             }
@@ -124,7 +109,8 @@ fn template_span_in_source(
                 && template_end <= end
                 && !source[open..end].contains(['\n', '\r'])
             {
-                // Each block and physical line must see the complete protected token.
+                // Protect the token's contents without interpreting template tag names.
+                // Each block and physical line must see the complete token.
                 search_start = end;
                 continue;
             }
