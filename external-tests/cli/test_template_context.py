@@ -12,6 +12,8 @@ from _support import run_cli_case
         '<span title="> {{ foo }} _keep_"/>',
         '<span title="> {{ foo }}">keep   _this_</span>',
         '<span title="> </span> {{ foo }} _keep_">keep   _this_</span>',
+        '<span>{{ "</span>" ~ "keep   _this_" }}</span>',
+        '<span>{{ "<span>" ~ "keep   _this_" }}</span>',
         "<span><span>x</span>keep   _this_ {{ foo }}</span>",
         "<span><SPAN><span>x</span></SPAN>keep   _this_ {{ foo }}</sPaN>",
         '<span><span title="> </span>">x</span>keep   _this_ {{ foo }}</span>',
@@ -449,19 +451,14 @@ def test_code_spans_do_not_cross_container_blocks(source: str) -> None:
 
 
 @pytest.mark.parametrize("prefix", ["- ", "> "])
-def test_code_spans_can_cross_lines_in_one_container_paragraph(prefix: str) -> None:
+def test_multiline_template_code_keeps_its_container_paragraph(prefix: str) -> None:
     continuation = "  " if prefix == "- " else prefix
     source = (
         f"{prefix}First\n{continuation}sentence with `<% keep\n"
         f"{continuation}this %>`. Second\n{continuation}sentence.\n"
     )
-    expected = (
-        f"{prefix}First sentence with `<% keep this %>`.\n"
-        f"{continuation}Second sentence.\n"
+    run_cli_case(
+        "yamark format --wrap sentence --stdin-file-path input.md --verify",
+        stdin=source,
+        stdout=source,
     )
-    for text in [source, expected]:
-        run_cli_case(
-            "yamark format --wrap sentence --stdin-file-path input.md --verify",
-            stdin=text,
-            stdout=expected,
-        )

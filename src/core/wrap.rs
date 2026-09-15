@@ -658,6 +658,9 @@ pub(crate) fn markdown_list_format_supported(source: &str, options: FormatOption
 }
 
 fn try_format_markdown_list(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     let lines = markdown_lines(source).collect::<Vec<_>>();
     if list_needs_rich_format(&lines) {
         try_format_rich_markdown_list(&lines, options)
@@ -951,6 +954,9 @@ pub(crate) fn markdown_definition_list_format_supported(
 }
 
 fn try_format_markdown_definition_list(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     let lines = markdown_lines(source).collect::<Vec<_>>();
     let mut out = String::new();
     let mut index = 0usize;
@@ -1006,6 +1012,9 @@ pub(crate) fn markdown_blockquote_format_supported(source: &str, options: Format
 }
 
 fn try_format_markdown_blockquote(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     try_format_simple_markdown_blockquote(source, options)
         .or_else(|| try_format_rich_markdown_blockquote(source, options))
 }
@@ -1897,9 +1906,14 @@ fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> 
     let mut depth = 1usize;
     let mut search_start = start;
     while search_start < source.len() {
-        let relative = source[search_start..].find('<')?;
+        let relative = source[search_start..].find(['<', '{'])?;
         let candidate_start = search_start + relative;
         search_start = candidate_start + 1;
+        // Tag spellings inside a protected token cannot close the HTML region.
+        if let Some(end) = balanced_brace_span_end(source, candidate_start) {
+            search_start = end;
+            continue;
+        }
         if let Some(end) = raw_inline_html_span_end(source, candidate_start) {
             search_start = end;
             continue;
@@ -3807,6 +3821,14 @@ fn strikethrough_span_end(text: &str, start: usize) -> Option<usize> {
 pub(crate) enum MarkdownInlineContext {
     Code,
     RawHtml,
+}
+
+fn has_multiline_inline_code(source: &str) -> bool {
+    // Container formatters normalize physical lines independently, so they
+    // cannot preserve a code token that spans multiple lines.
+    markdown_inline_context_spans(source).any(|(span, context)| {
+        context == MarkdownInlineContext::Code && source[span].contains(['\n', '\r'])
+    })
 }
 
 pub(crate) fn markdown_inline_context_spans(

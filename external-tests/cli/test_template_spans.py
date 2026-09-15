@@ -6,6 +6,33 @@ import pytest
 from _support import format_stdin_and_check, run_cli_case
 
 
+@pytest.mark.parametrize(
+    "container",
+    [
+        "> Before `{{\n> keep   _this_\n> }}` after.\n",
+        "> > Before `{{\n> > keep   _this_\n> > }}` after.\n",
+        "- Before `{{\n  keep   _this_\n  }}` after.\n",
+        "Term\n: Before `{{\n    keep   _this_\n    }}` after.\n",
+        "> Before `code\n> keep   _this_` after.\n",
+    ],
+    ids=["blockquote", "nested-blockquote", "list", "definition", "ordinary-code"],
+)
+@pytest.mark.parametrize("wrap", ["sentence", "20"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_containers_preserve_multiline_code(
+    container: str, wrap: str, newline: str
+) -> None:
+    source = f"Leading\nprose.\n\n{container}\nFollowing\nprose.\n"
+    expected = f"Leading prose.\n\n{container}\nFollowing prose.\n"
+    expected = expected.replace("\n", newline)
+    for text in [source.replace("\n", newline), expected]:
+        run_cli_case(
+            f"yamark format --canonical --wrap {wrap} --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 @pytest.mark.parametrize(
     ("code", "expected"),
