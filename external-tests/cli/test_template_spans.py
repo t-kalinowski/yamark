@@ -175,6 +175,8 @@ def test_wrap_around_template_text_in_inline_code(
         "`{{ café   λ }}`",
         "`{{ keep   this }}\\`",
         "`{{ keep }}` and `{% more %}`",
+        '``{{< note text="}}` keep   _this_" >}}``',
+        '`{{< note text="}} keep   _this_" >}}`',
     ],
 )
 @pytest.mark.parametrize("canonical", ["", "--canonical"])

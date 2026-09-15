@@ -1,8 +1,9 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::wrap::{
-    MarkdownInlineContext, balanced_brace_span_end, has_hard_break, markdown_inline_block_ranges,
-    markdown_inline_context_spans,
+    MarkdownInlineContext, balanced_brace_span_end, cached_balanced_brace_span_end, has_hard_break,
+    markdown_inline_block_ranges, markdown_inline_context_spans,
 };
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -58,6 +59,7 @@ fn template_span_in_source(
         return false;
     }
     let mut search_start = 0usize;
+    let mut unmatched_braces = HashSet::new();
     let mut inline_spans = markdown_inline_context_spans(source).peekable();
     let mut blocks = std::iter::once_with(|| markdown_inline_block_ranges(source))
         .flatten()
@@ -85,6 +87,10 @@ fn template_span_in_source(
                 && span.start <= open
             {
                 if *context == MarkdownInlineContext::Code {
+                    // A quoted delimiter may precede the real braced-template close.
+                    let template_end =
+                        cached_balanced_brace_span_end(source, open, &mut unmatched_braces)
+                            .map_or(template_end, |end| end.max(template_end));
                     if template_end > span.end {
                         return true;
                     }

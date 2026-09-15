@@ -139,6 +139,10 @@ def test_template_blocks_with_apparent_hard_breaks_are_preserved(
         "`<% result = `printf 'keep   this'` %>`",
         "`{{ printf `keep   this` }}`",
         "`{{ first }} {{ printf `keep   this` }}`",
+        '`{{< note text="}}` keep   _this_" >}}',
+        "`{{% note text='}}` keep   _this_' %}}",
+        '`{{ "}}` keep   _this_" }}',
+        '`{% set text = "%}` keep   _this_" %}',
     ],
 )
 @pytest.mark.parametrize("canonical", ["", "--canonical"])

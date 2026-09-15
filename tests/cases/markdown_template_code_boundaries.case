@@ -1,0 +1,32 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical --verify
+-- stdin
+Before
+`{{< note text="}}` keep   _this_" >}}
+after.
+
+Before
+`{{% note text='}}` keep   _this_' %}}
+after.
+
+Before
+``{{< note text="}}` keep   _this_" >}}``
+after.
+
+Following
+_prose_.
+-- stdout
+Before
+`{{< note text="}}` keep   _this_" >}}
+after.
+
+Before
+`{{% note text='}}` keep   _this_' %}}
+after.
+
+Before ``{{< note text="}}` keep   _this_" >}}`` after.
+
+Following *prose*.
+-- stderr
+-- status
+0
