@@ -1,0 +1,50 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+Before
+`first  
+  second {{< include file >}}` after _outside_.
+
+- Before
+  `first  
+    second {{< include file >}}` after _outside_.
+
+> Before
+> `first  
+>   second {{< include file >}}` after _outside_.
+
+Before
+`[x]( url ) {{ value }}` after _outside_.
+
+Before `first  
+  {{ value }} second` after _outside_.
+
+- {{ render_item() }}
+  Follow-up prose.
+
+> {{ render_item() }}
+> Follow-up prose.
+-- stdout
+Before `first  
+  second {{< include file >}}` after *outside*.
+
+- Before `first  
+    second {{< include file >}}` after *outside*.
+
+> Before `first  
+>   second {{< include file >}}` after *outside*.
+
+Before
+`[x]( url ) {{ value }}` after _outside_.
+
+Before `first  
+  {{ value }} second` after _outside_.
+
+- {{ render_item() }}
+  Follow-up prose.
+
+> {{ render_item() }}
+> Follow-up prose.
+-- stderr
+-- status
+0

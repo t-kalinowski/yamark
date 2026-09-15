@@ -1,0 +1,35 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Before
+`[x](< url >)` after.
+
+Before
+`[x](  url  )` after [real](  target  ).
+
+Before
+$[x](  url  )$ after [real](  target  ).
+
+- Before
+  `[x](  url  )` after [real](  target  ).
+
+> Before
+> $[x](  url  )$ after [real](  target  ).
+
+Before
+`[x]( url ) {{< include file >}}` after.
+-- stdout
+Before `[x](< url >)` after.
+
+Before `[x](  url  )` after [real](target).
+
+Before $[x](  url  )$ after [real](target).
+
+- Before `[x](  url  )` after [real](target).
+
+> Before $[x](  url  )$ after [real](target).
+
+Before `[x]( url ) {{< include file >}}` after.
+-- stderr
+-- status
+0

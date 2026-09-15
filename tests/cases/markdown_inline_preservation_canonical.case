@@ -1,0 +1,41 @@
+-- args
+format --stdin-file-path input.md --wrap none --canonical
+-- stdin
+# _Before `_a_ [x]( url )` after_
+
+# _Before $x + _a_ [x]( url )$ after_
+
+Before
+$a \$ _literal_ [x](  url  )$ after _outside_.
+
+- Before
+  `  [x]( url ) \\ _literal_  ` after _outside_.
+
+> Before
+> $a \$ _literal_ [x](  url  )$ after _outside_.
+
+Before _with `[x]( url )` inside_ after.
+
+Before ~~with `[x]( url )` and [real](  target  )~~ after.
+
+Before <kbd>`[x]( url )` and [real](  target  )</kbd> after.
+-- stdout
+# *Before `_a_ [x]( url )` after*
+
+# *Before $x + _a_ [x]( url )$ after*
+
+Before
+$a \$ _literal_ [x](  url  )$ after *outside*.
+
+- Before `  [x]( url ) \\ _literal_  ` after *outside*.
+
+> Before $a \$ _literal_ [x](  url  )$ after *outside*.
+
+Before *with `[x]( url )` inside* after.
+
+Before ~~with `[x]( url )` and [real](target)~~ after.
+
+Before <kbd>`[x]( url )` and [real](target)</kbd> after.
+-- stderr
+-- status
+0

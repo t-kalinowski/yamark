@@ -29,6 +29,21 @@ fn cli_cases() {
         command.write_stdin(case.stdin);
         let assert = command.assert().code(case.status);
         let output = assert.get_output();
+        if std::env::var_os("YAMARK_UPDATE_CASES").is_some() {
+            let original = fs::read_to_string(&path).unwrap();
+            let (input, _) = original.split_once("-- stdout\n").unwrap();
+            fs::write(
+                &path,
+                format!(
+                    "{input}-- stdout\n{}-- stderr\n{}-- status\n{}\n",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr),
+                    case.status,
+                ),
+            )
+            .unwrap();
+            continue;
+        }
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             case.stdout,
