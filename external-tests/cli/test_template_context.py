@@ -14,6 +14,7 @@ from _support import run_cli_case
         '<span title="> </span> {{ foo }} _keep_">keep   _this_</span>',
         '<span>{{ "</span>" ~ "keep   _this_" }}</span>',
         '<span>{{ "<span>" ~ "keep   _this_" }}</span>',
+        '<span>{ {{ "{" ~ "</span>" ~ "keep   _this_" }}</span>',
         "<span><span>x</span>keep   _this_ {{ foo }}</span>",
         "<span><SPAN><span>x</span></SPAN>keep   _this_ {{ foo }}</sPaN>",
         '<span><span title="> </span>">x</span>keep   _this_ {{ foo }}</span>',

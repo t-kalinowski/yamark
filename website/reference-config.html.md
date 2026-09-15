@@ -43,8 +43,8 @@ these expressions.
 
 In paragraphs, multiline inline code keeps its existing line breaks. Its first
 line can share a line with preceding prose, and following prose can fit beside
-its last line. Lists, definition lists, and blockquotes containing multiline
-inline code remain unchanged.
+its last line. Lists, definition lists, blockquotes, and footnotes containing
+multiline inline code remain unchanged.
 
 Supported inline HTML regions remain opaque tokens: surrounding Markdown can
 wrap before or after them, while their attributes and contents stay intact.

@@ -2,7 +2,7 @@ use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use unicode_width::UnicodeWidthStr;
 
 pub fn format_markdown_paragraph(source: &str, options: FormatOptions) -> String {
@@ -1547,6 +1547,9 @@ fn footnote_definition(source: &str) -> bool {
 }
 
 fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<String> {
+    if has_multiline_inline_code(source) {
+        return None;
+    }
     let (body, newline) = strip_final_newline(source);
     let mut lines = markdown_line_bodies(body);
     let first_line = lines.next()?;
@@ -1905,12 +1908,15 @@ fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> 
     // A child's closing tag must not end the enclosing opaque region.
     let mut depth = 1usize;
     let mut search_start = start;
+    let mut unmatched_braces = HashSet::new();
     while search_start < source.len() {
         let relative = source[search_start..].find(['<', '{'])?;
         let candidate_start = search_start + relative;
         search_start = candidate_start + 1;
         // Tag spellings inside a protected token cannot close the HTML region.
-        if let Some(end) = balanced_brace_span_end(source, candidate_start) {
+        if let Some(end) =
+            cached_balanced_brace_span_end(source, candidate_start, &mut unmatched_braces)
+        {
             search_start = end;
             continue;
         }
@@ -2570,6 +2576,34 @@ pub(crate) fn balanced_brace_span_end(source: &str, index: usize) -> Option<usiz
         return None;
     }
     balanced_brace_end(&source[index..]).map(|end| index + end)
+}
+
+fn cached_balanced_brace_span_end(
+    source: &str,
+    index: usize,
+    unmatched: &mut HashSet<(usize, bool)>,
+) -> Option<usize> {
+    let text = &source[index..];
+    if !text.starts_with('{') || escaped_at(source, index) {
+        return None;
+    }
+    let template_quotes =
+        text.starts_with("{{") || text.starts_with("{%") || text.starts_with("{#");
+    if unmatched.contains(&(index, template_quotes)) {
+        return None;
+    }
+    let mut openers = Vec::new();
+    let end = scan_balanced_brace_end(text, template_quotes, Some(&mut openers));
+    if end.is_none() {
+        // Every still-open brace failed under the same quoting rules. Reuse
+        // those failures without hiding balanced tokens later in the region.
+        unmatched.extend(
+            openers
+                .into_iter()
+                .map(|open| (index + open, template_quotes)),
+        );
+    }
+    end.map(|end| index + end)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -4148,7 +4182,7 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
         end += ch.len_utf8();
     }
     while text[end..].starts_with('{') {
-        let brace_end = scan_balanced_brace_end(&text[end..], false)?;
+        let brace_end = scan_balanced_brace_end(&text[end..], false, None)?;
         end += brace_end;
     }
     Some(end)
@@ -4593,10 +4627,14 @@ fn find_unescaped(text: &str, mut index: usize, target: char) -> Option<usize> {
 
 fn balanced_brace_end(text: &str) -> Option<usize> {
     let template = text.starts_with("{{") || text.starts_with("{%") || text.starts_with("{#");
-    scan_balanced_brace_end(text, template)
+    scan_balanced_brace_end(text, template, None)
 }
 
-fn scan_balanced_brace_end(text: &str, template_quotes: bool) -> Option<usize> {
+fn scan_balanced_brace_end(
+    text: &str,
+    template_quotes: bool,
+    mut unmatched_openers: Option<&mut Vec<usize>>,
+) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote = None;
     let mut chars = text.char_indices();
@@ -4611,9 +4649,17 @@ fn scan_balanced_brace_end(text: &str, template_quotes: bool) -> Option<usize> {
         }
         match ch {
             '\'' | '"' | '`' if template_quotes => quote = Some(ch),
-            '{' => depth += 1,
+            '{' => {
+                depth += 1;
+                if let Some(openers) = unmatched_openers.as_deref_mut() {
+                    openers.push(index);
+                }
+            }
             '}' => {
                 depth = depth.checked_sub(1)?;
+                if let Some(openers) = unmatched_openers.as_deref_mut() {
+                    openers.pop();
+                }
                 if depth == 0 {
                     return Some(index + ch.len_utf8());
                 }

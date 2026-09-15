@@ -91,6 +91,27 @@ def test_incomplete_html_before_templates_scales_with_input_size(
     )
 
 
+@pytest.mark.parametrize("opening", ["{ ", "{{ "])
+def test_unmatched_braces_in_inline_html_scale_with_input_size(
+    tmp_path: Path, opening: str
+) -> None:
+    durations = []
+    for count in [2000, 8000]:
+        text = "Before <span>" + opening * count + "</span>\n"
+        source = tmp_path / f"html-braces-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == "Before\n<span>" + opening * count + "</span>\n"
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "unmatched braces in inline HTML should scale with input size: "
+        f"2000 openers used {small:.6f}s CPU, 8000 openers used {large:.6f}s CPU"
+    )
+
+
 def measure_formatting_cpu(source: Path) -> tuple[float, str]:
     log_path = source.with_suffix(".log")
 

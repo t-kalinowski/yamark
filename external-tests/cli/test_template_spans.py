@@ -13,9 +13,19 @@ from _support import format_stdin_and_check, run_cli_case
         "> > Before `{{\n> > keep   _this_\n> > }}` after.\n",
         "- Before `{{\n  keep   _this_\n  }}` after.\n",
         "Term\n: Before `{{\n    keep   _this_\n    }}` after.\n",
+        "[^n]: Before `{{\n  keep   _this_\n  }}` after.\n",
+        "[^n]: Before `{{\n    keep   _this_\n    }}` after.\n",
         "> Before `code\n> keep   _this_` after.\n",
     ],
-    ids=["blockquote", "nested-blockquote", "list", "definition", "ordinary-code"],
+    ids=[
+        "blockquote",
+        "nested-blockquote",
+        "list",
+        "definition",
+        "footnote",
+        "indented-footnote",
+        "ordinary-code",
+    ],
 )
 @pytest.mark.parametrize("wrap", ["sentence", "20"])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
