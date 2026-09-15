@@ -3241,10 +3241,11 @@ fn emphasis_span_at(text: &str, start: usize) -> Option<EmphasisSpan> {
     while search < text.len() {
         // A delimiter inside code, math, or a link cannot close surrounding
         // emphasis. Use the same protected fragments as the inline pipeline.
-        if let Some(end) = inline::immutable_span_end(&mut scan, search)
-            .or_else(|| link_or_bracket_token_end(&mut scan, search))
-            .or_else(|| paired_inline_html_span_end(text, search))
-            .or_else(|| inline_html_tag_span_end(text, search))
+        if !escaped_at(text, search)
+            && let Some(end) = inline::immutable_span_end(&mut scan, search)
+                .or_else(|| link_or_bracket_token_end(&mut scan, search))
+                .or_else(|| paired_inline_html_span_end(text, search))
+                .or_else(|| inline_html_tag_span_end(text, search))
         {
             search = end;
             continue;

@@ -19,6 +19,19 @@ Before _with `[x]( url )` inside_ after.
 Before ~~with `[x]( url )` and [real](  target  )~~ after.
 
 Before <kbd>`[x]( url )` and [real](  target  )</kbd> after.
+
+# _before \` literal_ after `code`
+
+_before \[ literal_ after ](target).
+
+- _before \` literal_ after `code`
+
+> _before \[ literal_ after ] text.
+
+firstsecond `ab` $cd$
+
+first  
+second
 -- stdout
 # *Before `_a_ [x]( url )` after*
 
@@ -36,6 +49,19 @@ Before *with `[x]( url )` inside* after.
 Before ~~with `[x]( url )` and [real](target)~~ after.
 
 Before <kbd>`[x]( url )` and [real](target)</kbd> after.
+
+# *before \` literal* after `code`
+
+*before \[ literal* after ](target).
+
+- *before \` literal* after `code`
+
+> *before \[ literal* after ] text.
+
+firstsecond `ab` $cd$
+
+first \
+second
 -- stderr
 -- status
 0

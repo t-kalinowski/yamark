@@ -19,6 +19,12 @@ Term
 
 [^note]: Before `first  
     second [x]( url )` after _outside_.
+
+- Béfore <kbd>`first  
+    second [x]( url )`</kbd> after _outside_ [real](  target  ).
+
+- Before <kbd><span>$first\
+    second [x]( url )$</span></kbd> after _outside_ [real](  target  ).
 -- stdout
 Before `first  
   second [x]( url )` after *outside*.
@@ -42,6 +48,14 @@ Term
 
 [^note]: Before `first  
     second [x]( url )` after *outside*.
+
+- Béfore <kbd>`first  
+    second [x]( url )`</kbd> after *outside*
+  [real](target).
+
+- Before <kbd><span>$first\
+    second [x]( url )$</span></kbd> after *outside*
+  [real](target).
 -- stderr
 -- status
 0

@@ -174,3 +174,105 @@ fn inline_pipeline_preserves_definition_and_footnote_literals() {
         }
     }
 }
+
+#[test]
+fn inline_pipeline_preserves_multiline_literals_nested_in_markup() {
+    for (opening, closing) in [("<kbd>", "</kbd>"), ("<kbd><span>", "</span></kbd>")] {
+        for literal in [
+            "`first  \n  second [x]( url )`",
+            "$first\\\n  second [x]( url )$",
+            "`first\t\n  second {{< include file >}}`",
+        ] {
+            for (first, continuation) in [("", ""), ("- ", "  "), ("> ", "> ")] {
+                let literal = literal.replace('\n', &format!("\n{continuation}"));
+                let source = format!(
+                    "{first}Béfore {opening}{literal}{closing} after _outside_ [real](  target  ).\n"
+                );
+                for wrap in ["none", "paragraph", "sentence", "120", "sentence:120"] {
+                    for canonical in [false, true] {
+                        let outside = if canonical { "*outside*" } else { "_outside_" };
+                        let expected = format!(
+                            "{first}Béfore {opening}{literal}{closing} after {outside} [real](target).\n"
+                        );
+                        assert_format(&source, &expected, wrap, canonical);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn inline_pipeline_normalizes_editable_form_feeds() {
+    for (first, continuation) in [("", ""), ("- ", "  "), ("> ", "> ")] {
+        for gap in ["\u{000c}", " \u{000c}\t", "\u{000c}\n"] {
+            let gap = gap.replace('\n', &format!("\n{continuation}"));
+            let source = format!("{first}first{gap}second `a\u{000c}b` $c\u{000c}d$\n");
+            for wrap in ["none", "paragraph", "sentence", "80", "sentence:80"] {
+                let expected = if wrap == "none" && first.is_empty() {
+                    source.clone()
+                } else {
+                    format!("{first}first second `a\u{000c}b` $c\u{000c}d$\n")
+                };
+                for canonical in [false, true] {
+                    assert_format(&source, &expected, wrap, canonical);
+                }
+            }
+        }
+    }
+
+    // With wrapping disabled, retain form feeds even at physical line ends.
+    // Space and backslash hard breaks still receive their existing normalization.
+    for (source, preserved, reflowed) in [
+        ("first\u{000c}", "first\u{000c}\n", "first\n"),
+        (
+            "first \u{000c}\t\nsecond\n",
+            "first \u{000c}\nsecond\n",
+            "first second\n",
+        ),
+        (
+            "first\u{000c}  \nsecond\n",
+            "first\u{000c} \\\nsecond\n",
+            "first \\\nsecond\n",
+        ),
+        (
+            "first\u{000c}\\\nsecond\n",
+            "first\u{000c}\\\nsecond\n",
+            "first\\\nsecond\n",
+        ),
+    ] {
+        assert_format(source, preserved, "none", false);
+        for wrap in ["paragraph", "sentence", "80", "sentence:80"] {
+            assert_format(source, reflowed, wrap, false);
+        }
+    }
+}
+
+#[test]
+fn inline_pipeline_canonical_emphasis_respects_escaped_openers() {
+    for (source, expected) in [
+        (
+            "_before \\` literal_ after `code`\n",
+            "*before \\` literal* after `code`\n",
+        ),
+        (
+            "_before \\[ literal_ after ](target).\n",
+            "*before \\[ literal* after ](target).\n",
+        ),
+        (
+            "_before \\[ literal_ after ] text.\n",
+            "*before \\[ literal* after ] text.\n",
+        ),
+    ] {
+        for prefix in ["", "# ", "- ", "> "] {
+            for wrap in ["none", "paragraph", "sentence", "80", "sentence:80"] {
+                assert_format(
+                    &format!("{prefix}{source}"),
+                    &format!("{prefix}{expected}"),
+                    wrap,
+                    true,
+                );
+            }
+        }
+    }
+}

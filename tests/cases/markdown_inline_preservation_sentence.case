@@ -18,6 +18,12 @@ $[x](  url  )$ after [real](  target  ).
 
 Before
 `[x]( url ) {{< include file >}}` after.
+
+firstsecond `ab` $cd$
+
+- firstsecond `ab` $cd$
+
+> firstsecond `ab` $cd$
 -- stdout
 Before `[x](< url >)` after.
 
@@ -30,6 +36,12 @@ Before $[x](  url  )$ after [real](target).
 > Before $[x](  url  )$ after [real](target).
 
 Before `[x]( url ) {{< include file >}}` after.
+
+first second `ab` $cd$
+
+- first second `ab` $cd$
+
+> first second `ab` $cd$
 -- stderr
 -- status
 0

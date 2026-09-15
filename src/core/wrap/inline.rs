@@ -183,19 +183,22 @@ impl<'a> InlineContent<'a> {
     }
 
     pub(super) fn multiline_spans(&self, source: &str) -> Vec<std::ops::Range<usize>> {
-        self.parts
-            .iter()
-            .filter_map(|part| {
-                let (InlinePart::Protected(text) | InlinePart::Link(text, _)) = part else {
-                    return None;
-                };
-                if !text.contains(['\n', '\r']) {
-                    return None;
+        let mut spans = Vec::new();
+        for part in &self.parts {
+            match part {
+                InlinePart::Protected(text) | InlinePart::Link(text, _)
+                    if text.contains(['\n', '\r']) =>
+                {
+                    let start = text.as_ptr() as usize - source.as_ptr() as usize;
+                    spans.push(start..start + text.len());
                 }
-                let start = text.as_ptr() as usize - source.as_ptr() as usize;
-                Some(start..start + text.len())
-            })
-            .collect()
+                InlinePart::Emphasis { content, .. } | InlinePart::Markup { content, .. } => {
+                    spans.extend(content.multiline_spans(source));
+                }
+                _ => {}
+            }
+        }
+        spans
     }
 
     pub(super) fn preserve_lines(&self, links: bool, canonical: bool, hard_breaks: bool) -> String {
@@ -203,22 +206,19 @@ impl<'a> InlineContent<'a> {
         for (index, part) in self.parts.iter().enumerate() {
             if let InlinePart::Gap(text, marker) = part {
                 if text.contains(['\n', '\r']) || index + 1 == self.parts.len() {
-                    if !hard_breaks {
-                        for line in markdown_lines(text) {
-                            out.push_str(line.body.trim_end_matches([' ', '\t']));
-                            out.push_str(line.newline);
-                        }
-                        continue;
-                    }
-                    if let Some(marker) = marker {
-                        out.push_str(marker.suffix());
-                    }
+                    let (body, newline) = strip_final_newline(text);
+                    let body = if hard_breaks && marker.is_some() {
+                        body.strip_suffix('\\').unwrap_or(body)
+                    } else {
+                        body
+                    };
                     // Only editable gaps are trimmed. Spaces and newlines in
                     // a protected part never pass through line normalization.
-                    out.extend(text.chars().filter(|ch| matches!(ch, '\r' | '\n')));
-                    if let Some(last_break) = text.rfind(['\n', '\r']) {
-                        out.push_str(&text[last_break + 1..]);
+                    out.push_str(body.trim_end_matches([' ', '\t']));
+                    if hard_breaks && let Some(marker) = marker {
+                        out.push_str(marker.suffix());
                     }
+                    out.push_str(newline);
                 } else {
                     out.push_str(text);
                 }
@@ -341,7 +341,7 @@ fn markup_span(source: &str, index: usize) -> Option<(usize, usize, usize)> {
 
 fn gap_end(source: &str, start: usize) -> Option<(usize, Option<MarkdownHardBreakMarker>)> {
     let mut end = start;
-    while matches!(source.as_bytes().get(end), Some(b' ' | b'\t')) {
+    while matches!(source.as_bytes().get(end), Some(b' ' | b'\t' | b'\x0c')) {
         end += 1;
     }
     let spaces_end = end;

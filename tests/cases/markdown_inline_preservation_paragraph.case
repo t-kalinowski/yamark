@@ -24,6 +24,15 @@ Before `first
 
 > {{ render_item() }}
 > Follow-up prose.
+
+- Before <kbd><span>`first	
+    second {{< include file >}}`</span></kbd> after _outside_ [real](  target  ).
+
+firstsecond `ab` $cd$
+
+- firstsecond `ab` $cd$
+
+> firstsecond `ab` $cd$
 -- stdout
 Before `first  
   second {{< include file >}}` after *outside*.
@@ -45,6 +54,15 @@ Before `first
 
 > {{ render_item() }}
 > Follow-up prose.
+
+- Before <kbd><span>`first	
+    second {{< include file >}}`</span></kbd> after *outside* [real](target).
+
+first second `ab` $cd$
+
+- first second `ab` $cd$
+
+> first second `ab` $cd$
 -- stderr
 -- status
 0
