@@ -1,0 +1,61 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --verify
+-- stdin
+> Before
+> this {{ foo }} after.
+
+Before
+<span>{{ foo }}</span> after.
+
+Before
+{{ foo }}
+after.
+
+Before
+{{ foo }} after.
+
+Before
+*`<% keep   this %>`* after.
+
+Before
+[`<% keep   this %>`](url) after.
+
+Following
+prose.
+
+[^note]: First paragraph.
+
+    Another   paragraph.
+
+    ```python
+    print("keep   this")
+    ```
+-- stdout
+> Before this {{ foo }} after.
+
+Before
+<span>{{ foo }}</span> after.
+
+Before
+{{ foo }}
+after.
+
+Before {{ foo }} after.
+
+Before *`<% keep   this %>`* after.
+
+Before [`<% keep   this %>`](url) after.
+
+Following prose.
+
+[^note]:
+    First paragraph.
+
+    Another paragraph.
+
+    ```python
+    print("keep   this")
+    ```
+-- stderr
+-- status
+0

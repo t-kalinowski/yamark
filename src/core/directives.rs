@@ -1,9 +1,4 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
-use crate::core::wrap::{
-    MarkdownInlineContext, balanced_brace_span_end, cached_balanced_brace_span_end, has_hard_break,
-    markdown_inline_block_ranges, markdown_inline_context_spans,
-};
-use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -29,119 +24,18 @@ pub struct TemplateDelimiter {
 }
 
 pub fn contains_template_span(source: &str, delimiters: &[TemplateDelimiter]) -> bool {
-    delimiters
-        .iter()
-        .any(|delimiter| template_span_in_source(source, delimiter, TemplateSpanMode::Generic))
+    delimiters.iter().any(|delimiter| {
+        !delimiter.open.is_empty()
+            && !delimiter.close.is_empty()
+            && source.find(&delimiter.open).is_some_and(|open| {
+                source[open + delimiter.open.len()..].contains(&delimiter.close)
+            })
+    })
 }
 
 pub fn contains_markdown_template_span(source: &str, delimiters: &[TemplateDelimiter]) -> bool {
-    // Preserve template-bearing blocks before line-based hard-break handling.
-    if has_hard_break(source) {
-        return contains_template_span(source, delimiters);
-    }
-    delimiters
-        .iter()
-        .any(|delimiter| template_span_in_source(source, delimiter, TemplateSpanMode::Markdown))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TemplateSpanMode {
-    Generic,
-    Markdown,
-}
-
-fn template_span_in_source(
-    source: &str,
-    delimiter: &TemplateDelimiter,
-    mode: TemplateSpanMode,
-) -> bool {
-    if delimiter.open.is_empty() || delimiter.close.is_empty() {
-        return false;
-    }
-    let mut search_start = 0usize;
-    let mut unmatched_braces = HashSet::new();
-    let mut inline_spans = markdown_inline_context_spans(source).peekable();
-    let mut blocks = std::iter::once_with(|| markdown_inline_block_ranges(source))
-        .flatten()
-        .peekable();
-    while search_start < source.len() {
-        let Some(relative_open) = source[search_start..].find(&delimiter.open) else {
-            return false;
-        };
-        let open = search_start + relative_open;
-        let content_start = open + delimiter.open.len();
-        let Some(relative_close) = source[content_start..].find(&delimiter.close) else {
-            return false;
-        };
-        let close = content_start + relative_close;
-        let template_end = close + delimiter.close.len();
-        let mut raw_html = false;
-        if mode == TemplateSpanMode::Markdown {
-            while inline_spans
-                .peek()
-                .is_some_and(|(span, _)| span.end <= open)
-            {
-                inline_spans.next();
-            }
-            if let Some((span, context)) = inline_spans.peek()
-                && span.start <= open
-            {
-                if *context == MarkdownInlineContext::Code {
-                    // A quoted delimiter may precede the real braced-template close.
-                    let template_end =
-                        cached_balanced_brace_span_end(source, open, &mut unmatched_braces)
-                            .map_or(template_end, |end| end.max(template_end));
-                    if template_end > span.end {
-                        return true;
-                    }
-                    search_start = template_end;
-                    continue;
-                }
-                raw_html = true;
-            }
-        }
-        if raw_html {
-            // Raw HTML contents are not Markdown tokens. Preserve the block
-            // even when the template itself has balanced braces.
-            return true;
-        }
-        if mode == TemplateSpanMode::Markdown {
-            while blocks.peek().is_some_and(|block| block.end <= open) {
-                blocks.next();
-            }
-            if let Some(block) = blocks.peek()
-                && block.start <= open
-                && let Some(end) = balanced_brace_span_end(&source[..block.end], open)
-                && template_end <= end
-                && !source[open..end].contains(['\n', '\r'])
-            {
-                // Protect the token's contents without interpreting template tag names.
-                // Each block and physical line must see the complete token.
-                search_start = end;
-                continue;
-            }
-        }
-        if mode == TemplateSpanMode::Markdown
-            && is_hugo_shortcode_template_span(source, delimiter, open, close)
-        {
-            search_start = template_end;
-            continue;
-        }
-        return true;
-    }
-    false
-}
-
-fn is_hugo_shortcode_template_span(
-    source: &str,
-    delimiter: &TemplateDelimiter,
-    open: usize,
-    close: usize,
-) -> bool {
-    delimiter.open == "{{"
-        && delimiter.close == "}}"
-        && source[open + delimiter.open.len()..].starts_with(['<', '%'])
-        && source[..close].trim_end().ends_with(['>', '%'])
+    contains_template_span(source, delimiters)
+        && !crate::core::wrap::markdown_templates_are_protected(source, delimiters)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

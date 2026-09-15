@@ -46,13 +46,14 @@ line can share a line with preceding prose, and following prose can fit beside
 its last line. Lists, definition lists, blockquotes, and footnotes containing
 multiline inline code remain unchanged.
 
-Supported inline HTML regions remain opaque tokens: surrounding Markdown can
-wrap before or after them, while their attributes and contents stay intact.
-Yamark does not reflow text inside these regions as Markdown prose.
+Blocks mixing templates and HTML remain unchanged. A bare template expression
+on its own physical line also preserves its containing block, so an intentional
+line break around `{{ foo }}` stays in place. A line containing both a template
+and prose can reflow normally, including inside blockquotes and lists.
 
-Within a Markdown block, a template that starts inside a code span and ends
-outside it prevents reflow. So do multiline braced expressions. These checks
-do not parse template regions across independent Markdown blocks.
+Within a Markdown block, a template that crosses inline-token boundaries
+prevents reflow. So do multiline braced expressions. These checks do not parse
+template regions across independent Markdown blocks.
 
 Quarto is a first-class supported format. Other template systems receive
 best-effort delimiter preservation: Yamark does not interpret tag names such

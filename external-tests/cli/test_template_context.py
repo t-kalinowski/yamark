@@ -6,10 +6,66 @@ import pytest
 from _support import run_cli_case
 
 
+def test_template_prose_boundaries() -> None:
+    source = (
+        "> Before\n> this {{ foo }} after.\n\n"
+        "Before\n<span>{{ foo }}</span> after.\n\n"
+        "Before\n{{ foo }}\nafter.\n\n"
+        "Before\n{{ foo }} after.\n\n"
+        "Following\nprose.\n"
+    )
+    expected = (
+        "> Before this {{ foo }} after.\n\n"
+        "Before\n<span>{{ foo }}</span> after.\n\n"
+        "Before\n{{ foo }}\nafter.\n\n"
+        "Before {{ foo }} after.\n\n"
+        "Following prose.\n"
+    )
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        'Before <span><script>const x = "keep   this"; {{ foo }}</span>\n',
+        'Before ${{ "keep $   this" }} after.\n',
+        '<span>{ <span> } </span> keep   _this_ {{ foo }}</span>\n',
+    ],
+)
+@pytest.mark.parametrize("canonical", ["", "--canonical"])
+def test_templates_crossing_protected_fragments_are_preserved(
+    paragraph: str, canonical: str
+) -> None:
+    source = paragraph + "\nFollowing\nprose.\n"
+    expected = paragraph + "\nFollowing prose.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            f"yamark format {canonical} --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
+        )
+
+
+@pytest.mark.parametrize("boundary", [r"\n\n", r"\n====\n", r"\n--\n"])
+def test_quoted_markdown_yaml_does_not_join_code_across_blocks(boundary: str) -> None:
+    source = f'doc: !markdown "Before `{boundary}<% keep   this %>\\nafter `"\n'
+    run_cli_case(
+        "yamark format --wrap sentence --stdin-file-path input.yaml --verify",
+        stdin=source,
+        stdout=source,
+    )
+
+
 @pytest.mark.parametrize(
     "html",
     [
         '<span title="> {{ foo }} _keep_"/>',
+        '<span title="`{{ title }}`">text</span>',
         '<span title="> {{ foo }}">keep   _this_</span>',
         '<span title="> </span> {{ foo }} _keep_">keep   _this_</span>',
         '<span>{{ "</span>" ~ "keep   _this_" }}</span>',
@@ -38,11 +94,12 @@ from _support import run_cli_case
 )
 @pytest.mark.parametrize("wrap", ["sentence", "20"])
 @pytest.mark.parametrize("canonical", ["", "--canonical"])
-def test_html_regions_stay_opaque_while_prose_wraps(
+def test_html_template_blocks_are_preserved(
     html: str, wrap: str, canonical: str
 ) -> None:
-    source = f"Before\n{html}\nafter.\n"
-    expected = f"Before {html} after.\n" if wrap == "sentence" else source
+    paragraph = f"Before\n{html}\nafter.\n"
+    source = paragraph + "\nFollowing\nprose.\n"
+    expected = paragraph + "\nFollowing prose.\n"
     for text in [source, expected]:
         run_cli_case(
             f"yamark format {canonical} --wrap {wrap} --stdin-file-path input.md --verify",
@@ -52,10 +109,10 @@ def test_html_regions_stay_opaque_while_prose_wraps(
 
 
 @pytest.mark.parametrize("tag", ["script", "style", "textarea", "title"])
-def test_raw_text_html_does_not_nest_inside_a_heading(tag: str) -> None:
+def test_html_template_headings_are_preserved(tag: str) -> None:
     html = f'<{tag}>const x="<{tag}>"; keep   _this_ {{{{ foo }}}}</{tag.upper()}>'
     source = f"#   Heading {html}   ##\n"
-    expected = f"# Heading {html}\n"
+    expected = source
     for text in [source, expected]:
         run_cli_case(
             "yamark format --canonical --wrap sentence --stdin-file-path input.md --verify",

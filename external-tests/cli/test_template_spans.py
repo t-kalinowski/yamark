@@ -209,7 +209,6 @@ def test_template_delimiters_inside_complete_code_spans(
         "[target](https://example.com/`{{key}}`)",
         '[target](url "`{{ title }}`")',
         '[![alt](inner)](outer "`{{ title }}`")',
-        '<span title="`{{ title }}`">text</span>',
         "$`{{ math }}`$",
     ],
 )
@@ -296,6 +295,18 @@ def test_inline_code_templates_in_other_markdown_blocks(
             text,
             expected,
             stdin_file_path="input.md",
+        )
+
+
+@pytest.mark.parametrize("code", ["*`<% keep   this %>`*", "[`<% keep   this %>`](url)"])
+def test_nested_inline_code_templates_allow_wrapping(code: str) -> None:
+    source = f"Before\n{code} after.\n"
+    expected = f"Before {code} after.\n"
+    for text in [source, expected]:
+        run_cli_case(
+            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            stdin=text,
+            stdout=expected,
         )
 
 

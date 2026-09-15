@@ -680,10 +680,8 @@ the tag text and attributes exactly. Wrap surrounding text without splitting a
 tag token. Block-level HTML remains a separate raw block feature and should not
 be confused with inline HTML.
 
-Inline HTML preservation operates within a Markdown block. Document-wide HTML
-tokenizer states such as `<plaintext>`, which consumes the remaining document,
-are outside this supported scope. Use explicit preservation directives for
-such content.
+Blocks containing both HTML and template expressions remain unchanged. Template
+preservation does not extend the HTML parser's supported syntax.
 
 Implementation checklist:
 
