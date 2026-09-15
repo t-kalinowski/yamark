@@ -124,7 +124,9 @@ fn emit_document_inner(
             continue;
         }
         if markdown_emit_should_preserve_template_span(source, node.span, state, &node.emit) {
-            out.push_str(source.slice(node.span));
+            out.push_verbatim_str(&crate::core::wrap::preserve_inline_lines(
+                source.slice(node.span),
+            ));
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
             index += 1;
@@ -158,7 +160,7 @@ fn emit_document_inner(
                 ))
             }
             EmitPlan::MarkdownParagraph => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
+                out.push_verbatim_str(&crate::core::markdown::render_markdown_format(
                     source,
                     node.span,
                     state.markdown_options(options),
@@ -181,14 +183,16 @@ fn emit_document_inner(
                     crate::core::markdown::MarkdownBlockFormatKind::PandocTable,
                 ))
             }
-            EmitPlan::MarkdownList => out.push_str(&crate::core::markdown::render_markdown_format(
-                source,
-                node.span,
-                state.markdown_options(options),
-                crate::core::markdown::MarkdownBlockFormatKind::List,
-            )),
+            EmitPlan::MarkdownList => {
+                out.push_verbatim_str(&crate::core::markdown::render_markdown_format(
+                    source,
+                    node.span,
+                    state.markdown_options(options),
+                    crate::core::markdown::MarkdownBlockFormatKind::List,
+                ))
+            }
             EmitPlan::MarkdownDefinitionList => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
+                out.push_verbatim_str(&crate::core::markdown::render_markdown_format(
                     source,
                     node.span,
                     state.markdown_options(options),
@@ -196,7 +200,7 @@ fn emit_document_inner(
                 ))
             }
             EmitPlan::MarkdownBlockquote => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
+                out.push_verbatim_str(&crate::core::markdown::render_markdown_format(
                     source,
                     node.span,
                     state.markdown_options(options),
@@ -465,6 +469,13 @@ impl EmitOutput {
             return;
         }
         self.push_markdown_normalized_str(text);
+    }
+
+    // Paragraph/container pipelines already normalize editable whitespace.
+    // Trimming their rendered physical lines would also trim inline literals.
+    fn push_verbatim_str(&mut self, text: &str) {
+        self.text.push_str(text);
+        self.line_trim_end = self.text.len();
     }
 
     fn push_verbatim_lines(&mut self, text: &str) {
