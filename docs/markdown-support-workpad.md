@@ -680,6 +680,11 @@ the tag text and attributes exactly. Wrap surrounding text without splitting a
 tag token. Block-level HTML remains a separate raw block feature and should not
 be confused with inline HTML.
 
+Inline HTML preservation operates within a Markdown block. Document-wide HTML
+tokenizer states such as `<plaintext>`, which consumes the remaining document,
+are outside this supported scope. Use explicit preservation directives for
+such content.
+
 Implementation checklist:
 
 - [x] Distinguish inline tags from block HTML.
@@ -1014,8 +1019,9 @@ After:
 
 Expected behavior:
 
-Recognize shortcode and include lines as supported opaque block nodes. Preserve
-the shortcode line exactly. Do not let a shortcode block cause adjacent
+Recognize complete shortcode and include tags as supported opaque block nodes.
+Preserve each tag exactly, including tags spanning multiple lines and quoted
+delimiter text in arguments. Do not let a shortcode block cause adjacent
 paragraphs, lists, or divs to be copied. Shortcode names do not define Markdown
 regions: format the text between shortcode lines as ordinary Markdown, without
 looking for a matching closing name. Use Markdown code fences or explicit
@@ -1023,9 +1029,9 @@ preservation directives for content that should remain unchanged.
 
 Implementation checklist:
 
-- [x] Parse single-line shortcode blocks.
+- [x] Parse single-line and complete multiline shortcode tags.
 - [x] Treat opening and closing shortcode lines independently.
-- [x] Preserve each shortcode line byte-for-byte.
+- [x] Preserve each complete shortcode tag byte-for-byte.
 - [x] Keep surrounding Markdown format decisions independent.
 
 Example 1:

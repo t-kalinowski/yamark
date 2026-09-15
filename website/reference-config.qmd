@@ -64,10 +64,12 @@ or a trailing backslash) are preserved, including their trailing whitespace.
 
 Values of `fig-alt` containing braces are not split for column wrapping.
 
-Standalone shortcode lines such as `{{% notice %}}` and `{{% /notice %}}`
-are preserved independently. The text between them is ordinary Markdown;
-Yamark does not look for matching shortcode names. Use Markdown code fences
-or explicit preservation directives for content that must stay unchanged.
+Standalone shortcode tags such as `{{% notice %}}` and `{{% /notice %}}`
+are preserved independently, including complete tags spanning multiple lines.
+The tag ends at `%}}` or `>}}` outside quoted arguments. The text between tags
+is ordinary Markdown; Yamark does not look for matching shortcode names. Use
+Markdown code fences or explicit preservation directives for content that
+must stay unchanged.
 
 | Key | Type | Effect |
 | --- | --- | --- |

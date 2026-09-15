@@ -12,6 +12,7 @@ use crate::core::markdown_marker::markdown_list_marker_len;
 use crate::core::source::{SourceBuffer, Span};
 use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlNodeId, YamlScalar};
 use crate::diagnostic::Result;
+use std::collections::HashSet;
 
 pub fn parse_markdown(
     source: &SourceBuffer,
@@ -102,6 +103,7 @@ fn parse_markdown_with_mode(
     let start_line = first_line_index(source, range);
     let mut i = start_line;
     let end_line = end_line_index(source, range);
+    let mut unmatched_shortcode_braces = HashSet::new();
 
     if i < end_line
         && front_matter_opening(source.line_text(i))
@@ -577,8 +579,24 @@ fn parse_markdown_with_mode(
 
         if shortcode_block_at(text) {
             let start = i;
-            // A shortcode line is opaque; its name does not define a Markdown region.
+            // Incomplete openers do not claim following Markdown. A complete
+            // tag is opaque, but its name does not define a Markdown region.
             i += 1;
+            let trimmed = text.trim_start();
+            let tag_start = source.lines[start].text.start() + text.len() - trimmed.len();
+            let closing = if trimmed.starts_with("{{<") {
+                ">}}"
+            } else {
+                "%}}"
+            };
+            if let Some(tag_end) = crate::core::wrap::cached_balanced_brace_span_end(
+                &source.as_str()[..range.end],
+                tag_start,
+                &mut unmatched_shortcode_braces,
+            ) && source.as_str()[..tag_end].ends_with(closing)
+            {
+                i = source.line_at_byte(tag_end - 1) + 1;
+            }
             let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),

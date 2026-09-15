@@ -282,6 +282,11 @@ fn emit_document_inner(
                 out.push_str(&nested_output);
                 out.push_str(source.slice(*closing));
             }
+            EmitPlan::MarkdownOpaque
+                if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode)) =>
+            {
+                out.push_verbatim_str(source.slice(node.span));
+            }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
             EmitPlan::YamlDocument => {
                 out.push_str(&crate::core::yaml::emit_yaml_document(

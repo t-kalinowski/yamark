@@ -1865,6 +1865,8 @@ pub fn canonicalize_inline(source: &str) -> String {
 }
 
 fn paired_inline_html_span_end(source: &str, index: usize) -> Option<usize> {
+    // This matches regions within a Markdown block. Document-wide HTML
+    // tokenizer states such as <plaintext> are intentionally unsupported.
     if escaped_at(source, index) {
         return None;
     }
@@ -2578,7 +2580,7 @@ pub(crate) fn balanced_brace_span_end(source: &str, index: usize) -> Option<usiz
     balanced_brace_end(&source[index..]).map(|end| index + end)
 }
 
-fn cached_balanced_brace_span_end(
+pub(crate) fn cached_balanced_brace_span_end(
     source: &str,
     index: usize,
     unmatched: &mut HashSet<(usize, bool)>,

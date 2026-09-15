@@ -83,10 +83,22 @@ def test_multiline_template_code_wraps_by_its_first_and_last_lines(
         ("{{% notice %}}", "{{% /notice %}}"),
         ("{{< notice >}}", "{{< /notice >}}"),
         ("{{% notice %}}", "{{% unrelated %}}"),
+        ('{{% notice\nmessage="keep   _this_"\n%}}', "{{% /notice %}}"),
+        (
+            "{{< notice\nmessage='quoted >}} keeps   its spacing'\n"
+            "caption='another   argument'\n>}}",
+            "{{< /notice >}}",
+        ),
+        (
+            '{{% notice\nmessage="quoted %}} keeps   its spacing"\n%}}',
+            "{{% unrelated %}}",
+        ),
+        ("{{< notice\nmessage=`keep   this  \n\nand   this`\n>}}", "{{< /notice >}}"),
     ],
 )
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_shortcode_tags_leave_intervening_markdown_to_format(
-    opening: str, closing: str
+    opening: str, closing: str, newline: str
 ) -> None:
     source = (
         f"{opening}\nFormat   this paragraph\nas Markdown.\n\n"
@@ -96,9 +108,10 @@ def test_shortcode_tags_leave_intervening_markdown_to_format(
         f"{opening}\nFormat this paragraph as Markdown.\n\n"
         f"# A heading\n\n{closing}\nFollowing prose.\n"
     )
-    for text in [source, expected]:
+    expected = expected.replace("\n", newline)
+    for text in [source.replace("\n", newline), expected]:
         run_cli_case(
-            "yamark format --wrap sentence --stdin-file-path input.md --verify",
+            "yamark format --canonical --wrap sentence --stdin-file-path input.md --verify",
             stdin=text,
             stdout=expected,
         )
