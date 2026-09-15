@@ -20,6 +20,21 @@ Before
 Before
 [`<% keep   this %>`](url) after.
 
+Before
+[[[[{{ foo }}]]]] after.
+
+Before
+[[[[`<% keep   this %>`]]]] after.
+
+Before
+[outer [middle [inner {{ keep   this }}] after] end] after.
+
+Before
+[outer *[[`<% keep   this %>`]]* after] tail.
+
+Before
+[outer [[label](url "{{ keep   this }}")] after] tail.
+
 Following
 prose.
 
@@ -45,6 +60,16 @@ Before {{ foo }} after.
 Before *`<% keep   this %>`* after.
 
 Before [`<% keep   this %>`](url) after.
+
+Before [[[[{{ foo }}]]]] after.
+
+Before [[[[`<% keep   this %>`]]]] after.
+
+Before [outer [middle [inner {{ keep   this }}] after] end] after.
+
+Before [outer *[[`<% keep   this %>`]]* after] tail.
+
+Before [outer [[label](url "{{ keep   this }}")] after] tail.
 
 Following prose.
 

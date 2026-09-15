@@ -53,10 +53,22 @@ def test_unmatched_backticks_scale_with_input_size(tmp_path: Path) -> None:
     )
 
 
-def test_nested_brackets_scale_with_input_size(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("label", "suffix"),
+    [
+        ("label", " <% keep   this %>"),
+        ("{{ foo }}", ""),
+        ("`<% keep   this %>`", ""),
+    ],
+    ids=["template-after-label", "template-in-label", "template-in-code"],
+)
+@pytest.mark.parametrize("opening", ["[", "[outer "])
+def test_nested_brackets_scale_with_input_size(
+    tmp_path: Path, label: str, suffix: str, opening: str
+) -> None:
     durations = []
     for depth in [2000, 8000]:
-        text = "[" * depth + "label" + "]" * depth + " <% keep   this %>\n"
+        text = opening * depth + label + "]" * depth + suffix + "\n"
         source = tmp_path / f"brackets-{depth}.md"
         source.write_text(text, encoding="utf-8")
         cpu, formatted = measure_formatting_cpu(source)

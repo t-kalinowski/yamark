@@ -3867,12 +3867,35 @@ fn template_fragment(
         if !inner.contains(&open) {
             return Some(span);
         }
-        let nested = inline_fragments(&source[inner.clone()]).find(|span| {
-            span.as_ref()
-                .is_none_or(|span| inner.start + span.end > open)
-        })?;
-        let nested = nested?;
-        span = inner.start + nested.start..inner.start + nested.end;
+        let mut start = inner.start;
+        loop {
+            start = inner.end - source[start..inner.end].trim_ascii_start().len();
+            if start > open {
+                return None;
+            }
+            let label_start = if source[start..].starts_with("![") {
+                Some(start + 2)
+            } else if source[start..].starts_with('[') {
+                Some(start + 1)
+            } else {
+                None
+            };
+            // Descend through indexed labels without rebuilding their index
+            // or rescanning each label's entire contents to recognize it.
+            let end = if let Some(close) = label_start.and_then(|start| scan.square_close(start))
+                && open < close
+                && close < inner.end
+            {
+                close + 1
+            } else {
+                inline_token_fragment_end(scan, start).filter(|end| *end <= inner.end)?
+            };
+            if open < end {
+                span = start..end;
+                break;
+            }
+            start = end;
+        }
     }
 }
 
