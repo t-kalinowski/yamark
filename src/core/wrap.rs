@@ -618,17 +618,19 @@ pub(crate) fn markdown_list_format_supported(source: &str, options: FormatOption
 fn try_format_markdown_list(source: &str, options: FormatOptions) -> Option<String> {
     let lines = markdown_lines(source).collect::<Vec<_>>();
     if list_needs_rich_format(&lines) {
-        try_format_rich_markdown_list(&lines, options)
+        try_format_rich_markdown_list(source, &lines, options)
     } else {
-        try_format_simple_markdown_list(&lines, options)
+        try_format_simple_markdown_list(source, &lines, options)
     }
 }
 
 fn try_format_simple_markdown_list(
+    source: &str,
     lines: &[MarkdownLine<'_>],
     options: FormatOptions,
 ) -> Option<String> {
     let mut out = String::new();
+    let mut multiline_inlines = None;
     let mut index = 0usize;
     while index < lines.len() {
         let line = lines[index];
@@ -682,7 +684,14 @@ fn try_format_simple_markdown_list(
                 if continuation_indent < continuation_prefix.len()
                     || continuation_indent >= continuation_prefix.len() + 4
                 {
-                    return None;
+                    // The block parser accepts continuations inside multiline
+                    // inline spans independently of the emitted prefix width.
+                    let spans = multiline_inlines
+                        .get_or_insert_with(|| markdown_multiline_inline_spans(source));
+                    let offset = continuation_body.as_ptr() as usize - source.as_ptr() as usize;
+                    if !spans.iter().any(|span| span.contains(&offset)) {
+                        return None;
+                    }
                 }
                 if continuation_trimmed.starts_with('>') {
                     if continuation_indent != continuation_prefix.len() {
@@ -697,7 +706,7 @@ fn try_format_simple_markdown_list(
                     return None;
                 }
                 pieces.push((
-                    &continuation_body[continuation_prefix.len()..],
+                    &continuation_body[continuation_prefix.len().min(continuation_indent)..],
                     lines[index].newline,
                 ));
                 index += 1;
@@ -762,6 +771,7 @@ fn write_markdown_blank_line(out: &mut String, line: MarkdownLine<'_>) {
 }
 
 fn try_format_rich_markdown_list(
+    source: &str,
     lines: &[MarkdownLine<'_>],
     options: FormatOptions,
 ) -> Option<String> {
@@ -788,6 +798,7 @@ fn try_format_rich_markdown_list(
             index += 1;
         }
         out.push_str(&try_format_simple_markdown_list(
+            source,
             &lines[start..index],
             options,
         )?);
@@ -936,11 +947,11 @@ fn try_format_markdown_definition_list(source: &str, options: FormatOptions) -> 
             }
             let trimmed = continuation.trim_ascii_start();
             let indent = continuation.len() - trimmed.len();
-            if indent < continuation_prefix.len().max(4) {
+            if indent < 4 {
                 break;
             }
             pieces.push((
-                &continuation[continuation_prefix.len()..],
+                &continuation[continuation_prefix.len().min(indent)..],
                 lines[index].newline,
             ));
             index += 1;

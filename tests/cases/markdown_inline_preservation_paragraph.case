@@ -47,6 +47,13 @@ firstsecond `ab` $cd$
       second {{< include file >}}` after _outside_.
   	
     Next paragraph [real](  target  ).
+
+Term
+   ~ Before $first\
+    second [x]( url )$ after _outside_ [real](  target  ).
+
+1000) Before `first	
+    second {{< include file >}}` after _outside_.
 -- stdout
 Before `first  
   second {{< include file >}}` after *outside*.
@@ -92,6 +99,13 @@ first second `ab` $cd$
       second {{< include file >}}` after *outside*.
 
     Next paragraph [real](target).
+
+Term
+   ~ Before $first\
+     second [x]( url )$ after *outside* [real](target).
+
+1000) Before `first	
+      second {{< include file >}}` after *outside*.
 -- stderr
 -- status
 0

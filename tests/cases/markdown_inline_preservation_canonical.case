@@ -38,6 +38,13 @@ first\   second `[x](  url  ) \   ` _outside_ [real](  url  ).
 - first\	second `[x](  url  ) \	` _outside_ [real](  url  ).
 
 first\ second _outside_ [real](  url  ).
+
+Term
+   : Before `first  
+    second [x]( url )` after _outside_ [real](  target  ).
+
+- [x] Before `first	
+    second {{< include file >}}` after _outside_.
 -- stdout
 # *Before `_a_ [x]( url )` after*
 
@@ -74,6 +81,13 @@ first\   second `[x](  url  ) \   ` *outside* [real](url).
 - first\ second `[x](  url  ) \	` *outside* [real](url).
 
 first\ second _outside_ [real](  url  ).
+
+Term
+   : Before `first  
+     second [x]( url )` after *outside* [real](target).
+
+- [x] Before `first	
+      second {{< include file >}}` after *outside*.
 -- stderr
 -- status
 0

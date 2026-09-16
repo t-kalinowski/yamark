@@ -34,6 +34,13 @@ first\   second `[x](  url  ) \   ` after.
 firstsecond _outside_ [real](  url  ).
 
 first\second _outside_ [real](  url  ).
+
+Term
+   : Before
+    after [real](  target  ).
+
+100. Before `first  
+    second [x]( url )` after [real](  target  ).
 -- stdout
 Before `[x](< url >)` after.
 
@@ -62,6 +69,12 @@ first\ second `[x](  url  ) \   ` after.
 firstsecond _outside_ [real](  url  ).
 
 first\second _outside_ [real](  url  ).
+
+Term
+   : Before after [real](target).
+
+100. Before `first  
+     second [x]( url )` after [real](target).
 -- stderr
 -- status
 0

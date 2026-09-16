@@ -44,6 +44,13 @@ Next paragraph.
 
     Before `first  
       second [x]( url )` after _outside_.
+
+Term
+   : Before `first  
+    second [x]( url )` after _outside_. Next sentence.
+
+100. Before $first\
+    second [x]( url )$ after _outside_. Next sentence.
 -- stdout
 Before `first  
   second [x]( url )` after *outside*.
@@ -95,6 +102,15 @@ Next paragraph.
 
     Before `first  
       second [x]( url )` after *outside*.
+
+Term
+   : Before `first  
+     second [x]( url )` after *outside*.
+     Next sentence.
+
+100. Before $first\
+     second [x]( url )$ after *outside*.
+     Next sentence.
 -- stderr
 -- status
 0

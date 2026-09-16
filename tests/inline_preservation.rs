@@ -423,3 +423,99 @@ fn inline_pipeline_normalizes_nested_output_once() {
         }
     }
 }
+
+#[test]
+fn inline_pipeline_accepts_definition_continuation_indentation() {
+    for prefix in [": ", " : ", "  : ", "   : ", "   ~ "] {
+        let source = format!("Term\n{prefix}Before\n    after _outside_ [real](  target  ).\n");
+        let expected = format!("Term\n{prefix}Before after *outside* [real](target).\n");
+        for wrap in ["none", "paragraph", "sentence", "120", "sentence:120"] {
+            assert_format(&source, &expected, wrap, true);
+        }
+    }
+    for (prefix, authored_indent, emitted_indent) in [
+        (": ", "    ", "    "),
+        (" : ", "    ", "    "),
+        ("  : ", "    ", "    "),
+        ("   : ", "    ", "     "),
+        ("   ~ ", "    ", "     "),
+        ("   : ", "       ", "       "),
+    ] {
+        for (opening, closing) in [
+            ("`first  ", "second [x]( url )`"),
+            ("$first\\", "second [x]( url )$"),
+            ("`first\t", "second {{< include file >}}`"),
+        ] {
+            let source = format!(
+                "Term\n{prefix}Before {opening}\n{authored_indent}{closing} after _outside_ [real](  target  ).\n"
+            );
+            let expected = format!(
+                "Term\n{prefix}Before {opening}\n{emitted_indent}{closing} after *outside* [real](target).\n"
+            );
+            for wrap in ["none", "paragraph", "sentence", "120", "sentence:120"] {
+                assert_format(&source, &expected, wrap, true);
+            }
+        }
+    }
+    for wrap in ["28", "sentence:28"] {
+        assert_format(
+            "Term\n   : Before\n    after _outside_ [real](  target  ).\n",
+            "Term\n   : Before after *outside*\n     [real](target).\n",
+            wrap,
+            true,
+        );
+    }
+}
+
+#[test]
+fn inline_pipeline_accepts_list_literal_continuation_indentation() {
+    for (prefix, authored_indent, emitted_indent) in [
+        ("1. ", " ", "   "),
+        ("10. ", "  ", "    "),
+        ("100. ", "    ", "     "),
+        ("1000) ", "    ", "      "),
+        ("- [x] ", "    ", "      "),
+        ("  100. ", "    ", "       "),
+        ("100. ", "         ", "         "),
+    ] {
+        for (opening, closing) in [
+            ("`first  ", "second [x]( url )`"),
+            ("$first\\", "second [x]( url )$"),
+            ("`first\t", "second {{< include file >}}`"),
+        ] {
+            for newline in ["\n", "\r\n", "\r"] {
+                let source = format!(
+                    "{prefix}Before {opening}{newline}{authored_indent}{closing} after _outside_ [real](  target  ).{newline}"
+                );
+                let expected = format!(
+                    "{prefix}Before {opening}{newline}{emitted_indent}{closing} after *outside* [real](target).{newline}"
+                );
+                for wrap in ["none", "paragraph", "sentence", "120", "sentence:120"] {
+                    assert_format(&source, &expected, wrap, true);
+                }
+            }
+        }
+    }
+    assert_format(
+        "::: note\n100. Before `first  \n    second [x]( url )` after _outside_ [real](  target  ).\n:::\n",
+        "::: note\n100. Before `first  \n     second [x]( url )` after *outside* [real](target).\n:::\n",
+        "sentence",
+        true,
+    );
+    for wrap in ["24", "sentence:24"] {
+        assert_format(
+            "100. Before `first  \n    second [x]( url )` after _outside_ [real](  target  ).\n",
+            "100. Before\n     `first  \n     second [x]( url )`\n     after *outside*\n     [real](target).\n",
+            wrap,
+            true,
+        );
+    }
+    // Keep the existing boundary for lazy prose.
+    for source in [
+        "- Before\n second _outside_ [real](  target  ).\n",
+        "100. Before\n    second _outside_ [real](  target  ).\n",
+        "100. Before `code`\n second _outside_ [real](  target  ).\n",
+    ] {
+        assert_format(source, source, "sentence", true);
+    }
+}
