@@ -356,26 +356,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::DefinitionList,
-                definition_list_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::DefinitionList)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::DefinitionList),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::DefinitionList,
+                span,
+                MarkdownBlockFormatKind::DefinitionList,
+                options,
+                definition_list_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -482,26 +472,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::List,
-                list_block_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::List)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::List),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::List,
+                span,
+                MarkdownBlockFormatKind::List,
+                options,
+                list_block_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -516,26 +496,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::Blockquote,
-                blockquote_block_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::Blockquote)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::Blockquote),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::Blockquote,
+                span,
+                MarkdownBlockFormatKind::Blockquote,
+                options,
+                blockquote_block_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -806,6 +776,7 @@ fn parse_markdown_with_mode(
         ));
     }
 
+    finalize_markdown_plans(source, &mut doc, options);
     Ok(doc)
 }
 
@@ -911,6 +882,18 @@ fn apply_file_scope_delta_to_markdown_document_with_mode(
         config,
         mode,
     );
+    if result.is_ok() {
+        let effective_options = if doc.options == FormatOptions::default() {
+            options
+        } else {
+            doc.options
+        };
+        finalize_markdown_plans(
+            owned_source.as_ref().unwrap_or(source),
+            doc,
+            effective_options,
+        );
+    }
     doc.source = owned_source;
     result
 }
@@ -1049,6 +1032,14 @@ fn plan_markdown_thematic_break() -> EmitPlan {
     EmitPlan::MarkdownThematicBreak
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RetainedMarkdown {
+    pub(crate) preserve: bool,
+    options: FormatOptions,
+    pub(crate) plan: Option<crate::core::wrap::Plan>,
+    draft: Option<crate::core::wrap::Draft>,
+}
+
 fn push_markdown_format_node(
     source: &SourceBuffer,
     doc: &mut Document,
@@ -1058,80 +1049,356 @@ fn push_markdown_format_node(
     format_kind: MarkdownBlockFormatKind,
     options: FormatOptions,
 ) -> Result<()> {
-    let supported =
-        markdown_block_emit_supported(source, span, doc.state(state), options, format_kind, true);
-    validate_markdown_format_target(source, doc, state, span, supported)?;
-    let emit = if supported {
-        markdown_format_emit_plan(format_kind)
+    push_structural_markdown_format_node(source, doc, state, kind, span, format_kind, options, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_structural_markdown_format_node(
+    source: &SourceBuffer,
+    doc: &mut Document,
+    state: StateId,
+    kind: MarkdownNodeKind,
+    span: Span,
+    format_kind: MarkdownBlockFormatKind,
+    options: FormatOptions,
+    structurally_supported: bool,
+) -> Result<()> {
+    // Explicit targets are checked here to preserve diagnostic/skip precedence.
+    // The successful plan is retained and reused after file directives settle.
+    let planned = if structurally_supported && doc.state(state).markdown_target {
+        Some(plan_markdown_block(
+            source.slice(span),
+            doc.state(state),
+            options,
+            format_kind,
+        ))
     } else {
-        EmitPlan::Copy
+        None
     };
+    let supported = structurally_supported
+        && planned.as_ref().is_none_or(|plan| {
+            !plan.preserve
+                && (plan.plan.is_some()
+                    || matches!(
+                        format_kind,
+                        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+                    ))
+        });
+    validate_markdown_format_target(source, doc, state, span, supported)?;
     doc.push_node(Node {
         kind: NodeKind::Markdown(kind),
         span,
         state,
-        emit,
+        emit: if supported {
+            markdown_format_emit_plan(format_kind)
+        } else {
+            EmitPlan::Copy
+        },
     });
+    *doc.markdown.last_mut().expect("just pushed node") = planned;
     Ok(())
 }
 
-fn markdown_block_emit_supported(
-    source: &SourceBuffer,
-    span: Span,
+fn plan_markdown_block(
+    input: &str,
     state: &DirectiveState,
     options: FormatOptions,
     kind: MarkdownBlockFormatKind,
-    structurally_supported: bool,
-) -> bool {
-    structurally_supported
-        && (!state.markdown_target
-            || markdown_block_format_supported(source, span, state, options, kind))
-}
-
-fn markdown_block_format_supported(
-    source: &SourceBuffer,
-    span: Span,
-    state: &DirectiveState,
-    options: FormatOptions,
-    kind: MarkdownBlockFormatKind,
-) -> bool {
-    let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
-        return false;
-    }
-    if contains_markdown_template_span(input, &state.template_delimiters)
-        && !matches!(
+) -> RetainedMarkdown {
+    let options = state.markdown_options(options);
+    let preserve = crate::core::wrap::markdown_reflow_changes_raw_semantics(input)
+        || (!matches!(
             kind,
             MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-        )
-    {
+        ) && contains_markdown_template_span(input, &state.template_delimiters));
+    let mut draft = if preserve {
+        None
+    } else {
+        match kind {
+            MarkdownBlockFormatKind::Paragraph => {
+                crate::core::wrap::prepare_markdown_paragraph(input)
+            }
+            MarkdownBlockFormatKind::List => crate::core::wrap::prepare_markdown_list(input),
+            MarkdownBlockFormatKind::DefinitionList => {
+                crate::core::wrap::prepare_markdown_definition_list(input)
+            }
+            MarkdownBlockFormatKind::Blockquote => {
+                crate::core::wrap::prepare_markdown_blockquote(input)
+            }
+            MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => None,
+        }
+    };
+    let plan = draft
+        .as_mut()
+        .and_then(|draft| draft.resolve(input, options));
+    RetainedMarkdown {
+        preserve,
+        options,
+        plan,
+        draft,
+    }
+}
+
+fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: FormatOptions) {
+    if doc.skip_file {
+        return;
+    }
+    for (index, node) in doc.nodes.iter().enumerate() {
+        let state = doc.states.get(node.state);
+        if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
+            continue;
+        }
+        let kind = match node.emit {
+            EmitPlan::MarkdownParagraph => Some(MarkdownBlockFormatKind::Paragraph),
+            EmitPlan::MarkdownList => Some(MarkdownBlockFormatKind::List),
+            EmitPlan::MarkdownDefinitionList => Some(MarkdownBlockFormatKind::DefinitionList),
+            EmitPlan::MarkdownBlockquote => Some(MarkdownBlockFormatKind::Blockquote),
+            EmitPlan::MarkdownTable => Some(MarkdownBlockFormatKind::Table),
+            EmitPlan::MarkdownPandocTable => Some(MarkdownBlockFormatKind::PandocTable),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            let effective = state.markdown_options(options);
+            let template = !matches!(
+                kind,
+                MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+            ) && contains_markdown_template_span(
+                source.slice(node.span),
+                &state.template_delimiters,
+            );
+            if let Some(retained) = &mut doc.markdown[index] {
+                retained.preserve |= template;
+                if retained.options != effective && !retained.preserve {
+                    retained.plan = retained
+                        .draft
+                        .as_mut()
+                        .and_then(|draft| draft.resolve(source.slice(node.span), effective));
+                    retained.options = effective;
+                }
+            } else {
+                doc.markdown[index] = Some(plan_markdown_block(
+                    source.slice(node.span),
+                    state,
+                    options,
+                    kind,
+                ));
+            }
+            if matches!(
+                kind,
+                MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+            ) {
+                let retained = doc.markdown[index].as_mut().expect("planned table");
+                if !retained.preserve {
+                    let input = source.slice(node.span);
+                    let text = match kind {
+                        MarkdownBlockFormatKind::Table => {
+                            crate::core::wrap::format_markdown_table(input, effective)
+                        }
+                        _ => crate::core::wrap::format_markdown_pandoc_table(input, effective),
+                    };
+                    retained.plan = Some(crate::core::wrap::Plan::normalized_block(input, &text));
+                }
+            }
+        } else if matches!(
+            node.emit,
+            EmitPlan::MarkdownHeading { .. } | EmitPlan::MarkdownSetextHeading { .. }
+        ) {
+            let preserve = contains_markdown_template_span(
+                source.slice(node.span),
+                &state.template_delimiters,
+            );
+            let options = state.markdown_options(options);
+            let plan = if preserve {
+                None
+            } else {
+                let text = match node.emit {
+                    EmitPlan::MarkdownHeading { marker, content } => {
+                        render_markdown_heading(source, node.span, marker, content, options)
+                    }
+                    EmitPlan::MarkdownSetextHeading { content, depth } => {
+                        render_markdown_setext_heading(source, node.span, content, depth, options)
+                    }
+                    _ => unreachable!("heading plan"),
+                };
+                Some(crate::core::wrap::Plan::normalized_block(
+                    source.slice(node.span),
+                    &text,
+                ))
+            };
+            doc.markdown[index] = Some(RetainedMarkdown {
+                preserve,
+                options,
+                plan,
+                draft: None,
+            });
+        }
+    }
+}
+
+/// `emit_document` historically accepts options different from those passed to
+/// `parse_source` when the document stores the default options. Resolve that
+/// public API policy before entering the emitter. Normal formatting borrows the
+/// already resolved document; only a changed caller policy needs a new layout.
+pub(crate) fn resolve_emission_policy<'a>(
+    source: &SourceBuffer,
+    document: &'a Document,
+    options: FormatOptions,
+) -> std::borrow::Cow<'a, Document> {
+    resolve_emission_policy_inner(source, document, options, true)
+}
+
+pub(crate) fn resolve_yaml_emission_policy<'a>(
+    source: &SourceBuffer,
+    document: &'a Document,
+    options: FormatOptions,
+) -> std::borrow::Cow<'a, Document> {
+    resolve_emission_policy_inner(source, document, options, false)
+}
+
+fn resolve_emission_policy_inner<'a>(
+    source: &SourceBuffer,
+    document: &'a Document,
+    options: FormatOptions,
+    document_options: bool,
+) -> std::borrow::Cow<'a, Document> {
+    if !emission_policy_changed(source, document, options, document_options) {
+        return std::borrow::Cow::Borrowed(document);
+    }
+    let mut document = document.clone();
+    resolve_document_policy(source, &mut document, options, document_options);
+    std::borrow::Cow::Owned(document)
+}
+
+fn document_emit_options(
+    source: &SourceBuffer,
+    document: &Document,
+    options: FormatOptions,
+) -> FormatOptions {
+    let mut options = if document.options == FormatOptions::default() {
+        options
+    } else {
+        document.options
+    };
+    if !matches!(
+        source.dominant_line_ending,
+        crate::core::source::LineEnding::None
+    ) {
+        options.default_line_ending = source.dominant_line_ending.as_str();
+    }
+    options
+}
+
+fn nested_emit_policies(
+    document: &Document,
+    options: FormatOptions,
+) -> Vec<(usize, FormatOptions)> {
+    let mut nested = Vec::new();
+    for node in &document.nodes {
+        let id = match node.emit {
+            EmitPlan::MarkdownFrontMatter { nested, .. }
+            | EmitPlan::MarkdownDiv { nested, .. }
+            | EmitPlan::EmbeddedMarkdownString { nested, .. }
+            | EmitPlan::EmbeddedMarkdownComment { nested, .. }
+            | EmitPlan::EmbeddedYamlComment { nested, .. }
+            | EmitPlan::MarkdownCodeFence {
+                nested: Some(nested),
+                ..
+            } => nested,
+            _ => continue,
+        };
+        if !document.state(node.state).preserve {
+            nested.push((id, document.state(node.state).markdown_options(options)));
+        }
+    }
+    if let Some(ast) = &document.yaml {
+        for node in &ast.nodes {
+            if let YamlAstKind::Scalar(scalar) = &node.kind
+                && let Some(id) = scalar.nested
+            {
+                nested.push((
+                    id as usize,
+                    document.state(node.state).markdown_options(options),
+                ));
+            }
+        }
+    }
+    nested
+}
+
+fn emission_policy_changed(
+    source: &SourceBuffer,
+    document: &Document,
+    options: FormatOptions,
+    document_options: bool,
+) -> bool {
+    if document.skip_file {
         return false;
     }
-    match kind {
-        MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::markdown_paragraph_format_supported(
-                input,
-                state.markdown_options(options),
-            )
-        }
-        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => true,
-        MarkdownBlockFormatKind::List => crate::core::wrap::markdown_list_format_supported(
-            input,
-            state.markdown_options(options),
-        ),
-        MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::markdown_definition_list_format_supported(
-                input,
-                state.markdown_options(options),
-            )
-        }
-        MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::markdown_blockquote_format_supported(
-                input,
-                state.markdown_options(options),
-            )
+    let source = document.source.as_ref().unwrap_or(source);
+    let options = if document_options {
+        document_emit_options(source, document, options)
+    } else {
+        options
+    };
+    if let Some(ast) = &document.yaml
+        && ast.nodes.iter().any(|node| {
+            node.inline_markdown.as_ref().is_some_and(|fragment| {
+                let state = document.state(node.state);
+                fragment.options() != state.markdown_options(state.yaml_options(options))
+            })
+        })
+    {
+        return true;
+    }
+    document
+        .nodes
+        .iter()
+        .zip(&document.markdown)
+        .any(|(node, plan)| {
+            !document.state(node.state).preserve
+                && plan.as_ref().is_some_and(|plan| {
+                    !plan.preserve
+                        && plan.options != document.state(node.state).markdown_options(options)
+                })
+        })
+        || nested_emit_policies(document, options)
+            .into_iter()
+            .any(|(id, options)| {
+                emission_policy_changed(source, &document.nested[id], options, true)
+            })
+}
+
+fn resolve_document_policy(
+    source: &SourceBuffer,
+    document: &mut Document,
+    options: FormatOptions,
+    document_options: bool,
+) {
+    if document.skip_file {
+        return;
+    }
+    let owned_source = document.source.take();
+    let source = owned_source.as_ref().unwrap_or(source);
+    let options = if document_options {
+        document_emit_options(source, document, options)
+    } else {
+        options
+    };
+    if document.kind == DocumentKind::Markdown {
+        finalize_markdown_plans(source, document, options);
+    }
+    if let Some(ast) = &mut document.yaml {
+        for node in &mut ast.nodes {
+            if let Some(fragment) = &mut node.inline_markdown {
+                let state = document.states.get(node.state);
+                fragment.resolve_options(state.markdown_options(state.yaml_options(options)));
+            }
         }
     }
+    for (id, options) in nested_emit_policies(document, options) {
+        resolve_document_policy(source, &mut document.nested[id], options, true);
+    }
+    document.source = owned_source;
 }
 
 fn validate_markdown_format_target(
@@ -1218,34 +1485,6 @@ pub(crate) fn render_markdown_thematic_break(
     let mut output = options.markdown_horizontal_rule.to_owned();
     output.push_str(line_ending_for_span(source, span));
     output
-}
-
-pub(crate) fn render_markdown_format(
-    source: &SourceBuffer,
-    span: Span,
-    options: FormatOptions,
-    kind: MarkdownBlockFormatKind,
-) -> String {
-    let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
-        return input.to_owned();
-    }
-    match kind {
-        MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::format_markdown_paragraph(input, options)
-        }
-        MarkdownBlockFormatKind::Table => crate::core::wrap::format_markdown_table(input, options),
-        MarkdownBlockFormatKind::PandocTable => {
-            crate::core::wrap::format_markdown_pandoc_table(input, options)
-        }
-        MarkdownBlockFormatKind::List => crate::core::wrap::format_markdown_list(input, options),
-        MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::format_markdown_definition_list(input, options)
-        }
-        MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::format_markdown_blockquote(input, options)
-        }
-    }
 }
 
 fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {

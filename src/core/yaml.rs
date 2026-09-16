@@ -834,6 +834,23 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             };
         self.ast.node_mut(id).must_preserve_source = Some(must_preserve_source);
         let plan = self.yaml_emit_plan_for(id);
+        if matches!(
+            plan,
+            YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+        ) {
+            let node = self.ast.node(id);
+            let YamlAstKind::Scalar(scalar) = &node.kind else {
+                unreachable!("scalar plan")
+            };
+            let metadata = scalar_metadata(self.source, scalar.value);
+            let content = inline_markdown_scalar_content(self.source, scalar, metadata.content)
+                .expect("planned inline Markdown scalar is decodable");
+            let state = self.doc.state(node.state);
+            let options = state.markdown_options(state.yaml_options(self.options));
+            self.ast.node_mut(id).inline_markdown = Some(Box::new(
+                crate::core::wrap::Fragment::plan(content.into_owned(), options),
+            ));
+        }
         self.ast.node_mut(id).emit = plan;
     }
 
@@ -4838,6 +4855,16 @@ pub fn emit_yaml_document_with_stats(
     options: FormatOptions,
     plugins: &PluginRegistry,
 ) -> Result<(String, YamlEmissionStats)> {
+    let document = crate::core::markdown::resolve_yaml_emission_policy(source, document, options);
+    emit_planned_yaml_document_with_stats(source, &document, options, plugins)
+}
+
+fn emit_planned_yaml_document_with_stats(
+    source: &SourceBuffer,
+    document: &Document,
+    options: FormatOptions,
+    plugins: &PluginRegistry,
+) -> Result<(String, YamlEmissionStats)> {
     let Some(ast) = document.yaml.as_ref() else {
         return Ok((
             source.slice(document.range).to_owned(),
@@ -6597,19 +6624,22 @@ fn render_inline_markdown_scalar(
     source: &SourceBuffer,
     scalar: &YamlScalar,
     node: &YamlAstNode,
-    state: &crate::core::directives::DirectiveState,
+    _state: &crate::core::directives::DirectiveState,
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
     let metadata = scalar_metadata(source, scalar.value);
-    let content = inline_markdown_scalar_content(source, scalar, metadata.content)?;
+    let fragment = node
+        .inline_markdown
+        .as_ref()
+        .expect("retained inline Markdown scalar");
     let prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
         .trim_ascii();
     let newline = line_ending_or_default(source, node.span, options);
 
     let mut out = String::new();
-    if content.is_empty() {
+    if fragment.is_empty() {
         if !prefix.is_empty() {
             out.push_str(prefix);
             out.push(' ');
@@ -6628,8 +6658,7 @@ fn render_inline_markdown_scalar(
     emit_inline_comment(&mut out, source, scalar.trailing_comment);
     out.push_str(newline);
 
-    let mut formatted =
-        crate::core::wrap::format_markdown_fragment(&content, state.markdown_options(options));
+    let mut formatted = fragment.emit();
     if !formatted.ends_with('\n') && !formatted.ends_with('\r') {
         formatted.push_str(newline);
     }

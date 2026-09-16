@@ -191,6 +191,8 @@ pub struct Document {
     pub nested: Vec<Document>,
     pub states: DirectiveStateTable,
     pub yaml: Option<YamlDocumentAst>,
+    // Indexed by `nodes`; public EmitPlan variants keep their existing shape.
+    pub(crate) markdown: Vec<Option<crate::core::markdown::RetainedMarkdown>>,
     pub trace: DocumentTrace,
     pub options: FormatOptions,
     pub skip_file: bool,
@@ -206,6 +208,7 @@ impl Document {
             nested: Vec::new(),
             states: DirectiveStateTable::new(),
             yaml: None,
+            markdown: Vec::new(),
             trace: DocumentTrace::default(),
             options: FormatOptions::default(),
             skip_file: false,
@@ -218,6 +221,7 @@ impl Document {
 
     pub fn push_node(&mut self, node: Node) {
         self.nodes.push(node);
+        self.markdown.push(None);
     }
 
     pub fn push_nested(&mut self, document: Document) -> usize {
