@@ -33,6 +33,20 @@ firstsecond `ab` $cd$
 - firstsecond `ab` $cd$
 
 > firstsecond `ab` $cd$
+
+- Before `first  
+    second {{< include file >}}` after _outside_.
+  	
+  Next paragraph [real](  target  ).
+
+> - First paragraph `a  b`.
+>   
+>   Next paragraph [real](  target  ).
+
+[^nested]: Before `first  
+      second {{< include file >}}` after _outside_.
+  	
+    Next paragraph [real](  target  ).
 -- stdout
 Before `first  
   second {{< include file >}}` after *outside*.
@@ -63,6 +77,21 @@ first second `ab` $cd$
 - first second `ab` $cd$
 
 > first second `ab` $cd$
+
+- Before `first  
+    second {{< include file >}}` after *outside*.
+
+  Next paragraph [real](target).
+
+> - First paragraph `a  b`.
+>
+>   Next paragraph [real](target).
+
+[^nested]:
+    Before `first  
+      second {{< include file >}}` after *outside*.
+
+    Next paragraph [real](target).
 -- stderr
 -- status
 0

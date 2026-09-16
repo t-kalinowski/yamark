@@ -101,8 +101,8 @@ impl<'a> InlineContent<'a> {
             }
             // Escapes belong to prose. Consume the escaped character together
             // with its backslash so it cannot open a protected fragment.
-            if rest.starts_with('\\') && !rest[1..].starts_with(char::is_alphabetic) {
-                let end = index + 1 + rest[1..].chars().next().map_or(0, char::len_utf8);
+            if rest.starts_with('\\') && escaped_at(source, index + 1) {
+                let end = index + 2;
                 parts.push(InlinePart::Text(&source[index..end]));
                 index = end;
                 continue;
@@ -341,10 +341,16 @@ fn markup_span(source: &str, index: usize) -> Option<(usize, usize, usize)> {
 
 fn gap_end(source: &str, start: usize) -> Option<(usize, Option<MarkdownHardBreakMarker>)> {
     let mut end = start;
-    while matches!(source.as_bytes().get(end), Some(b' ' | b'\t' | b'\x0c')) {
+    // Use the same ASCII whitespace class as prose reflow. Line endings are
+    // consumed separately below so their authored bytes stay attached to the gap.
+    while source
+        .as_bytes()
+        .get(end)
+        .is_some_and(|byte| byte.is_ascii_whitespace() && !matches!(byte, b'\r' | b'\n'))
+    {
         end += 1;
     }
-    let spaces_end = end;
+    let whitespace_end = end;
     if source.as_bytes().get(end) == Some(&b'\\')
         && (end + 1 == source.len()
             || matches!(source.as_bytes().get(end + 1), Some(b'\r' | b'\n')))
@@ -364,5 +370,5 @@ fn gap_end(source: &str, start: usize) -> Option<(usize, Option<MarkdownHardBrea
         }
         return (end > start).then_some((end, marker));
     }
-    (spaces_end > start).then_some((spaces_end, None))
+    (whitespace_end > start).then_some((whitespace_end, None))
 }

@@ -32,6 +32,12 @@ firstsecond `ab` $cd$
 
 first  
 second
+
+first\   second `[x](  url  ) \   ` _outside_ [real](  url  ).
+
+- first\	second `[x](  url  ) \	` _outside_ [real](  url  ).
+
+first\ second _outside_ [real](  url  ).
 -- stdout
 # *Before `_a_ [x]( url )` after*
 
@@ -62,6 +68,12 @@ firstsecond `ab` $cd$
 
 first \
 second
+
+first\   second `[x](  url  ) \   ` *outside* [real](url).
+
+- first\ second `[x](  url  ) \	` *outside* [real](url).
+
+first\ second _outside_ [real](  url  ).
 -- stderr
 -- status
 0

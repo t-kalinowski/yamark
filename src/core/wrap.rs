@@ -635,8 +635,7 @@ fn try_format_simple_markdown_list(
         let body = line.body;
         let newline = line.newline;
         if body.trim().is_empty() {
-            out.push_str(body);
-            out.push_str(newline);
+            write_markdown_blank_line(&mut out, line);
             index += 1;
             continue;
         }
@@ -723,7 +722,7 @@ fn try_format_simple_markdown_list(
             }
             if index >= lines.len() {
                 for blank in &lines[blank_start..index] {
-                    out.push_str(blank.full);
+                    write_markdown_blank_line(&mut out, *blank);
                 }
                 break;
             }
@@ -743,7 +742,7 @@ fn try_format_simple_markdown_list(
             }
 
             for blank in &lines[blank_start..index] {
-                out.push_str(blank.full);
+                write_markdown_blank_line(&mut out, *blank);
             }
             paragraph_prefix = continuation_prefix.clone();
             paragraph_content = continuation_trimmed;
@@ -752,6 +751,14 @@ fn try_format_simple_markdown_list(
         }
     }
     Some(out)
+}
+
+// Container separators are outside paragraph content. Normalize them here;
+// the emitter receives finalized container output and must not trim it again.
+fn write_markdown_blank_line(out: &mut String, line: MarkdownLine<'_>) {
+    debug_assert!(line.body.trim().is_empty());
+    out.push_str(line.body.trim_end_matches([' ', '\t']));
+    out.push_str(line.newline);
 }
 
 fn try_format_rich_markdown_list(
@@ -1156,7 +1163,7 @@ pub fn format_markdown_fragment(source: &str, options: FormatOptions) -> String 
     else {
         return source.to_owned();
     };
-    crate::core::emit::emit_document(&buffer, &document, options, &plugins)
+    crate::core::emit::emit_markdown_document(&buffer, &document, options, &plugins)
         .unwrap_or_else(|_| source.to_owned())
 }
 
@@ -1384,8 +1391,8 @@ fn footnote_definition(source: &str) -> bool {
 }
 
 fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<String> {
-    let (body, newline) = strip_final_newline(source);
-    let mut lines = markdown_lines(body);
+    let newline = final_newline(source);
+    let mut lines = markdown_lines(source);
     let first = lines.next()?;
     let first_line = first.body;
     let indent = first_line.bytes().take_while(|byte| *byte == b' ').count();
@@ -1412,7 +1419,7 @@ fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<Stri
         let line = source_line.body;
         if line.trim().is_empty() {
             saw_blank_line = true;
-            block_continuation_lines.push(Some(""));
+            block_continuation_lines.push(Some(("", source_line.newline)));
             continue;
         }
         if line.bytes().take_while(|byte| *byte == b' ').count() < continuation_prefix.len() {
@@ -1422,7 +1429,7 @@ fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<Stri
         pieces.push((continuation, source_line.newline));
         block_continuation_lines.push(
             line.strip_prefix(&block_continuation_prefix)
-                .map(str::trim_end),
+                .map(|body| (body, source_line.newline)),
         );
     }
     let block_continuation_refs = block_continuation_lines
@@ -1438,44 +1445,42 @@ fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<Stri
         let block_continuation_refs = block_continuation_refs?;
         return Some(format_markdown_footnote_block(
             &label,
-            first_content.trim_end(),
+            (first_content, first.newline),
             &block_continuation_refs,
             &block_continuation_prefix,
             newline,
             options,
         ));
     }
-    // The body above excludes the paragraph's final line ending.
-    pieces.last_mut()?.1 = newline;
     let out =
         format_prefixed_markdown_lines(&pieces, &prefix, &continuation_prefix, options, false)?;
     Some(out)
 }
 
-fn footnote_needs_recursive_body(first_content: &str, continuation_lines: &[&str]) -> bool {
+fn footnote_needs_recursive_body(first_content: &str, continuation_lines: &[(&str, &str)]) -> bool {
     first_content.is_empty()
         || continuation_lines
             .iter()
-            .any(|line| markdown_block_start_line(line))
+            .any(|(body, _)| markdown_block_start_line(body))
 }
 
 fn format_markdown_footnote_block(
     label: &str,
-    first_content: &str,
-    continuation_lines: &[&str],
+    first_line: (&str, &str),
+    continuation_lines: &[(&str, &str)],
     continuation_prefix: &str,
     newline: &str,
     options: FormatOptions,
 ) -> String {
     let join_newline = newline_for_join(newline, options);
     let mut nested = String::new();
-    if !first_content.is_empty() {
-        nested.push_str(first_content);
-        nested.push_str(join_newline);
+    if !first_line.0.is_empty() {
+        nested.push_str(first_line.0);
+        nested.push_str(first_line.1);
     }
-    for line in continuation_lines {
-        nested.push_str(line);
-        nested.push_str(join_newline);
+    for (body, newline) in continuation_lines {
+        nested.push_str(body);
+        nested.push_str(newline);
     }
 
     let mut nested_options = options;
@@ -3762,6 +3767,15 @@ fn split_trailing_attribute(text: &str) -> Option<(&str, &str)> {
 }
 
 fn escaped_at(source: &str, index: usize) -> bool {
+    // Markdown backslash escapes apply only to ASCII punctuation. In particular,
+    // whitespace after a backslash must still reach the inline gap classifier.
+    if !source
+        .as_bytes()
+        .get(index)
+        .is_some_and(u8::is_ascii_punctuation)
+    {
+        return false;
+    }
     let backslashes = source[..index]
         .bytes()
         .rev()

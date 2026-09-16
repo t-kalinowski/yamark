@@ -4,13 +4,21 @@ Paragraphs and container paragraphs share `InlineContent` in `src/core/wrap/inli
 
 ## Formatting order
 
-1. The block parser selects paragraphs and containers. Container formatters remove their prefixes and pass content lines, including their line endings, to `format_prefixed_markdown_lines`.
+1. The block parser selects paragraphs and containers. Container formatters remove their prefixes and pass content lines, including their line endings, to `format_prefixed_markdown_lines` or recursive Markdown formatting. They normalize structural blank lines separately from paragraph content.
 2. `InlineContent::parse` recognizes inline structure before formatting. Code, math, reference links, autolinks, brace spans, and LaTeX commands retain their source slices. Existing emphasis and inline markup boundaries contain inline content; normalization can reach their real links without entering literals.
 3. Formatting consumes the representation. Editable gaps supply word and hard break boundaries. Links receive their existing label, target, and attribute normalization. Canonicalization changes supported emphasis delimiters.
 4. The wrapper receives tokens with an explicit flag identifying splittable links. Protected tokens retain their contents even when wider than the requested column. The writer restores container prefixes on literal continuation lines.
-5. Paragraph and container output bypasses the emitter's general line trimming. The inline pipeline has already normalized editable whitespace; trimming the resulting physical lines would remove spaces from multiline literals.
+5. Paragraph and container output bypasses the emitter's general line trimming. When emitting Markdown, each fragment and child Markdown document finishes its own normalization, including fenced divs and Markdown code fences. Parents append formatted child Markdown verbatim; trimming its physical lines again would remove spaces from multiline literals.
 
 The list support check uses multiline spans from the same inline representation instead of searching raw text for link destinations. Heading canonicalization also uses this representation. Heading and table layout retain their existing spacing rules.
+
+## Normalization ownership
+
+- Inline classification uses the shared escape predicate: a backslash escapes ASCII punctuation. Whitespace after a backslash remains eligible for gap classification. Gaps use the same ASCII whitespace class as reflow; vertical tabs and non-ASCII whitespace retain their existing preservation behavior.
+- Container formatting owns prefixes and structural separators. Paragraph content keeps its spaces and authored line endings until inline classification, including when a footnote takes the recursive formatting path. A copied separator must receive its ordinary trailing-space cleanup before it joins finalized paragraph output.
+- Emission normalizes raw Markdown nodes and copies finalized paragraph, container, and child-document output. That distinction prevents both unnormalized container separators and a second cleanup pass over protected literals.
+
+The public CLI regressions combine escapes with gaps and containers with paragraph separators and multiline literals. They assert expected output independently of idempotence: unchanged output on a second pass cannot detect whitespace that was never normalized on the first pass.
 
 ## Boundaries and follow-up work
 

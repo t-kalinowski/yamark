@@ -24,6 +24,16 @@ firstsecond `ab` $cd$
 - firstsecond `ab` $cd$
 
 > firstsecond `ab` $cd$
+
+first\   second `[x](  url  ) \   ` after.
+
+- first\	second `[x](  url  ) \	` after.
+
+> first\second `[x](  url  ) \` after.
+
+firstsecond _outside_ [real](  url  ).
+
+first\second _outside_ [real](  url  ).
 -- stdout
 Before `[x](< url >)` after.
 
@@ -42,6 +52,16 @@ first second `ab` $cd$
 - first second `ab` $cd$
 
 > first second `ab` $cd$
+
+first\ second `[x](  url  ) \   ` after.
+
+- first\ second `[x](  url  ) \	` after.
+
+> first\ second `[x](  url  ) \` after.
+
+firstsecond _outside_ [real](  url  ).
+
+first\second _outside_ [real](  url  ).
 -- stderr
 -- status
 0

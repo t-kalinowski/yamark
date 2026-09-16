@@ -1,6 +1,7 @@
 use crate::core::directives::contains_markdown_template_span;
 use crate::core::document::{
-    CodeFenceSafety, Document, EmitPlan, FormatOptions, MarkdownNodeKind, Node, NodeKind,
+    CodeFenceSafety, Document, DocumentKind, EmitPlan, FormatOptions, MarkdownNodeKind, Node,
+    NodeKind,
 };
 use crate::core::source::{SourceBuffer, Span};
 use crate::diagnostic::{Result, YamarkError};
@@ -240,13 +241,15 @@ fn emit_document_inner(
             } => {
                 emit_opening(&mut out, source, *opening, normalized_opening.as_deref());
                 if let Some(nested) = nested {
+                    let nested = &document.nested[*nested];
+                    let markdown = nested.kind == DocumentKind::Markdown;
                     let mut nested_output = emit_document_inner(
                         source,
-                        &document.nested[*nested],
+                        nested,
                         state.markdown_options(options),
                         plugins,
                         context,
-                        false,
+                        normalize_markdown_output && markdown,
                     )?;
                     if !nested_output.is_empty()
                         && !nested_output.ends_with('\n')
@@ -255,7 +258,11 @@ fn emit_document_inner(
                         nested_output.push_str(line_ending_for_span(source, *opening));
                     }
                     ensure_code_fence_safe(&nested_output, *safety, source, *opening)?;
-                    out.push_str(&nested_output);
+                    if markdown {
+                        out.push_verbatim_str(&nested_output);
+                    } else {
+                        out.push_str(&nested_output);
+                    }
                 } else {
                     out.push_str(source.slice(Span::new(opening.end, closing.start)));
                 }
@@ -275,7 +282,7 @@ fn emit_document_inner(
                     EmitContext {
                         blank_between_adjacent_divs: true,
                     },
-                    false,
+                    normalize_markdown_output,
                 )?;
                 if !nested_output.is_empty()
                     && !nested_output.ends_with('\n')
@@ -283,7 +290,7 @@ fn emit_document_inner(
                 {
                     nested_output.push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_str(&nested_output);
+                out.push_verbatim_str(&nested_output);
                 out.push_str(source.slice(*closing));
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),

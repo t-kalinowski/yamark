@@ -25,6 +25,25 @@ Term
 
 - Before <kbd><span>$first\
     second [x]( url )$</span></kbd> after _outside_ [real](  target  ).
+
+::: note
+Before `first  
+  second [x]( url )` after _outside_.
+ 	
+Next paragraph.	
+:::
+
+```markdown
+Before $first	
+  second [x]( url )$ after _outside_.
+ 	
+Next paragraph.	
+```
+
+[^recursive]: First paragraph.
+
+    Before `first  
+      second [x]( url )` after _outside_.
 -- stdout
 Before `first  
   second [x]( url )` after *outside*.
@@ -56,6 +75,26 @@ Term
 - Before <kbd><span>$first\
     second [x]( url )$</span></kbd> after *outside*
   [real](target).
+
+::: note
+Before `first  
+  second [x]( url )` after *outside*.
+
+Next paragraph.
+:::
+
+```markdown
+Before $first	
+  second [x]( url )$ after *outside*.
+
+Next paragraph.
+```
+
+[^recursive]:
+    First paragraph.
+
+    Before `first  
+      second [x]( url )` after *outside*.
 -- stderr
 -- status
 0

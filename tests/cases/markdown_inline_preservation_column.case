@@ -14,6 +14,12 @@ firstsecond `ab` $cd$
 - firstsecond `ab` $cd$
 
 > firstsecond `ab` $cd$
+
+first\   second `[x](  url  ) \   ` after _outside_.
+
+- First paragraph.
+  	
+  Next paragraph [real](  target  ).
 -- stdout
 Before
 ``[x](  long-link-target  ) ` _literal_``
@@ -38,6 +44,15 @@ first second `ab` $cd$
 
 > first second `ab`
 > $cd$
+
+first\ second
+`[x](  url  ) \   `
+after *outside*.
+
+- First paragraph.
+
+  Next paragraph
+  [real](target).
 -- stderr
 -- status
 0
