@@ -1,0 +1,9 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+#   Heading [x](foo\_bar/`<%value%>`)   ##
+-- stdout
+#   Heading [x](foo\_bar/`<%value%>`)   ##
+-- stderr
+-- status
+0

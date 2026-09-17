@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+# [hello   world](  url  )
+-- stdout
+# [hello world]( url )
+-- stderr
+-- status
+0

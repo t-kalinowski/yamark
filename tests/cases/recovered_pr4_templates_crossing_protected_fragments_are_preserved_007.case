@@ -1,0 +1,14 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+<span>{ <span> } </span> keep   _this_ {{ foo }}</span>
+
+Following
+prose.
+-- stdout
+<span>{ <span> } </span> keep   _this_ {{ foo }}</span>
+
+Following prose.
+-- stderr
+-- status
+0

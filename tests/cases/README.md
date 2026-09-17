@@ -18,3 +18,5 @@ expected stderr
 The test harness intentionally avoids calling library internals. This keeps the
 public CLI contract readable and prevents implementation details from becoming
 part of the test API.
+
+Recovered cases from PRs #4 and #6 are indexed in [the reviewed-case inventory](../reviewed-cases/README.md). Active cases record the specified main revision. Differing historical expectations live outside this harness and are not a second passing suite. Consult the inventory before changing a baseline that records an unresolved limitation.

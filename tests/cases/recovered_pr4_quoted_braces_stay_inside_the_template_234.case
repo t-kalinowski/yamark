@@ -1,0 +1,13 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with {{ render({"label": "} keep   this", "other": "{{"}) }}. Second
+sentence.
+-- stdout
+First
+sentence with {{ render({"label": "} keep   this", "other": "{{"}) }}. Second
+sentence.
+-- stderr
+-- status
+0

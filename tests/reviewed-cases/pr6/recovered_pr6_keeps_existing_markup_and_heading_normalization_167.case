@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+Before <kbd>[x](  url  )</kbd> after.
+-- stdout
+Before <kbd>[x](url)</kbd> after.
+-- stderr
+-- status
+0

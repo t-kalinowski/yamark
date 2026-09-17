@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.yaml --verify
+-- stdin
+value: "`{{ keep   this }}`"
+items: [a,b]
+-- stdout
+value: "`{{ keep   this }}`"
+items: [a, b]
+-- stderr
+-- status
+0

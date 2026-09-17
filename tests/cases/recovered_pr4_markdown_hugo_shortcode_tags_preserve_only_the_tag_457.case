@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+{{< notice >}}
+This    Markdown body should be formatted.
+{{< /notice >}}
+-- stdout
+{{< notice >}}
+This    Markdown body should be formatted.
+{{< /notice >}}
+-- stderr
+-- status
+0

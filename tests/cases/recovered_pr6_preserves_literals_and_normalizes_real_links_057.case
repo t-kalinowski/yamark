@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap none --canonical
+-- stdin
+Before
+`[x]( url ) {{< include file >}}` after [real](  target  ).
+-- stdout
+Before
+`[x]( url ) {{< include file >}}` after [real](target).
+-- stderr
+-- status
+0

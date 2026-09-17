@@ -1,0 +1,14 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+#   H <!-- \`{% raw %}\` keep   _this_ \`{% endraw %}\` -->   ##
+
+Following
+prose.
+-- stdout
+#   H <!-- \`{% raw %}\` keep   _this_ \`{% endraw %}\` -->   ##
+
+Following prose.
+-- stderr
+-- status
+0

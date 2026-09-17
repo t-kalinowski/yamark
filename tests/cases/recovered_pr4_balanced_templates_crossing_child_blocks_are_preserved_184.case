@@ -1,0 +1,15 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+> Intro.
+>
+> > > {{ printf "keep   this"
+> outer }}
+-- stdout
+> Intro.
+>
+> > > {{ printf "keep   this"
+> outer }}
+-- stderr
+-- status
+0

@@ -1,0 +1,76 @@
+-- args
+format --stdin-file-path input.md --wrap 24 --canonical
+-- stdin
+Before ``[x](  long-link-target  ) ` _literal_`` after [real](  target  ).
+
+Before $a \$ _literal_ [x](  long-link-target  )$ after _outside_.
+
+- Before `[x](  long-link-target  )` after [real](  target  ).
+
+> Before `[x](  long-link-target  ) {{< include file >}}` after _outside_.
+
+firstsecond `ab` $cd$
+
+- firstsecond `ab` $cd$
+
+> firstsecond `ab` $cd$
+
+first\   second `[x](  url  ) \   ` after _outside_.
+
+- First paragraph.
+  	
+  Next paragraph [real](  target  ).
+
+Term
+   : Before
+    after _outside_ [real](  target  ).
+
+100. Before `first  
+    second [x]( url )` after _outside_ [real](  target  ).
+-- stdout
+Before
+``[x](  long-link-target  ) ` _literal_``
+after [real](target).
+
+Before
+$a \$ _literal_ [x](  long-link-target  )$
+after *outside*.
+
+- Before
+  `[x](  long-link-target  )`
+  after [real](target).
+
+> Before
+> `[x](  long-link-target  ) {{< include file >}}`
+> after *outside*.
+
+first second `ab` $cd$
+
+- first second `ab`
+  $cd$
+
+> first second `ab`
+> $cd$
+
+first\ second
+`[x](  url  ) \   `
+after *outside*.
+
+- First paragraph.
+
+  Next paragraph
+  [real](target).
+
+Term
+   : Before after
+     *outside*
+     [real](target).
+
+100. Before
+     `first  
+     second [x]( url )`
+     after *outside*
+     [real](target).
+-- stderr
+-- status
+0

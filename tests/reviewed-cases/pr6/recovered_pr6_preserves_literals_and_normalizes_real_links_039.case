@@ -1,0 +1,10 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+> Before
+> $a \$ _literal_ [x](  url  )$ after [real](  target  ).
+-- stdout
+> Before $a \$ _literal_ [x](  url  )$ after [real](target).
+-- stderr
+-- status
+0

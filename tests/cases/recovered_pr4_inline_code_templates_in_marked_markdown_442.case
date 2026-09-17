@@ -1,0 +1,15 @@
+-- args
+format --wrap sentence --stdin-file-path input.yaml --verify
+-- stdin
+text: !markdown |
+  First
+  sentence with {{ foo }}. Second
+  sentence.
+-- stdout
+text: !markdown |
+  First
+  sentence with {{ foo }}. Second
+  sentence.
+-- stderr
+-- status
+0

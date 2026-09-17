@@ -1,0 +1,13 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+> {{ printf "keep   this"
+> # Heading
+> }}
+-- stdout
+> {{ printf "keep   this"
+> # Heading
+> }}
+-- stderr
+-- status
+0

@@ -1,0 +1,11 @@
+-- args
+format --canonical --wrap 20 --stdin-file-path input.md --verify
+-- stdin
+Before   {{< note text='}} keep   _this_' >}} after.
+-- stdout
+Before
+{{< note text='}} keep   _this_' >}}
+after.
+-- stderr
+-- status
+0

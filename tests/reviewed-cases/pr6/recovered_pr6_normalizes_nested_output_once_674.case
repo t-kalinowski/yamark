@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap none --canonical
+-- stdin
+::: note
+Before `first  
+  second [x]( url )` after _outside_.
+ 	
+Next paragraph.	
+:::
+-- stdout
+::: note
+Before `first  
+  second [x]( url )` after *outside*.
+
+Next paragraph.
+:::
+-- stderr
+-- status
+0

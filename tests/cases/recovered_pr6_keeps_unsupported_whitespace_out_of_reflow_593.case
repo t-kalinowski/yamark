@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+first\\ second _outside_ [real](  url  ).
+-- stdout
+first\\ second _outside_ [real](  url  ).
+-- stderr
+-- status
+0

@@ -1,0 +1,18 @@
+-- args
+format --wrap sentence --stdin-file-path input.R --verify
+-- stdin
+# fmt: markdown
+text <- r"(
+First
+sentence with {{ foo }}. Second
+sentence.
+)"
+-- stdout
+# fmt: markdown
+text <- r"(
+First sentence with {{ foo }}.
+Second sentence.
+)"
+-- stderr
+-- status
+0

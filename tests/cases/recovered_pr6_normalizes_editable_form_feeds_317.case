@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+> first 	second `ab` $cd$
+-- stdout
+> first second `ab` $cd$
+-- stderr
+-- status
+0

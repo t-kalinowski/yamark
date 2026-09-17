@@ -1,0 +1,9 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+λ [<span title="](outer)">] <% value %>
+-- stdout
+λ [<span title="](outer)">] <% value %>
+-- stderr
+-- status
+0

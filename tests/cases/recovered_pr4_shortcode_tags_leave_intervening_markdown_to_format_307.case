@@ -1,0 +1,25 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+{{% notice
+message="quoted %}} keeps   its spacing"
+%}}
+Format   this paragraph
+as Markdown.
+
+#   A heading
+
+{{% unrelated %}}
+Following
+prose.
+-- stdout
+{{% notice
+message="quoted %}} keeps its spacing" %}} Format this paragraph as Markdown.
+
+# A heading
+
+{{% unrelated %}}
+Following prose.
+-- stderr
+-- status
+0

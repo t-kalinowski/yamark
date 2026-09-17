@@ -1,0 +1,11 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+Before
+`{% verbatim example %}keep   this{% endverbatim example %}`
+after.
+-- stdout
+Before `{% verbatim example %}keep   this{% endverbatim example %}` after.
+-- stderr
+-- status
+0

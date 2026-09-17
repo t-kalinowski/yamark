@@ -1,0 +1,12 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with [target](url "`{{ title }}`"). Second
+sentence.
+-- stdout
+First sentence with [target](url "`{{ title }}`").
+Second sentence.
+-- stderr
+-- status
+0

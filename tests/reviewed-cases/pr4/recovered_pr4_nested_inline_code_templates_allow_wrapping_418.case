@@ -1,0 +1,10 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+Before
+*`<% keep   this %>`* after.
+-- stdout
+Before *`<% keep   this %>`* after.
+-- stderr
+-- status
+0

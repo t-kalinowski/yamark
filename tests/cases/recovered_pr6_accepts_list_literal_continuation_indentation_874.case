@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap 24 --canonical
+-- stdin
+100. Before `first  
+    second [x]( url )` after _outside_ [real](  target  ).
+-- stdout
+100. Before `first
+    second [x]( url )` after _outside_ [real](  target  ).
+-- stderr
+-- status
+0

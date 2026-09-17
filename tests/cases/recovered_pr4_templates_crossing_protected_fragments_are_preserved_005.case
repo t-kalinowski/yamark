@@ -1,0 +1,14 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+Before ${{ "keep $   this" }} after.
+
+Following
+prose.
+-- stdout
+Before ${{ "keep $   this" }} after.
+
+Following prose.
+-- stderr
+-- status
+0

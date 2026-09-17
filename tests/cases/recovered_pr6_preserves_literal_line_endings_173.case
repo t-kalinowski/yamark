@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+> Before `first  	
+>   second\
+> third` after.
+-- stdout
+> Before `first
+>   second\
+> third` after.
+-- stderr
+-- status
+0

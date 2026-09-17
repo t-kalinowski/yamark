@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+#   Title {{ keep   spacing }}   ##
+
+Setext {{ keep   spacing }}
+====
+
+#   Normal ##
+-- stdout
+#   Title {{ keep   spacing }}   ##
+
+Setext {{ keep   spacing }}
+====
+
+# Normal
+-- stderr
+-- status
+0

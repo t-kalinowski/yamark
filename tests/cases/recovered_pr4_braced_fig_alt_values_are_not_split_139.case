@@ -1,0 +1,9 @@
+-- args
+format --wrap 20 --stdin-file-path input.md --verify
+-- stdin
+![x](url){fig-alt="one {{ 'keep this' }} two"}
+-- stdout
+![x](url){fig-alt="one {{ 'keep this' }} two"}
+-- stderr
+-- status
+0

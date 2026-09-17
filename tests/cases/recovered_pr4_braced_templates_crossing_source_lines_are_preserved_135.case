@@ -1,0 +1,11 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+> First {{ printf "keep   this"
+> }} after.
+-- stdout
+> First {{ printf "keep   this"
+> }} after.
+-- stderr
+-- status
+0

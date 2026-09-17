@@ -1,0 +1,14 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+<!-- fmt: template.delimiters "<<" ">>" scope=file -->
+First
+sentence with `<< keep   this >>`. Second
+sentence.
+-- stdout
+<!-- fmt: template.delimiters "<<" ">>" scope=file -->
+First sentence with `<< keep   this >>`.
+Second sentence.
+-- stderr
+-- status
+0

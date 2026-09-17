@@ -1,0 +1,16 @@
+-- args
+format --wrap 20 --stdin-file-path input.md --verify
+-- stdin
+Before   `{{ render_customer_notice(
+  address
+) }}` after the template and more prose.
+-- stdout
+Before
+`{{ render_customer_notice(
+  address
+) }}` after the
+template and more
+prose.
+-- stderr
+-- status
+0

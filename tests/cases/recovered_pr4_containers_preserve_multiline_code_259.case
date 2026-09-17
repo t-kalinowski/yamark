@@ -1,0 +1,25 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+Leading
+prose.
+
+Term
+: Before `{{
+    keep   _this_
+    }}` after.
+
+Following
+prose.
+-- stdout
+Leading prose.
+
+Term
+: Before `{{
+    keep   _this_
+    }}` after.
+
+Following prose.
+-- stderr
+-- status
+0

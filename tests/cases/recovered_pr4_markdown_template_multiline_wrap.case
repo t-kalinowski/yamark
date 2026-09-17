@@ -1,0 +1,35 @@
+-- args
+format --stdin-file-path input.md --wrap 40 --verify
+-- stdin
+This paragraph before the multiline template has enough ordinary prose to wrap at the requested column.
+
+{{
+render_customer_notice(
+  customer.account_name,
+  customer.preferred_delivery_address,
+  "An overwide fallback message that must stay exactly as authored"
+)
+}}
+
+This paragraph has multiline code `{{
+  render_customer_notice( customer.account_name,  customer.preferred_delivery_address )
+}}` followed by ordinary prose that still wraps at the requested column.
+-- stdout
+This paragraph before the multiline
+template has enough ordinary prose to
+wrap at the requested column.
+
+{{
+render_customer_notice(
+  customer.account_name,
+  customer.preferred_delivery_address,
+  "An overwide fallback message that must stay exactly as authored"
+)
+}}
+
+This paragraph has multiline code `{{
+  render_customer_notice( customer.account_name,  customer.preferred_delivery_address )
+}}` followed by ordinary prose that still wraps at the requested column.
+-- stderr
+-- status
+0

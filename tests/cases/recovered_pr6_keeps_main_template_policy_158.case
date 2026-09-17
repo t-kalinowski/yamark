@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.md --wrap 20 --canonical
+-- stdin
+Before
+`[x]( url ) {{ value }}` after _outside_.
+-- stdout
+Before
+`[x]( url ) {{ value }}`
+after *outside*.
+-- stderr
+-- status
+0

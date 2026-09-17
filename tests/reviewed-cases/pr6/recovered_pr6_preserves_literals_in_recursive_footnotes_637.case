@@ -1,0 +1,18 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+[^note]: First paragraph.
+
+    Before `first  
+      second\
+    third [x]( url )` after _outside_ [real](  target  ).
+-- stdout
+[^note]:
+    First paragraph.
+
+    Before `first  
+      second\
+    third [x]( url )` after *outside* [real](target).
+-- stderr
+-- status
+0

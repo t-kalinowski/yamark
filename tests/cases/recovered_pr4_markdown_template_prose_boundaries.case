@@ -1,0 +1,94 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --verify
+-- stdin
+> Before
+> this {{ foo }} after.
+
+Before
+<span>{{ foo }}</span> after.
+
+Before
+{{ foo }}
+after.
+
+Before
+{{ foo }} after.
+
+Before
+*`<% keep   this %>`* after.
+
+Before
+[`<% keep   this %>`](url) after.
+
+Before
+[[[[{{ foo }}]]]] after.
+
+Before
+[[[[`<% keep   this %>`]]]] after.
+
+Before
+[outer [middle [inner {{ keep   this }}] after] end] after.
+
+Before
+[outer *[[`<% keep   this %>`]]* after] tail.
+
+Before
+[outer [[label](url "{{ keep   this }}")] after] tail.
+
+Following
+prose.
+
+[^note]: First paragraph.
+
+    Another   paragraph.
+
+    ```python
+    print("keep   this")
+    ```
+-- stdout
+> Before
+> this {{ foo }} after.
+
+Before
+<span>{{ foo }}</span> after.
+
+Before
+{{ foo }}
+after.
+
+Before {{ foo }} after.
+
+Before
+*`<% keep   this %>`* after.
+
+Before
+[`<% keep   this %>`](url) after.
+
+Before
+[[[[{{ foo }}]]]] after.
+
+Before
+[[[[`<% keep   this %>`]]]] after.
+
+Before
+[outer [middle [inner {{ keep   this }}] after] end] after.
+
+Before
+[outer *[[`<% keep   this %>`]]* after] tail.
+
+Before
+[outer [[label](url "{{ keep   this }}")] after] tail.
+
+Following prose.
+
+[^note]:
+    First paragraph.
+
+    Another paragraph.
+
+    ```python
+    print("keep   this")
+    ```
+-- stderr
+-- status
+0

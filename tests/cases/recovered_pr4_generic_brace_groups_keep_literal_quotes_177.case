@@ -1,0 +1,9 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+#   H \mycommand{nested {don't   alter}}   ##
+-- stdout
+# H \mycommand{nested {don't   alter}}
+-- stderr
+-- status
+0

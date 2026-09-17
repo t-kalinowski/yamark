@@ -1,0 +1,19 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First `
+:   First description.
+Middle
+:   <% keep   this %>
+Last `
+:   Last description.
+-- stdout
+First `
+:   First description.
+Middle
+:   <% keep   this %>
+Last `
+:   Last description.
+-- stderr
+-- status
+0

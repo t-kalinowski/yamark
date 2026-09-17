@@ -1,0 +1,14 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+#   H <!YAMARK `{% raw %}` keep   _this_ `{% endraw %}`>   ##
+
+Following
+prose.
+-- stdout
+#   H <!YAMARK `{% raw %}` keep   _this_ `{% endraw %}`>   ##
+
+Following prose.
+-- stderr
+-- status
+0

@@ -1,0 +1,13 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with ``{{ keep   this }}`. Second
+sentence.
+-- stdout
+First
+sentence with ``{{ keep   this }}`. Second
+sentence.
+-- stderr
+-- status
+0

@@ -1,0 +1,18 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+> `{{ foo }}
+> after  
+> code`
+
+Following
+prose.
+-- stdout
+> `{{ foo }}
+> after  
+> code`
+
+Following prose.
+-- stderr
+-- status
+0

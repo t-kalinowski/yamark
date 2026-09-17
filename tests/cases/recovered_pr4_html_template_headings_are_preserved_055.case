@@ -1,0 +1,9 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+#   Heading <style>const x="<style>"; keep   _this_ {{ foo }}</STYLE>   ##
+-- stdout
+#   Heading <style>const x="<style>"; keep   _this_ {{ foo }}</STYLE>   ##
+-- stderr
+-- status
+0

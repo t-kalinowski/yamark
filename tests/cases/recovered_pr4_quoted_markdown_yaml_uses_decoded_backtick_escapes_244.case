@@ -1,0 +1,11 @@
+-- args
+format --wrap sentence --stdin-file-path input.yaml --verify
+-- stdin
+doc: !markdown "First   sentence with \\`<% keep   this %>\\`. Second sentence.\n"
+items: [a,b]
+-- stdout
+doc: !markdown "First   sentence with \\`<% keep   this %>\\`. Second sentence.\n"
+items: [a, b]
+-- stderr
+-- status
+0

@@ -1,0 +1,12 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with [`{{ foo }}`](url). Second
+sentence.
+-- stdout
+First sentence with [`{{ foo }}`](url).
+Second sentence.
+-- stderr
+-- status
+0

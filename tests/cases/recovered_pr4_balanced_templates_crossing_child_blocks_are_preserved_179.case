@@ -1,0 +1,15 @@
+-- args
+format --wrap sentence --stdin-file-path input.yaml --verify
+-- stdin
+doc: !markdown |
+  {{ printf "keep   this"
+
+  }}
+-- stdout
+doc: !markdown |
+  {{ printf "keep   this"
+
+  }}
+-- stderr
+-- status
+0

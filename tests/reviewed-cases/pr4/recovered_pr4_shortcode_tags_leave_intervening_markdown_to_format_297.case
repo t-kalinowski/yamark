@@ -1,0 +1,23 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+{{% notice %}}
+Format   this paragraph
+as Markdown.
+
+#   A heading
+
+{{% /notice %}}
+Following
+prose.
+-- stdout
+{{% notice %}}
+Format this paragraph as Markdown.
+
+# A heading
+
+{{% /notice %}}
+Following prose.
+-- stderr
+-- status
+0

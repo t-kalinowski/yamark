@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap none --canonical
+-- stdin
+Before
+$a \$ _literal_ [x](  url  )$ after [real](  target  ).
+-- stdout
+Before
+$a \$ *literal* [x](  url  )$ after [real](target).
+-- stderr
+-- status
+0

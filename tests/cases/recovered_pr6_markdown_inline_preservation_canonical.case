@@ -1,0 +1,93 @@
+-- args
+format --stdin-file-path input.md --wrap none --canonical
+-- stdin
+# _Before `_a_ [x]( url )` after_
+
+# _Before $x + _a_ [x]( url )$ after_
+
+Before
+$a \$ _literal_ [x](  url  )$ after _outside_.
+
+- Before
+  `  [x]( url ) \\ _literal_  ` after _outside_.
+
+> Before
+> $a \$ _literal_ [x](  url  )$ after _outside_.
+
+Before _with `[x]( url )` inside_ after.
+
+Before ~~with `[x]( url )` and [real](  target  )~~ after.
+
+Before <kbd>`[x]( url )` and [real](  target  )</kbd> after.
+
+# _before \` literal_ after `code`
+
+_before \[ literal_ after ](target).
+
+- _before \` literal_ after `code`
+
+> _before \[ literal_ after ] text.
+
+firstsecond `ab` $cd$
+
+first  
+second
+
+first\   second `[x](  url  ) \   ` _outside_ [real](  url  ).
+
+- first\	second `[x](  url  ) \	` _outside_ [real](  url  ).
+
+first\ second _outside_ [real](  url  ).
+
+Term
+   : Before `first  
+    second [x]( url )` after _outside_ [real](  target  ).
+
+- [x] Before `first	
+    second {{< include file >}}` after _outside_.
+-- stdout
+# *Before `*a_ [x]( url )` after_
+
+# *Before $x + _a* [x]( url )$ after_
+
+Before
+$a \$ *literal* [x](  url  )$ after *outside*.
+
+- Before `  [x]( url ) \\ _literal_  ` after *outside*.
+
+> Before $a \$ *literal* [x](  url  )$ after *outside*.
+
+Before *with `[x]( url )` inside* after.
+
+Before ~~with `[x]( url )` and [real](target)~~ after.
+
+Before <kbd>`[x]( url )` and [real](  target  )</kbd> after.
+
+# *before \` literal* after `code`
+
+*before \[ literal* after ](target).
+
+- *before \` literal* after `code`
+
+> *before \[ literal* after ] text.
+
+firstsecond `ab` $cd$
+
+first \
+second
+
+first\   second `[x](  url  ) \   ` *outside* [real](url).
+
+- first\ second `[x](  url  ) \	` *outside* [real](url).
+
+first\ second _outside_ [real](  url  ).
+
+Term
+   : Before `first
+    second [x]( url )` after _outside_ [real](  target  ).
+
+- [x] Before `first
+    second {{< include file >}}` after _outside_.
+-- stderr
+-- status
+0

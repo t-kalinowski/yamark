@@ -1,0 +1,13 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with [target](https://example.com/`{{key}}`). Second
+sentence.
+-- stdout
+First
+sentence with [target](https://example.com/`{{key}}`). Second
+sentence.
+-- stderr
+-- status
+0

@@ -1,0 +1,12 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with `{{ café   λ }}`. Second
+sentence.
+-- stdout
+First sentence with `{{ café   λ }}`.
+Second sentence.
+-- stderr
+-- status
+0

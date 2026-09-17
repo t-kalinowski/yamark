@@ -1,0 +1,11 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+`{{ title }}`
+====
+-- stdout
+`{{ title }}`
+====
+-- stderr
+-- status
+0

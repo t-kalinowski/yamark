@@ -1,0 +1,18 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+Before
+<span title="`{{ title }}`">text</span>
+after.
+
+Following
+prose.
+-- stdout
+Before
+<span title="`{{ title }}`">text</span>
+after.
+
+Following prose.
+-- stderr
+-- status
+0

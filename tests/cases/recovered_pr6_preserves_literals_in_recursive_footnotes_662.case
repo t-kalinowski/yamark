@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+[^note]: Before `first  
+      second {{< include file >}}` after _outside_ [real](  target  ).
+ 	
+    Next paragraph.
+-- stdout
+[^note]:
+    Before `first
+      second {{< include file >}}` after *outside* [real](target).
+
+    Next paragraph.
+-- stderr
+-- status
+0

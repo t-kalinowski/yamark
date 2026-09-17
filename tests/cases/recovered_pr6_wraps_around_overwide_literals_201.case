@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap 16
+-- stdin
+- Before
+  _with `[x](  long-link-target  )` inside_
+  after [real](
+    target
+  ).
+-- stdout
+- Before
+  _with `[x](  long-link-target  )` inside_
+  after [real](
+    target
+  ).
+-- stderr
+-- status
+0

@@ -1,0 +1,116 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:80 --canonical
+-- stdin
+Before `first  
+  second [x]( url )` after _outside_. Next sentence.
+
+- Before `first  
+    second [x]( url )` after _outside_. Next sentence.
+
+> Before $first  
+>   second \$ [x]( url )$ after _outside_. Next sentence.
+
+> > Before `first\
+> >   second [x]( url )` after _outside_. Next sentence.
+
+Term
+: Before `first  
+      second [x]( url )` after _outside_.
+
+[^note]: Before `first  
+    second [x]( url )` after _outside_.
+
+- Béfore <kbd>`first  
+    second [x]( url )`</kbd> after _outside_ [real](  target  ).
+
+- Before <kbd><span>$first\
+    second [x]( url )$</span></kbd> after _outside_ [real](  target  ).
+
+::: note
+Before `first  
+  second [x]( url )` after _outside_.
+ 	
+Next paragraph.	
+:::
+
+```markdown
+Before $first	
+  second [x]( url )$ after _outside_.
+ 	
+Next paragraph.	
+```
+
+[^recursive]: First paragraph.
+
+    Before `first  
+      second [x]( url )` after _outside_.
+
+Term
+   : Before `first  
+    second [x]( url )` after _outside_. Next sentence.
+
+100. Before $first\
+    second [x]( url )$ after _outside_. Next sentence.
+-- stdout
+Before `first  
+  second [x]( url )` after *outside*.
+Next sentence.
+
+- Before `first  
+    second [x]( url )` after *outside*.
+  Next sentence.
+
+> Before $first  
+>   second \$ [x]( url )$ after *outside*.
+> Next sentence.
+
+> > Before `first\
+> >   second [x]( url )` after *outside*.
+> > Next sentence.
+
+Term
+: Before `first  
+      second [x]( url )` after *outside*.
+
+[^note]: Before `first  
+    second [x]( url )` after *outside*.
+
+- Béfore <kbd>`first  
+    second [x]( url )`</kbd> after *outside*
+  [real](target).
+
+- Before <kbd><span>$first\
+    second [x]( url )$</span></kbd> after *outside*
+  [real](target).
+
+::: note
+Before `first  
+  second [x]( url )` after *outside*.
+
+Next paragraph.
+:::
+
+```markdown
+Before $first	
+  second [x]( url )$ after *outside*.
+
+Next paragraph.
+```
+
+[^recursive]:
+    First paragraph.
+
+    Before `first  
+      second [x]( url )` after *outside*.
+
+Term
+   : Before `first  
+     second [x]( url )` after *outside*.
+     Next sentence.
+
+100. Before $first\
+     second [x]( url )$ after *outside*.
+     Next sentence.
+-- stderr
+-- status
+0

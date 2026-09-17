@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+- Before
+ second _outside_ [real](  target  ).
+-- stdout
+- Before
+ second _outside_ [real](  target  ).
+-- stderr
+-- status
+0

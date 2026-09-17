@@ -1,0 +1,113 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+Before
+`first  
+  second {{< include file >}}` after _outside_.
+
+- Before
+  `first  
+    second {{< include file >}}` after _outside_.
+
+> Before
+> `first  
+>   second {{< include file >}}` after _outside_.
+
+Before
+`[x]( url ) {{ value }}` after _outside_.
+
+Before `first  
+  {{ value }} second` after _outside_.
+
+- {{ render_item() }}
+  Follow-up prose.
+
+> {{ render_item() }}
+> Follow-up prose.
+
+- Before <kbd><span>`first	
+    second {{< include file >}}`</span></kbd> after _outside_ [real](  target  ).
+
+firstsecond `ab` $cd$
+
+- firstsecond `ab` $cd$
+
+> firstsecond `ab` $cd$
+
+- Before `first  
+    second {{< include file >}}` after _outside_.
+  	
+  Next paragraph [real](  target  ).
+
+> - First paragraph `a  b`.
+>   
+>   Next paragraph [real](  target  ).
+
+[^nested]: Before `first  
+      second {{< include file >}}` after _outside_.
+  	
+    Next paragraph [real](  target  ).
+
+Term
+   ~ Before $first\
+    second [x]( url )$ after _outside_ [real](  target  ).
+
+1000) Before `first	
+    second {{< include file >}}` after _outside_.
+-- stdout
+Before
+`first
+  second {{< include file >}}` after _outside_.
+
+- Before
+  `first
+    second {{< include file >}}` after _outside_.
+
+> Before
+> `first
+>   second {{< include file >}}` after _outside_.
+
+Before `[x]( url ) {{ value }}` after *outside*.
+
+Before `first
+  {{ value }} second` after _outside_.
+
+- {{ render_item() }}
+  Follow-up prose.
+
+> {{ render_item() }}
+> Follow-up prose.
+
+- Before <kbd><span>`first
+    second {{< include file >}}`</span></kbd> after _outside_ [real](  target  ).
+
+first second `ab` $cd$
+
+- first second `ab` $cd$
+
+> first second `ab` $cd$
+
+- Before `first
+    second {{< include file >}}` after _outside_.
+
+  Next paragraph [real](  target  ).
+
+> - First paragraph `a  b`.
+>
+>   Next paragraph [real](target).
+
+[^nested]:
+    Before `first
+      second {{< include file >}}` after *outside*.
+
+    Next paragraph [real](target).
+
+Term
+   ~ Before $first\
+    second [x]( url )$ after _outside_ [real](  target  ).
+
+1000) Before `first
+    second {{< include file >}}` after _outside_.
+-- stderr
+-- status
+0

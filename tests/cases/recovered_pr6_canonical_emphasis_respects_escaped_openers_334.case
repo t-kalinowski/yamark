@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+_before \` literal_ after `code`
+-- stdout
+*before \` literal* after `code`
+-- stderr
+-- status
+0

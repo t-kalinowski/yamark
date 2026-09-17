@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+Term
+: Before `first  
+      second [x]( url )` after _outside_.
+-- stdout
+Term
+: Before `first
+      second [x]( url )` after _outside_.
+-- stderr
+-- status
+0

@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+# _Before $x + _a_ [x]( url )$ after_
+-- stdout
+# *Before $x + _a_ [x]( url )$ after*
+-- stderr
+-- status
+0

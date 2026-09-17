@@ -1,0 +1,12 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+First
+sentence with prefix{% set x = "keep   this" %}suffix. Second
+sentence.
+-- stdout
+First sentence with prefix{% set x = "keep   this" %}suffix.
+Second sentence.
+-- stderr
+-- status
+0

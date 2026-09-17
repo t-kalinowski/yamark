@@ -1,0 +1,9 @@
+-- args
+format --wrap sentence --stdin-file-path input.md --verify
+-- stdin
+#   H {a `   tick}   ##
+-- stdout
+# H {a `   tick}
+-- stderr
+-- status
+0
