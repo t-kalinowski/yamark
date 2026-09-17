@@ -1,0 +1,11 @@
+-- args
+format --canonical --wrap 12 --stdin-file-path input.md
+-- stdin
+Before
+with {{   user.name   }} after [real](  target  ) _outside_.
+-- stdout
+Before
+with {{   user.name   }} after [real](  target  ) _outside_.
+-- stderr
+-- status
+0

@@ -1078,7 +1078,7 @@ pub(crate) struct RetainedMarkdown {
     options: Option<FormatOptions>,
     pub(crate) plan: Option<crate::core::wrap::Plan>,
     draft: Option<crate::core::wrap::Draft>,
-    paragraph_code: Option<crate::core::wrap::ParagraphCodeSpans>,
+    paragraph_templates: Option<crate::core::wrap::ParagraphTemplateSpans>,
 }
 
 fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
@@ -1109,9 +1109,35 @@ impl RetainedMarkdown {
         }
         !matches!(kind, MarkdownBlockFormatKind::Paragraph)
             || !self
-                .paragraph_code
-                .get_or_insert_with(|| crate::core::wrap::ParagraphCodeSpans::recognize(input))
+                .paragraph_templates
+                .get_or_insert_with(|| crate::core::wrap::ParagraphTemplateSpans::recognize(input))
                 .contains_all_templates(input, delimiters)
+    }
+
+    fn resolve_plan(
+        &mut self,
+        input: &str,
+        options: FormatOptions,
+        delimiters: &[TemplateDelimiter],
+    ) {
+        self.plan = self
+            .draft
+            .as_mut()
+            .and_then(|draft| draft.resolve(input, options));
+        if self
+            .paragraph_templates
+            .as_ref()
+            .is_some_and(|spans| spans.has_bare_templates(delimiters))
+            && self
+                .plan
+                .as_ref()
+                .is_some_and(|plan| plan.has_standalone_bare_templates())
+        {
+            // Decline this layout rather than packing templates specially. Keep
+            // the draft so a later file-scoped wrap option can resolve it again.
+            self.plan = None;
+        }
+        self.options = Some(options);
     }
 
     fn template_policy_changed(&self, node: &Node, doc: &Document) -> bool {
@@ -1204,21 +1230,16 @@ fn plan_markdown_block(
         options: resolve.then_some(options),
         plan: None,
         draft: None,
-        paragraph_code: None,
+        paragraph_templates: None,
     };
     retained.preserve =
         preserve_raw || retained.preserves_templates(input, kind, &state.template_delimiters);
     retained.draft = (!retained.preserve)
         .then(|| prepare_markdown_block(input, kind))
         .flatten();
-    retained.plan = resolve
-        .then(|| {
-            retained
-                .draft
-                .as_mut()
-                .and_then(|draft| draft.resolve(input, options))
-        })
-        .flatten();
+    if resolve {
+        retained.resolve_plan(input, options, &state.template_delimiters);
+    }
     retained
 }
 
@@ -1285,12 +1306,14 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                 if was_preserved && !retained.preserve && retained.draft.is_none() {
                     retained.draft = prepare_markdown_block(source.slice(node.span), kind);
                 }
-                if !retained.preserve && (retained.options != Some(effective) || was_preserved) {
-                    retained.plan = retained
-                        .draft
-                        .as_mut()
-                        .and_then(|draft| draft.resolve(source.slice(node.span), effective));
-                    retained.options = Some(effective);
+                if !retained.preserve
+                    && (retained.options != Some(effective) || was_preserved || template_changed)
+                {
+                    retained.resolve_plan(
+                        source.slice(node.span),
+                        effective,
+                        &state.template_delimiters,
+                    );
                 }
                 retained.state = node.state;
             } else {
@@ -1350,7 +1373,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     options: Some(options),
                     plan,
                     draft: None,
-                    paragraph_code: None,
+                    paragraph_templates: None,
                 },
             );
         }
@@ -1361,7 +1384,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
 pub(crate) fn release_drafts(document: &mut Document) {
     for retained in &mut document.markdown.plans {
         retained.draft = None;
-        retained.paragraph_code = None;
+        retained.paragraph_templates = None;
     }
     for nested in &mut document.nested {
         release_drafts(nested);
