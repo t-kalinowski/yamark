@@ -74,7 +74,7 @@ pub struct YamlAstNode {
     pub state: StateId,
     pub emit: YamlEmitPlan,
     pub must_preserve_source: Option<bool>,
-    pub(crate) inline_markdown: Option<Box<crate::core::wrap::Fragment>>,
+    pub(crate) inline_markdown: Option<Box<crate::core::yaml::InlineMarkdownPlan>>,
     inline_width: Cell<u32>,
     flow_inline_width: Cell<u32>,
     source_indent: Cell<u32>,

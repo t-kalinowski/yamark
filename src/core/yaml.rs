@@ -834,24 +834,16 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             };
         self.ast.node_mut(id).must_preserve_source = Some(must_preserve_source);
         let plan = self.yaml_emit_plan_for(id);
+        self.ast.node_mut(id).emit = plan;
         if matches!(
-            plan,
+            self.ast.node(id).emit,
             YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
         ) {
             let node = self.ast.node(id);
-            let YamlAstKind::Scalar(scalar) = &node.kind else {
-                unreachable!("scalar plan")
-            };
-            let metadata = scalar_metadata(self.source, scalar.value);
-            let content = inline_markdown_scalar_content(self.source, scalar, metadata.content)
-                .expect("planned inline Markdown scalar is decodable");
             let state = self.doc.state(node.state);
             let options = state.markdown_options(state.yaml_options(self.options));
-            self.ast.node_mut(id).inline_markdown = Some(Box::new(
-                crate::core::wrap::Fragment::plan(content.into_owned(), options),
-            ));
+            resolve_inline_markdown_plan(self.source, self.ast.node_mut(id), options);
         }
-        self.ast.node_mut(id).emit = plan;
     }
 
     fn yaml_node_should_preserve_uncached(&self, node: &YamlAstNode) -> bool {
@@ -6620,6 +6612,65 @@ fn line_ending_or_default(
     }
 }
 
+/// Retain decoding failure as well as success: a public emit-plan change can
+/// select an undecodable scalar, for which the existing renderer emits nothing.
+#[derive(Debug, Clone)]
+pub(crate) struct InlineMarkdownPlan {
+    value: SourceSpan,
+    style: YamlScalarStyle,
+    fragment: Option<crate::core::wrap::Fragment>,
+}
+
+pub(crate) fn inline_markdown_plan_needs_resolution(
+    node: &YamlAstNode,
+    options: FormatOptions,
+) -> bool {
+    let YamlAstKind::Scalar(scalar) = &node.kind else {
+        return false;
+    };
+    matches!(
+        node.emit,
+        YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+    ) && node.inline_markdown.as_ref().is_none_or(|plan| {
+        plan.value != scalar.value
+            || plan.style != scalar.style
+            || plan
+                .fragment
+                .as_ref()
+                .is_some_and(|fragment| fragment.options() != options)
+    })
+}
+
+pub(crate) fn resolve_inline_markdown_plan(
+    source: &SourceBuffer,
+    node: &mut YamlAstNode,
+    options: FormatOptions,
+) {
+    if !inline_markdown_plan_needs_resolution(node, options) {
+        return;
+    }
+    let YamlAstKind::Scalar(scalar) = &node.kind else {
+        unreachable!("inline Markdown scalar plan")
+    };
+    if let Some(plan) = &mut node.inline_markdown
+        && plan.value == scalar.value
+        && plan.style == scalar.style
+    {
+        if let Some(fragment) = &mut plan.fragment {
+            fragment.resolve_options(options);
+        }
+    } else {
+        let metadata = scalar_metadata(source, scalar.value);
+        let fragment = inline_markdown_scalar_content(source, scalar, metadata.content)
+            .map(|content| crate::core::wrap::Fragment::plan(content.into_owned(), options));
+        node.inline_markdown = Some(Box::new(InlineMarkdownPlan {
+            value: scalar.value,
+            style: scalar.style,
+            fragment,
+        }));
+    }
+}
+
 fn render_inline_markdown_scalar(
     source: &SourceBuffer,
     scalar: &YamlScalar,
@@ -6632,7 +6683,9 @@ fn render_inline_markdown_scalar(
     let fragment = node
         .inline_markdown
         .as_ref()
-        .expect("retained inline Markdown scalar");
+        .expect("retained inline Markdown scalar")
+        .fragment
+        .as_ref()?;
     let prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
         .trim_ascii();

@@ -10,7 +10,9 @@ use crate::core::document::{
 };
 use crate::core::markdown_marker::markdown_list_marker_len;
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
-use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlNodeId, YamlScalar};
+use crate::core::yaml_model::{
+    YamlAstKind, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind, YamlScalar,
+};
 use crate::diagnostic::Result;
 
 pub fn parse_markdown(
@@ -1502,7 +1504,9 @@ fn emission_policy_changed(
     options: FormatOptions,
     document_options: bool,
 ) -> bool {
-    if document.skip_file {
+    // The direct YAML emitter historically ignores the document skip flag;
+    // the shared document emitter observes it before entering YAML emission.
+    if document_options && document.skip_file {
         return false;
     }
     let source = document.source.as_ref().unwrap_or(source);
@@ -1513,10 +1517,16 @@ fn emission_policy_changed(
     };
     if let Some(ast) = &document.yaml
         && ast.nodes.iter().any(|node| {
-            node.inline_markdown.as_ref().is_some_and(|fragment| {
+            matches!(
+                node.emit,
+                YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+            ) && {
                 let state = document.state(node.state);
-                fragment.options() != state.markdown_options(state.yaml_options(options))
-            })
+                crate::core::yaml::inline_markdown_plan_needs_resolution(
+                    node,
+                    state.markdown_options(state.yaml_options(options)),
+                )
+            }
         })
     {
         return true;
@@ -1549,7 +1559,7 @@ fn resolve_document_policy(
     options: FormatOptions,
     document_options: bool,
 ) {
-    if document.skip_file {
+    if document_options && document.skip_file {
         return;
     }
     let owned_source = document.source.take();
@@ -1562,9 +1572,16 @@ fn resolve_document_policy(
     finalize_markdown_plans(source, document, options);
     if let Some(ast) = &mut document.yaml {
         for node in &mut ast.nodes {
-            if let Some(fragment) = &mut node.inline_markdown {
+            if matches!(
+                node.emit,
+                YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+            ) {
                 let state = document.states.get(node.state);
-                fragment.resolve_options(state.markdown_options(state.yaml_options(options)));
+                crate::core::yaml::resolve_inline_markdown_plan(
+                    source,
+                    node,
+                    state.markdown_options(state.yaml_options(options)),
+                );
             }
         }
     }
