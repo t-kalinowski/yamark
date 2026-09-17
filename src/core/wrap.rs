@@ -2,6 +2,7 @@ mod plan;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
+use crate::core::source::{SourceSpan, Span};
 use plan::{Condition, FragmentInput, PlannedLine, Prefix, Text};
 pub(crate) use plan::{Draft, Fragment, Plan};
 use std::borrow::Cow;
@@ -24,27 +25,13 @@ pub(crate) fn prepare_markdown_paragraph(source: &str) -> Option<Draft> {
             Some(Draft::text(source, source)),
         ));
     }
-    let unwrapped_spaces = if contains_existing_split_link_destination(body)
-        || markdown_lines(source).all(|line| !line.body.ends_with([' ', '\t']))
-    {
-        Cow::Borrowed(source)
-    } else {
-        Cow::Owned(normalize_inline_whitespace_preserving_lines(source))
-    };
-    let unwrapped = Some(Draft::unwrapped(source, body, &unwrapped_spaces));
+    let unwrapped = Some(Draft::unwrapped(source, body, source));
     let reflow = if has_hard_break(body) {
         prepare_markdown_hard_break_paragraph(source, body, newline)
     } else {
-        let normalized_spaces = normalize_spaces_preserving_protected_spans(body);
-        if normalized_spaces.is_empty() {
-            Some(Draft::text(source, source))
-        } else {
-            let text = normalize_supported_links_and_images(&normalized_spaces);
-            let mut draft = Draft::inline(source, &text, "", "", newline, true, false, "");
-            draft.push_str(source, newline);
-            draft.paragraph(single_line_body(body));
-            Some(draft)
-        }
+        let mut draft = Draft::inline(source, body, "", "", newline, true, false, "", true);
+        draft.paragraph(single_line_body(body));
+        Some(draft)
     };
     Some(Draft::choice(Condition::WrapNone, unwrapped, reflow))
 }
@@ -1607,13 +1594,6 @@ struct InlineToken<'a> {
 }
 
 impl<'a> InlineToken<'a> {
-    fn borrowed(text: &'a str) -> Self {
-        Self {
-            text: Cow::Borrowed(text),
-            width: token_width(text),
-        }
-    }
-
     fn owned(text: String) -> Self {
         let width = token_width(&text);
         Self {
@@ -1627,22 +1607,50 @@ impl<'a> InlineToken<'a> {
     }
 }
 
+/// A borrowed view of measured tokens. Layout reads it without rebuilding a
+/// document-sized vector of temporary inline tokens.
+#[derive(Clone, Copy)]
+struct TokenSlice<'a> {
+    text: &'a str,
+    measured: &'a [(SourceSpan, usize)],
+}
+
+impl<'a> TokenSlice<'a> {
+    fn len(self) -> usize {
+        self.measured.len()
+    }
+
+    fn slice(self, range: std::ops::Range<usize>) -> Self {
+        Self {
+            text: self.text,
+            measured: &self.measured[range],
+        }
+    }
+
+    fn iter(self) -> impl Iterator<Item = InlineToken<'a>> {
+        self.measured.iter().map(move |(span, width)| InlineToken {
+            text: Cow::Borrowed(span.span().slice(self.text)),
+            width: *width,
+        })
+    }
+}
+
 fn write_sentence_token_lines(
     out: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
-    suffix: &str,
+    tokens: TokenSlice<'_>,
+    suffix: &'static str,
 ) -> Option<()> {
     write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
-        out.write_token_slice(sentence, sentence_suffix)
+        out.write_retained_slice(sentence, sentence_suffix)
     })
 }
 
 fn write_wrapped_sentence_token_lines(
     out: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
+    tokens: TokenSlice<'_>,
     first_width: usize,
     continuation_width: usize,
-    suffix: &str,
+    suffix: &'static str,
 ) -> Option<()> {
     let mut first_sentence = true;
     write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
@@ -1663,16 +1671,16 @@ fn write_wrapped_sentence_token_lines(
 }
 
 fn write_sentence_token_slices<'token>(
-    tokens: &[InlineToken<'token>],
-    suffix: &str,
-    mut write: impl FnMut(&[InlineToken<'token>], &str) -> Option<()>,
+    tokens: TokenSlice<'token>,
+    suffix: &'static str,
+    mut write: impl FnMut(TokenSlice<'token>, &'static str) -> Option<()>,
 ) -> Option<()> {
     let mut start = 0usize;
     let mut pending = None::<(usize, usize)>;
     for (index, token) in tokens.iter().enumerate() {
         if token_ends_sentence(token.text()) && !token_is_sentence_abbreviation(token.text()) {
             if let Some((from, to)) = pending.take() {
-                write(&tokens[from..to], "")?;
+                write(tokens.slice(from..to), "")?;
             }
             pending = Some((start, index + 1));
             start = index + 1;
@@ -1680,12 +1688,12 @@ fn write_sentence_token_slices<'token>(
     }
     if start < tokens.len() {
         if let Some((from, to)) = pending.take() {
-            write(&tokens[from..to], "")?;
+            write(tokens.slice(from..to), "")?;
         }
         pending = Some((start, tokens.len()));
     }
     if let Some((from, to)) = pending {
-        write(&tokens[from..to], suffix)?;
+        write(tokens.slice(from..to), suffix)?;
     }
     Some(())
 }
@@ -2498,8 +2506,8 @@ impl<'a> TokenLine<'a> {
         token_slice_width(&self.tokens[at..])
     }
 
-    fn markdown_block_start(&self) -> bool {
-        token_slice_markdown_block_start(&self.tokens)
+    fn markdown_block_start(&self, scratch: &mut String) -> bool {
+        token_slice_markdown_block_start(&self.tokens, scratch)
     }
 }
 
@@ -2510,6 +2518,7 @@ struct TokenLineWriter<'out, 'prefix> {
     first_prefix: &'prefix str,
     continuation_prefix: &'prefix str,
     check_block_starts: bool,
+    safety_line: String,
     line_count: usize,
 }
 
@@ -2528,6 +2537,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             first_prefix,
             continuation_prefix,
             check_block_starts: false,
+            safety_line: String::new(),
             line_count: 0,
         }
     }
@@ -2536,26 +2546,66 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         self.check_block_starts = true;
     }
 
-    fn write_line(&mut self, line: &TokenLine<'_>, suffix: &str) -> Option<()> {
+    fn write_line(&mut self, line: &TokenLine<'_>, suffix: &'static str) -> Option<()> {
         self.write_token_slice(&line.tokens, suffix)
     }
 
-    fn write_token_slice(&mut self, tokens: &[InlineToken<'_>], suffix: &str) -> Option<()> {
+    fn write_token_slice(
+        &mut self,
+        tokens: &[InlineToken<'_>],
+        suffix: &'static str,
+    ) -> Option<()> {
         if self.check_block_starts
             && self.line_count > 0
-            && token_slice_markdown_block_start(tokens)
+            && token_slice_markdown_block_start(tokens, &mut self.safety_line)
         {
             return None;
         }
-        let start = self.tokens.len();
-        self.tokens.extend(
+        self.record_tokens(tokens.iter().map(InlineToken::text), suffix)
+    }
+
+    fn write_retained_slice(&mut self, tokens: TokenSlice<'_>, suffix: &'static str) -> Option<()> {
+        debug_assert!(!self.check_block_starts);
+        self.record_tokens(
             tokens
+                .measured
                 .iter()
-                .map(|token| Text::retain(self.text, token.text())),
-        );
+                .map(|(span, _)| span.span().slice(tokens.text)),
+            suffix,
+        )
+    }
+
+    fn record_tokens<'a>(
+        &mut self,
+        tokens: impl Iterator<Item = &'a str>,
+        suffix: &'static str,
+    ) -> Option<()> {
+        let start = self.tokens.len();
+        for token in tokens {
+            let piece = Text::retain(self.text, token);
+            // A laid-out line usually occupies one contiguous normalized span.
+            // Keep separate pieces only where joining or a rewrite requires it.
+            if self.tokens.len() > start
+                && let Text::Source(next) = &piece
+                && let Some(Text::Source(previous)) = self.tokens.last_mut()
+                && previous.end() + 1 == next.start()
+                && self.text.as_bytes()[previous.end()] == b' '
+            {
+                *previous = SourceSpan::new(Span::new(previous.start(), next.end()));
+            } else {
+                self.tokens.push(piece);
+            }
+        }
+        let suffix = match suffix {
+            "" => None,
+            "\\" => Some(MarkdownHardBreakMarker::CompactBackslash),
+            " \\" => Some(MarkdownHardBreakMarker::SpaceBackslash),
+            _ => unreachable!("planned hard break"),
+        };
         self.out.push(PlannedLine {
             tokens: start..self.tokens.len(),
-            suffix: suffix.into(),
+            suffix,
+            block_start_checked: self.check_block_starts && self.line_count > 0 && suffix.is_none(),
         });
         self.line_count += 1;
         Some(())
@@ -2601,7 +2651,7 @@ impl<'a> WrapLineBuffer<'a> {
         Some(())
     }
 
-    fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &str) -> Option<()> {
+    fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &'static str) -> Option<()> {
         if !self.current.is_empty() {
             if let Some(pending) = self.pending.take() {
                 writer.write_line(&pending, "")?;
@@ -2629,7 +2679,7 @@ impl<'a> WrapLineBuffer<'a> {
             self.commit_current(writer)?;
             self.current.push(first);
         }
-        self.repair_current_line_if_markdown_block_start()?;
+        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
 
         let mut rest = split.map(InlineToken::owned).collect::<Vec<_>>();
         if rest.is_empty() {
@@ -2648,12 +2698,14 @@ impl<'a> WrapLineBuffer<'a> {
         if self.current.width > self.continuation_width {
             self.commit_current(writer)?;
         }
-        self.repair_current_line_if_markdown_block_start()?;
+        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
         Some(())
     }
 
-    fn repair_current_line_if_markdown_block_start(&mut self) -> Option<()> {
-        if self.pending.is_none() || self.current.is_empty() || !self.current.markdown_block_start()
+    fn repair_current_line_if_markdown_block_start(&mut self, scratch: &mut String) -> Option<()> {
+        if self.pending.is_none()
+            || self.current.is_empty()
+            || !self.current.markdown_block_start(scratch)
         {
             return Some(());
         }
@@ -2667,7 +2719,7 @@ impl<'a> WrapLineBuffer<'a> {
             let mut candidate = TokenLine::default();
             candidate.extend_from_slice(&previous.tokens[split..]);
             candidate.extend_from_slice(&self.current.tokens);
-            if !candidate.markdown_block_start() {
+            if !candidate.markdown_block_start(scratch) {
                 let mut moved = previous.split_off(split);
                 moved.append(std::mem::take(&mut self.current));
                 self.current = moved;
@@ -2680,13 +2732,13 @@ impl<'a> WrapLineBuffer<'a> {
 
 fn write_wrapped_tokens_with_first_width(
     writer: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
+    tokens: TokenSlice<'_>,
     first_width: usize,
     continuation_width: usize,
-    suffix: &str,
+    suffix: &'static str,
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width);
-    for token in tokens {
+    for token in tokens.iter() {
         if token.width > lines.width
             && let Some(split) = split_long_link_token(token.text(), lines.width)
         {
@@ -2694,26 +2746,26 @@ fn write_wrapped_tokens_with_first_width(
             lines.width = lines.continuation_width;
             continue;
         }
-        if lines.current.can_fit(token, lines.width) {
-            lines.current.push(token.clone());
+        if lines.current.can_fit(&token, lines.width) {
+            lines.current.push(token);
         } else {
             lines.commit_current(writer)?;
-            lines.current.push(token.clone());
+            lines.current.push(token);
         }
-        lines.repair_current_line_if_markdown_block_start()?;
+        lines.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
     }
     lines.finish(writer, suffix)
 }
 
 fn write_markdown_token_lines(
     writer: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
+    tokens: TokenSlice<'_>,
     wrap: MarkdownWrap,
-    suffix: &str,
+    suffix: &'static str,
 ) -> Option<()> {
     let column_width = wrap.column_width();
     match wrap {
-        MarkdownWrap::None | MarkdownWrap::Paragraph => writer.write_token_slice(tokens, suffix),
+        MarkdownWrap::None | MarkdownWrap::Paragraph => writer.write_retained_slice(tokens, suffix),
         MarkdownWrap::Sentence => write_sentence_token_lines(writer, tokens, suffix),
         MarkdownWrap::Column(_) => {
             let width = column_width.expect("column wrap has a width");
@@ -2756,10 +2808,12 @@ fn token_slice_width(tokens: &[InlineToken<'_>]) -> usize {
     tokens.iter().map(|token| token.width).sum::<usize>() + tokens.len().saturating_sub(1)
 }
 
-fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>]) -> bool {
-    let mut line = String::new();
-    write_joined_tokens(&mut line, tokens);
-    markdown_block_start_line(&line)
+fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>], scratch: &mut String) -> bool {
+    // Layout checks growing candidate lines repeatedly. Reuse their temporary
+    // storage while keeping the existing recognition input and rules unchanged.
+    scratch.clear();
+    write_joined_tokens(scratch, tokens);
+    markdown_block_start_line(scratch)
 }
 
 fn write_joined_tokens(out: &mut String, tokens: &[InlineToken<'_>]) {
@@ -3123,10 +3177,11 @@ fn prepare_prefixed_markdown_segment(
         default_newline,
         true,
         suffix,
+        false,
     )
 }
 
-fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
+fn inline_tokens(text: &str) -> Option<Vec<(SourceSpan, usize)>> {
     let mut scan = InlineScan::new(text);
 
     if simple_inline_tokens_supported(text) {
@@ -3150,7 +3205,10 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
         }
 
         let end = inline_token_end(&mut scan, index)?;
-        tokens.push(InlineToken::borrowed(&text[index..end]));
+        tokens.push((
+            SourceSpan::new(Span::new(index, end)),
+            token_width(&text[index..end]),
+        ));
         index = end;
     }
 
@@ -3170,9 +3228,15 @@ fn simple_inline_tokens_supported(text: &str) -> bool {
     true
 }
 
-fn simple_inline_tokens(text: &str) -> Vec<InlineToken<'_>> {
+fn simple_inline_tokens(text: &str) -> Vec<(SourceSpan, usize)> {
     text.split_ascii_whitespace()
-        .map(InlineToken::borrowed)
+        .map(|token| {
+            let start = token.as_ptr() as usize - text.as_ptr() as usize;
+            (
+                SourceSpan::new(Span::new(start, start + token.len())),
+                token_width(token),
+            )
+        })
         .collect()
 }
 

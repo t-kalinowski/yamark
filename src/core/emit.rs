@@ -32,9 +32,26 @@ fn emit_document_with_normalization(
     normalize_markdown_output: bool,
 ) -> Result<String> {
     let document = crate::core::markdown::resolve_emission_policy(source, document, options);
-    emit_document_inner(
+    emit_planned_document(
         source,
         &document,
+        options,
+        plugins,
+        normalize_markdown_output,
+    )
+}
+
+/// Execute a document whose effective policy has already been finalized.
+pub(crate) fn emit_planned_document(
+    source: &SourceBuffer,
+    document: &Document,
+    options: FormatOptions,
+    plugins: &PluginRegistry,
+    normalize_markdown_output: bool,
+) -> Result<String> {
+    emit_document_inner(
+        source,
+        document,
         options,
         plugins,
         EmitContext {
@@ -126,7 +143,6 @@ fn emit_document_inner(
         if document
             .markdown
             .get(index)
-            .and_then(Option::as_ref)
             .is_some_and(|plan| plan.preserve)
         {
             out.push_str(source.slice(node.span));
@@ -152,8 +168,9 @@ fn emit_document_inner(
             | EmitPlan::MarkdownBlockquote
             | EmitPlan::MarkdownTable
             | EmitPlan::MarkdownPandocTable => {
-                let retained = document.markdown[index]
-                    .as_ref()
+                let retained = document
+                    .markdown
+                    .get(index)
                     .expect("retained Markdown plan");
                 if let Some(plan) = &retained.plan {
                     out.push_str(&plan.emit(source.slice(node.span)));

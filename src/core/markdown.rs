@@ -1032,6 +1032,41 @@ fn plan_markdown_thematic_break() -> EmitPlan {
     EmitPlan::MarkdownThematicBreak
 }
 
+/// Only formatted nodes own a retained record; other nodes need one small index.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MarkdownPlans {
+    by_node: Vec<Option<std::num::NonZeroUsize>>,
+    plans: Vec<RetainedMarkdown>,
+}
+
+impl MarkdownPlans {
+    pub(crate) fn push_node(&mut self) {
+        self.by_node.push(None);
+    }
+
+    pub(crate) fn get(&self, node: usize) -> Option<&RetainedMarkdown> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&self.plans[id.get() - 1])
+    }
+
+    fn get_mut(&mut self, node: usize) -> Option<&mut RetainedMarkdown> {
+        let id = self.by_node[node]?;
+        Some(&mut self.plans[id.get() - 1])
+    }
+
+    fn insert(&mut self, node: usize, plan: RetainedMarkdown) {
+        if let Some(id) = self.by_node[node] {
+            self.plans[id.get() - 1] = plan;
+        } else {
+            if self.plans.is_empty() {
+                self.plans.reserve_exact(1);
+            }
+            self.plans.push(plan);
+            self.by_node[node] = std::num::NonZeroUsize::new(self.plans.len());
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct RetainedMarkdown {
     pub(crate) preserve: bool,
@@ -1095,7 +1130,9 @@ fn push_structural_markdown_format_node(
             EmitPlan::Copy
         },
     });
-    *doc.markdown.last_mut().expect("just pushed node") = planned;
+    if let Some(planned) = planned {
+        doc.markdown.insert(doc.nodes.len() - 1, planned);
+    }
     Ok(())
 }
 
@@ -1159,14 +1196,14 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
         };
         if let Some(kind) = kind {
             let effective = state.markdown_options(options);
-            let template = !matches!(
-                kind,
-                MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-            ) && contains_markdown_template_span(
-                source.slice(node.span),
-                &state.template_delimiters,
-            );
-            if let Some(retained) = &mut doc.markdown[index] {
+            if let Some(retained) = doc.markdown.get_mut(index) {
+                let template = !matches!(
+                    kind,
+                    MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+                ) && contains_markdown_template_span(
+                    source.slice(node.span),
+                    &state.template_delimiters,
+                );
                 retained.preserve |= template;
                 if retained.options != effective && !retained.preserve {
                     retained.plan = retained
@@ -1176,18 +1213,16 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     retained.options = effective;
                 }
             } else {
-                doc.markdown[index] = Some(plan_markdown_block(
-                    source.slice(node.span),
-                    state,
-                    options,
-                    kind,
-                ));
+                doc.markdown.insert(
+                    index,
+                    plan_markdown_block(source.slice(node.span), state, options, kind),
+                );
             }
             if matches!(
                 kind,
                 MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
             ) {
-                let retained = doc.markdown[index].as_mut().expect("planned table");
+                let retained = doc.markdown.get_mut(index).expect("planned table");
                 if !retained.preserve {
                     let input = source.slice(node.span);
                     let text = match kind {
@@ -1225,12 +1260,15 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     &text,
                 ))
             };
-            doc.markdown[index] = Some(RetainedMarkdown {
-                preserve,
-                options,
-                plan,
-                draft: None,
-            });
+            doc.markdown.insert(
+                index,
+                RetainedMarkdown {
+                    preserve,
+                    options,
+                    plan,
+                    draft: None,
+                },
+            );
         }
     }
 }
@@ -1269,6 +1307,29 @@ fn resolve_emission_policy_inner<'a>(
     std::borrow::Cow::Owned(document)
 }
 
+/// Private fragments are only emitted with their construction options. A policy
+/// change rebuilds the fragment from its retained logical buffer, so it does not
+/// need the drafts kept by public parse/emit documents for later relayout.
+pub(crate) fn finalize_fragment_document(
+    source: &SourceBuffer,
+    document: &mut Document,
+    options: FormatOptions,
+) {
+    if emission_policy_changed(source, document, options, true) {
+        resolve_document_policy(source, document, options, true);
+    }
+    release_fragment_drafts(document);
+}
+
+fn release_fragment_drafts(document: &mut Document) {
+    for retained in &mut document.markdown.plans {
+        retained.draft = None;
+    }
+    for nested in &mut document.nested {
+        release_fragment_drafts(nested);
+    }
+}
+
 fn document_emit_options(
     source: &SourceBuffer,
     document: &Document,
@@ -1291,9 +1352,8 @@ fn document_emit_options(
 fn nested_emit_policies(
     document: &Document,
     options: FormatOptions,
-) -> Vec<(usize, FormatOptions)> {
-    let mut nested = Vec::new();
-    for node in &document.nodes {
+) -> impl Iterator<Item = (usize, FormatOptions)> + '_ {
+    let nodes = document.nodes.iter().filter_map(move |node| {
         let id = match node.emit {
             EmitPlan::MarkdownFrontMatter { nested, .. }
             | EmitPlan::MarkdownDiv { nested, .. }
@@ -1304,25 +1364,27 @@ fn nested_emit_policies(
                 nested: Some(nested),
                 ..
             } => nested,
-            _ => continue,
+            _ => return None,
         };
-        if !document.state(node.state).preserve {
-            nested.push((id, document.state(node.state).markdown_options(options)));
-        }
-    }
-    if let Some(ast) = &document.yaml {
-        for node in &ast.nodes {
-            if let YamlAstKind::Scalar(scalar) = &node.kind
-                && let Some(id) = scalar.nested
-            {
-                nested.push((
+        let state = document.state(node.state);
+        (!state.preserve).then(|| (id, state.markdown_options(options)))
+    });
+    let scalars = document
+        .yaml
+        .iter()
+        .flat_map(|ast| &ast.nodes)
+        .filter_map(move |node| {
+            let YamlAstKind::Scalar(scalar) = &node.kind else {
+                return None;
+            };
+            scalar.nested.map(|id| {
+                (
                     id as usize,
                     document.state(node.state).markdown_options(options),
-                ));
-            }
-        }
-    }
-    nested
+                )
+            })
+        });
+    nodes.chain(scalars)
 }
 
 fn emission_policy_changed(
@@ -1350,22 +1412,14 @@ fn emission_policy_changed(
     {
         return true;
     }
-    document
-        .nodes
-        .iter()
-        .zip(&document.markdown)
-        .any(|(node, plan)| {
-            !document.state(node.state).preserve
-                && plan.as_ref().is_some_and(|plan| {
-                    !plan.preserve
-                        && plan.options != document.state(node.state).markdown_options(options)
-                })
-        })
-        || nested_emit_policies(document, options)
-            .into_iter()
-            .any(|(id, options)| {
-                emission_policy_changed(source, &document.nested[id], options, true)
+    document.nodes.iter().enumerate().any(|(index, node)| {
+        !document.state(node.state).preserve
+            && document.markdown.get(index).is_some_and(|plan| {
+                !plan.preserve
+                    && plan.options != document.state(node.state).markdown_options(options)
             })
+    }) || nested_emit_policies(document, options)
+        .any(|(id, options)| emission_policy_changed(source, &document.nested[id], options, true))
 }
 
 fn resolve_document_policy(
@@ -1395,7 +1449,8 @@ fn resolve_document_policy(
             }
         }
     }
-    for (id, options) in nested_emit_policies(document, options) {
+    let nested = nested_emit_policies(document, options).collect::<Vec<_>>();
+    for (id, options) in nested {
         resolve_document_policy(source, &mut document.nested[id], options, true);
     }
     document.source = owned_source;
