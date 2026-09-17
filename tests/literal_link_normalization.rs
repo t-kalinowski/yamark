@@ -217,3 +217,120 @@ fn existing_angle_spans_do_not_open_literals() {
         }
     }
 }
+
+#[test]
+fn review_examples_retain_baseline_output() {
+    for (source, expected) in [
+        (
+            "a < b <kbd title=\"`\">[r](  t  )</kbd> then `tail`\n",
+            "a < b <kbd title=\"`\">[r](t)</kbd> then `tail`\n",
+        ),
+        // These exact reviewer inputs already fall back unchanged on main.
+        (
+            "Before <!-- ` --> [r](  t  ) then `tail` after [s](  u  ).\n",
+            "Before <!-- ` --> [r](  t  ) then `tail` after [s](  u  ).\n",
+        ),
+        (
+            "Before <!-- $ --> [r](  t  ) then $tail$ after [s](  u  ).\n",
+            "Before <!-- $ --> [r](  t  ) then $tail$ after [s](  u  ).\n",
+        ),
+    ] {
+        for wrap in ["none", "paragraph", "sentence:240"] {
+            for canonical in [false, true] {
+                assert_format(source, expected, wrap, canonical);
+            }
+        }
+    }
+}
+
+#[test]
+fn completed_comments_do_not_open_literals() {
+    for marker in ['`', '$'] {
+        for (source, expected) in [
+            (
+                format!(
+                    "Before <!-- {marker} --> [r](  t  ) then {marker}tail after [s](  u  ).\n"
+                ),
+                format!("Before <!-- {marker} --> [r](t) then {marker}tail after [s](u).\n"),
+            ),
+            (
+                format!(
+                    "Before <!-- > {marker} --> [r](  t  ) then {marker}tail after [s](  u  ).\n"
+                ),
+                format!("Before <!-- > {marker} --> [r](t) then {marker}tail after [s](u).\n"),
+            ),
+            (
+                format!(
+                    "Before <!-- {marker} --> [r](  t  ) <!-- {marker} --> after [s](  u  ).\n"
+                ),
+                format!("Before <!-- {marker} --> [r](t) <!-- {marker} --> after [s](u).\n"),
+            ),
+            // Links inside comments still normalize; literals after them do not.
+            (
+                format!(
+                    "Before <!-- > {marker}[x](  v  ) ![i](  p  ){marker} --> [r](  t  ) then {marker}[code](  c  ){marker}.\n"
+                ),
+                format!(
+                    "Before <!-- > {marker}[x](v) ![i](p){marker} --> [r](t) then {marker}[code](  c  ){marker}.\n"
+                ),
+            ),
+        ] {
+            for wrap in ["none", "paragraph", "sentence:240"] {
+                for canonical in [false, true] {
+                    assert_format(&source, &expected, wrap, canonical);
+                }
+            }
+        }
+        for wrap in ["40", "sentence:40"] {
+            for canonical in [false, true] {
+                assert_format(
+                    &format!(
+                        "Before <!-- > {marker} --> [r](  t  ) then {marker}tail after [s](  u  ).\n"
+                    ),
+                    &format!(
+                        "Before <!-- > {marker} --> [r](t) then {marker}tail\nafter [s](u).\n"
+                    ),
+                    wrap,
+                    canonical,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn comment_exclusions_follow_source_order_and_require_a_complete_token() {
+    for marker in ['`', '$'] {
+        for contents in [
+            "<!-- > [x](  v  ) -->",
+            "<kbd title=\"<!--\">[x](  v  )</kbd> -->",
+        ] {
+            let source = format!("Before {marker}{contents}{marker} after [r](  t  ).\n");
+            let expected = format!("Before {marker}{contents}{marker} after [r](t).\n");
+            for wrap in ["none", "paragraph", "sentence:240"] {
+                for canonical in [false, true] {
+                    assert_format(&source, &expected, wrap, canonical);
+                }
+            }
+        }
+        for (candidate, suffix) in [
+            ("<!--".to_owned(), ""),
+            ("<!-->".to_owned(), ""),
+            ("<!-".to_owned(), " -->"),
+            (r"\<!--".to_owned(), " -->"),
+            ("<!-- > ".repeat(64).trim_end().to_owned(), ""),
+        ] {
+            let source = format!(
+                "Before {candidate} {marker}[x](  v  ){marker}{suffix} after [r](  t  ).\n"
+            );
+            let expected =
+                format!("Before {candidate} {marker}[x](  v  ){marker}{suffix} after [r](t).\n");
+            for wrap in ["none", "paragraph"] {
+                for canonical in [false, true] {
+                    // No completed comment: existing code/math recognition applies.
+                    assert_format(&source, &expected, wrap, canonical);
+                }
+            }
+        }
+    }
+}

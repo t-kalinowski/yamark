@@ -3390,8 +3390,22 @@ fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
     let mut index = 0usize;
     let mut prose_from = 0usize;
     let mut angle_close = 0usize;
+    let mut comment_end_missing = false;
     while index < source.len() {
         let rest = &source[index..];
+        if index >= prose_from
+            && !comment_end_missing
+            && rest.starts_with("<!--")
+            && !escaped_at(source, index)
+        {
+            // Exclude only literal openers through the complete comment token;
+            // the existing link/image normalization below still visits its text.
+            // A failed search rules out a close for every later comment opener.
+            match rest[4..].find("-->") {
+                Some(close) => prose_from = index + 4 + close + 3,
+                None => comment_end_missing = true,
+            }
+        }
         if index >= prose_from && rest.starts_with('<') && !escaped_at(source, index) {
             // Keep existing normalization inside angle spans, but their
             // contents cannot open a code or math literal in surrounding prose.
