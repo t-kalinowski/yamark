@@ -1,5 +1,4 @@
-use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::num::NonZeroU32;
 
 use crate::core::lines::text_lines;
 
@@ -152,25 +151,9 @@ pub struct Line {
 #[derive(Debug, Clone)]
 pub struct SourceBuffer {
     text: String,
-    identity: SourceIdentity,
     pub bom: Option<Span>,
     pub lines: Vec<Line>,
     pub dominant_line_ending: LineEnding,
-}
-
-/// Identifies immutable source bytes without retaining another copy or hashing
-/// them at emission. Cloning a buffer keeps its identity; replacement does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceIdentity(NonZeroU64);
-
-impl SourceIdentity {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        Self(
-            NonZeroU64::new(NEXT.fetch_add(1, Ordering::Relaxed))
-                .expect("source identity overflow"),
-        )
-    }
 }
 
 impl SourceBuffer {
@@ -221,7 +204,6 @@ impl SourceBuffer {
 
         Self {
             text,
-            identity: SourceIdentity::new(),
             bom,
             lines,
             dominant_line_ending,
@@ -230,10 +212,6 @@ impl SourceBuffer {
 
     pub fn as_str(&self) -> &str {
         &self.text
-    }
-
-    pub(crate) fn identity(&self) -> SourceIdentity {
-        self.identity
     }
 
     pub(crate) fn into_string(self) -> String {

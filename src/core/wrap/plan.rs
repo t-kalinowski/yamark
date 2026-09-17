@@ -11,7 +11,7 @@
 //! external formatter execution still belong to document emission.
 
 use super::*;
-use crate::core::document::{Document, EmitPlan};
+use crate::core::document::{DocumentEmitMode, EmitPlan, PreparedTree};
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
 
 /// Text borrowed from the block's source, or a normalization that needs storage.
@@ -104,11 +104,12 @@ pub(crate) struct Fragment {
 #[derive(Debug, Clone)]
 enum FragmentBody {
     Plan(Box<Plan>),
-    Document(Box<Document>),
+    Document(Box<PreparedTree>),
 }
 
 impl FragmentBody {
-    fn retain(source: &SourceBuffer, mut document: Document, options: FormatOptions) -> Self {
+    fn retain(source: &SourceBuffer, tree: PreparedTree) -> Self {
+        let document = tree.document();
         // Private block sequences need only their existing plans and source
         // spans. Documents with other execution work (including skip flags,
         // nested host documents, or plugins) keep normal document emission.
@@ -131,8 +132,10 @@ impl FragmentBody {
                 )
             })
         {
-            return Self::Document(Box::new(document));
+            return Self::Document(Box::new(tree));
         }
+        let options = tree.options();
+        let mut document = tree.into_document();
         if let [node] = document.nodes.as_slice()
             && node.span == document.range
             && !document.state(node.state).preserve
@@ -204,26 +207,22 @@ impl Fragment {
 
     fn from_buffer(source: std::sync::Arc<SourceBuffer>, options: FormatOptions) -> Self {
         let range = Span::new(0, source.as_str().len());
-        let body = crate::core::markdown::parse_markdown_retained(
+        let body = crate::core::markdown::parse_markdown(
             &source,
             range,
             options,
             &crate::config::Config::default(),
         )
         .ok()
-        .map(|mut document| {
-            crate::core::markdown::finalize_fragment_document(&source, &mut document, options);
-            FragmentBody::retain(&source, document, options)
+        .map(|document| {
+            let tree = PreparedTree::new(&source, document, options, DocumentEmitMode::Document);
+            FragmentBody::retain(&source, tree)
         });
         Self {
             source,
             body,
             options,
         }
-    }
-
-    pub(crate) fn options(&self) -> FormatOptions {
-        self.options
     }
 
     pub(crate) fn resolve_options(&mut self, options: FormatOptions) {
@@ -243,13 +242,12 @@ impl Fragment {
                 // Like the historical fragment emitter, this does not apply
                 // top-level Markdown line cleanup to copied or opaque text.
                 FragmentBody::Plan(plan) => Some(plan.emit(self.source.as_str())),
-                FragmentBody::Document(document) => crate::core::emit::emit_planned_document(
+                FragmentBody::Document(tree) => crate::core::emit::emit_prepared_tree(
                     &self.source,
-                    document,
-                    self.options,
+                    tree,
                     &crate::plugins::PluginRegistry::default(),
-                    false,
                 )
+                .map(|(output, _)| output)
                 .ok(),
             })
             .unwrap_or_else(|| self.source.as_str().to_owned())

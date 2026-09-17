@@ -23,18 +23,7 @@ use memchr::{memchr, memchr2};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-pub fn parse_yaml(
-    source: &SourceBuffer,
-    range: Span,
-    options: FormatOptions,
-    config: &Config,
-) -> Result<Document> {
-    let mut document = parse_yaml_retained(source, range, options, config)?;
-    crate::core::markdown::finalize_document(source, &mut document, options, true);
-    Ok(document)
-}
-
-pub(crate) fn parse_yaml_retained(
+pub(crate) fn parse_yaml(
     source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
@@ -168,7 +157,6 @@ fn parse_yaml_impl(
     }
     let parser = YamlParser::new(source, range, options, config, scan, mode);
     let mut doc = parser.parse()?;
-    doc.plan_source = Some(source.identity());
     doc.push_node(Node {
         kind: NodeKind::Yaml(YamlNodeKind::Document),
         span: range,
@@ -3357,7 +3345,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         }
         let nested = if state_value.markdown_target || tagged_markdown {
             let nested = if self.plan_emits {
-                crate::core::markdown::parse_markdown_retained(
+                crate::core::markdown::parse_markdown(
                     self.source,
                     block.body,
                     state_value.markdown_options(self.options),
@@ -4842,25 +4830,6 @@ impl IntoOptionalSpan for Option<SourceSpan> {
     fn into_optional_span(self) -> Option<Span> {
         self.map(SourceSpan::span)
     }
-}
-
-pub fn emit_yaml_document(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_yaml_document_with_stats(source, document, options, plugins).map(|(output, _)| output)
-}
-
-pub fn emit_yaml_document_with_stats(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-) -> Result<(String, YamlEmissionStats)> {
-    let document = crate::core::markdown::prepare_public_document(source, document, options, false);
-    emit_planned_yaml_document_with_stats(source, &document, options, plugins)
 }
 
 pub(crate) fn emit_planned_yaml_document_with_stats(
@@ -6624,33 +6593,11 @@ fn line_ending_or_default(
     }
 }
 
-/// Retain decoding failure as well as success: a public emit-plan change can
-/// select an undecodable scalar, for which the existing renderer emits nothing.
+/// Keep the decoded fragment, including the existing no-output result when
+/// decoding fails. The node and its source remain in the same owning tree.
 #[derive(Debug, Clone)]
 pub(crate) struct InlineMarkdownPlan {
-    value: SourceSpan,
-    style: YamlScalarStyle,
     fragment: Option<crate::core::wrap::Fragment>,
-}
-
-pub(crate) fn inline_markdown_plan_needs_resolution(
-    node: &YamlAstNode,
-    options: FormatOptions,
-) -> bool {
-    let YamlAstKind::Scalar(scalar) = &node.kind else {
-        return false;
-    };
-    matches!(
-        node.emit,
-        YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
-    ) && node.inline_markdown.as_ref().is_none_or(|plan| {
-        plan.value != scalar.value
-            || plan.style != scalar.style
-            || plan
-                .fragment
-                .as_ref()
-                .is_some_and(|fragment| fragment.options() != options)
-    })
 }
 
 pub(crate) fn resolve_inline_markdown_plan(
@@ -6658,16 +6605,10 @@ pub(crate) fn resolve_inline_markdown_plan(
     node: &mut YamlAstNode,
     options: FormatOptions,
 ) {
-    if !inline_markdown_plan_needs_resolution(node, options) {
-        return;
-    }
     let YamlAstKind::Scalar(scalar) = &node.kind else {
         unreachable!("inline Markdown scalar plan")
     };
-    if let Some(plan) = &mut node.inline_markdown
-        && plan.value == scalar.value
-        && plan.style == scalar.style
-    {
+    if let Some(plan) = &mut node.inline_markdown {
         if let Some(fragment) = &mut plan.fragment {
             fragment.resolve_options(options);
         }
@@ -6675,11 +6616,7 @@ pub(crate) fn resolve_inline_markdown_plan(
         let metadata = scalar_metadata(source, scalar.value);
         let fragment = inline_markdown_scalar_content(source, scalar, metadata.content)
             .map(|content| crate::core::wrap::Fragment::plan(content.into_owned(), options));
-        node.inline_markdown = Some(Box::new(InlineMarkdownPlan {
-            value: scalar.value,
-            style: scalar.style,
-            fragment,
-        }));
+        node.inline_markdown = Some(Box::new(InlineMarkdownPlan { fragment }));
     }
 }
 

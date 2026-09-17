@@ -9,24 +9,13 @@ use crate::core::document::{
     MarkdownTableWidths, MarkdownWrap, Node, NodeKind,
 };
 use crate::core::markdown_marker::markdown_list_marker_len;
-use crate::core::source::{SourceBuffer, SourceSpan, Span};
+use crate::core::source::{SourceBuffer, Span};
 use crate::core::yaml_model::{
     YamlAstKind, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind, YamlScalar,
 };
 use crate::diagnostic::Result;
 
-pub fn parse_markdown(
-    source: &SourceBuffer,
-    range: Span,
-    options: FormatOptions,
-    config: &Config,
-) -> Result<Document> {
-    let mut document = parse_markdown_retained(source, range, options, config)?;
-    finalize_document(source, &mut document, options, true);
-    Ok(document)
-}
-
-pub(crate) fn parse_markdown_retained(
+pub(crate) fn parse_markdown(
     source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
@@ -802,7 +791,7 @@ fn parse_nested_yaml(
 ) -> Result<Document> {
     match mode {
         MarkdownParseMode::Concrete => {
-            crate::core::yaml::parse_yaml_retained(source, range, options, config)
+            crate::core::yaml::parse_yaml(source, range, options, config)
         }
         MarkdownParseMode::SemanticOnly => {
             crate::core::yaml::parse_yaml_for_formatting(source, range, options, config)
@@ -1069,10 +1058,6 @@ impl MarkdownPlans {
     }
 
     fn insert(&mut self, node: usize, plan: RetainedMarkdown) {
-        // Callers can also add nodes through the public node vector.
-        if node >= self.by_node.len() {
-            self.by_node.resize(node + 1, None);
-        }
         if let Some(id) = self.by_node[node] {
             self.plans[id.get() - 1] = plan;
         } else {
@@ -1087,7 +1072,6 @@ impl MarkdownPlans {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RetainedMarkdown {
-    input: MarkdownPlanInput,
     state: StateId,
     pub(crate) preserve: bool,
     preserve_raw: bool,
@@ -1096,67 +1080,22 @@ pub(crate) struct RetainedMarkdown {
     draft: Option<crate::core::wrap::Draft>,
 }
 
-/// The public node can change independently of its document-owned plan. Keep
-/// compact formatting inputs so compatibility finalization can detect that.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MarkdownPlanInput {
-    span: SourceSpan,
-    kind: MarkdownPlanKind,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MarkdownPlanKind {
-    Block(MarkdownBlockFormatKind),
-    Heading {
-        marker: SourceSpan,
-        content: SourceSpan,
-    },
-    SetextHeading {
-        content: SourceSpan,
-        depth: usize,
-    },
-}
-
-impl MarkdownPlanInput {
-    fn for_node(node: &Node) -> Option<Self> {
-        let kind = match node.emit {
-            EmitPlan::MarkdownParagraph => MarkdownBlockFormatKind::Paragraph,
-            EmitPlan::MarkdownList => MarkdownBlockFormatKind::List,
-            EmitPlan::MarkdownDefinitionList => MarkdownBlockFormatKind::DefinitionList,
-            EmitPlan::MarkdownBlockquote => MarkdownBlockFormatKind::Blockquote,
-            EmitPlan::MarkdownTable => MarkdownBlockFormatKind::Table,
-            EmitPlan::MarkdownPandocTable => MarkdownBlockFormatKind::PandocTable,
-            EmitPlan::MarkdownHeading { marker, content } => {
-                return Some(Self {
-                    span: SourceSpan::new(node.span),
-                    kind: MarkdownPlanKind::Heading {
-                        marker: SourceSpan::new(marker),
-                        content: SourceSpan::new(content),
-                    },
-                });
-            }
-            EmitPlan::MarkdownSetextHeading { content, depth } => {
-                return Some(Self {
-                    span: SourceSpan::new(node.span),
-                    kind: MarkdownPlanKind::SetextHeading {
-                        content: SourceSpan::new(content),
-                        depth,
-                    },
-                });
-            }
-            _ => return None,
-        };
-        Some(Self {
-            span: SourceSpan::new(node.span),
-            kind: MarkdownPlanKind::Block(kind),
-        })
-    }
+fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
+    Some(match emit {
+        EmitPlan::MarkdownParagraph => MarkdownBlockFormatKind::Paragraph,
+        EmitPlan::MarkdownList => MarkdownBlockFormatKind::List,
+        EmitPlan::MarkdownDefinitionList => MarkdownBlockFormatKind::DefinitionList,
+        EmitPlan::MarkdownBlockquote => MarkdownBlockFormatKind::Blockquote,
+        EmitPlan::MarkdownTable => MarkdownBlockFormatKind::Table,
+        EmitPlan::MarkdownPandocTable => MarkdownBlockFormatKind::PandocTable,
+        _ => return None,
+    })
 }
 
 impl RetainedMarkdown {
     fn template_policy_changed(&self, node: &Node, doc: &Document) -> bool {
-        // Interned states are immutable, so unchanged IDs need no comparison
-        // or template scan. A patch can change delimiters without options.
+        // Parsing and finalization share this tree's append-only state table.
+        // A late directive can add delimiters without changing format options.
         self.state != node.state
             && doc.state(self.state).template_delimiters
                 != doc.state(node.state).template_delimiters
@@ -1253,7 +1192,6 @@ fn plan_markdown_block(
         })
         .flatten();
     RetainedMarkdown {
-        input: MarkdownPlanInput::for_node(node).expect("Markdown format node"),
         state: node.state,
         preserve,
         preserve_raw,
@@ -1281,7 +1219,6 @@ fn prepare_markdown_block(
 }
 
 fn retain_markdown_drafts(source: &SourceBuffer, doc: &mut Document, options: FormatOptions) {
-    doc.plan_source = Some(source.identity());
     if doc.skip_file {
         return;
     }
@@ -1289,10 +1226,7 @@ fn retain_markdown_drafts(source: &SourceBuffer, doc: &mut Document, options: Fo
         let state = doc.state(node.state);
         if !state.preserve
             && doc.markdown.get(index).is_none()
-            && let Some(MarkdownPlanInput {
-                kind: MarkdownPlanKind::Block(kind),
-                ..
-            }) = MarkdownPlanInput::for_node(node)
+            && let Some(kind) = markdown_block_kind(&node.emit)
         {
             doc.markdown.insert(
                 index,
@@ -1311,20 +1245,13 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
             continue;
         }
-        let Some(input) = MarkdownPlanInput::for_node(node) else {
-            if let Some(retained) = doc.markdown.get_mut(index) {
-                // A public node may have switched to an unrelated emit plan.
-                retained.preserve = false;
-            }
-            continue;
-        };
-        if let MarkdownPlanKind::Block(kind) = input.kind {
+        if let Some(kind) = markdown_block_kind(&node.emit) {
             let effective = state.markdown_options(options);
             let template_changed = doc
                 .markdown
                 .get(index)
                 .is_some_and(|retained| retained.template_policy_changed(node, doc));
-            if let Some(retained) = doc.markdown.get_mut(index).filter(|r| r.input == input) {
+            if let Some(retained) = doc.markdown.get_mut(index) {
                 let was_preserved = retained.preserve;
                 if template_changed {
                     let template = !matches!(
@@ -1398,7 +1325,6 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
             doc.markdown.insert(
                 index,
                 RetainedMarkdown {
-                    input,
                     state: node.state,
                     preserve,
                     preserve_raw: false,
@@ -1411,91 +1337,13 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
     }
 }
 
-/// Compatibility boundary for the independently callable public parse/emit API.
-/// Its document, source and options may have changed since parsing. The normal
-/// formatter owns its document and calls `finalize_document` directly instead.
-pub(crate) fn prepare_public_document<'a>(
-    source: &SourceBuffer,
-    document: &'a Document,
-    options: FormatOptions,
-    document_options: bool,
-) -> std::borrow::Cow<'a, Document> {
-    if !public_document_needs_preparation(source, document, options, document_options) {
-        return std::borrow::Cow::Borrowed(document);
-    }
-    let mut document = document.clone();
-    separate_nested_uses(&mut document, document_options);
-    finalize_document(source, &mut document, options, document_options);
-    std::borrow::Cow::Owned(document)
-}
-
-/// Parser-produced documents are trees. Public callers can reuse a nested index
-/// under different policies; expand those references before finalizing so every
-/// use owns its plan. This compatibility work never runs in the normal pipeline.
-fn separate_nested_uses(document: &mut Document, document_options: bool) {
-    if (document_options && document.skip_file) || document.nested.is_empty() {
-        return;
-    }
-    let mut used = vec![false; document.nested.len()];
-    let nested = &mut document.nested;
-    let mut separate = |id: usize| {
-        if used[id] {
-            let child = nested[id].clone();
-            nested.push(child);
-            nested.len() - 1
-        } else {
-            used[id] = true;
-            id
-        }
-    };
-    for node in &mut document.nodes {
-        let id = match &mut node.emit {
-            EmitPlan::MarkdownFrontMatter { nested, .. }
-            | EmitPlan::MarkdownDiv { nested, .. }
-            | EmitPlan::EmbeddedMarkdownString { nested, .. }
-            | EmitPlan::EmbeddedMarkdownComment { nested, .. }
-            | EmitPlan::EmbeddedYamlComment { nested, .. }
-            | EmitPlan::MarkdownCodeFence {
-                nested: Some(nested),
-                ..
-            } => nested,
-            _ => continue,
-        };
-        *id = separate(*id);
-    }
-    if let Some(ast) = &mut document.yaml {
-        for node in &mut ast.nodes {
-            if matches!(node.kind, YamlAstKind::Scalar(_))
-                && let YamlEmitPlan::NestedMarkdownBlockScalar { nested: id } = &mut node.emit
-            {
-                *id = u32::try_from(separate(*id as usize))
-                    .expect("nested document index exceeds u32");
-            }
-        }
-    }
-    for child in &mut document.nested {
-        separate_nested_uses(child, true);
-    }
-}
-
-/// Private fragments are only emitted with their construction options. A policy
-/// change rebuilds the fragment from its retained logical buffer, so it does not
-/// need the drafts kept by public parse/emit documents for later relayout.
-pub(crate) fn finalize_fragment_document(
-    source: &SourceBuffer,
-    document: &mut Document,
-    options: FormatOptions,
-) {
-    finalize_document(source, document, options, true);
-    release_fragment_drafts(document);
-}
-
-fn release_fragment_drafts(document: &mut Document) {
+/// Finalization is consuming: no owner needs these recognition drafts again.
+pub(crate) fn release_drafts(document: &mut Document) {
     for retained in &mut document.markdown.plans {
         retained.draft = None;
     }
     for nested in &mut document.nested {
-        release_fragment_drafts(nested);
+        release_drafts(nested);
     }
 }
 
@@ -1544,8 +1392,7 @@ fn nested_emit_policies<'a>(
         .into_iter()
         .flat_map(|ast| &ast.nodes)
         .filter_map(move |node| {
-            // Public scalar metadata and its selected emit plan can differ.
-            // Follow the same child reference as the YAML executor.
+            // Finalize the child selected by the YAML executor.
             let (YamlAstKind::Scalar(_), YamlEmitPlan::NestedMarkdownBlockScalar { nested }) =
                 (&node.kind, &node.emit)
             else {
@@ -1559,78 +1406,8 @@ fn nested_emit_policies<'a>(
     nodes.chain(scalars)
 }
 
-fn public_document_needs_preparation(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    document_options: bool,
-) -> bool {
-    // The direct YAML emitter historically ignores the document skip flag;
-    // the shared document emitter observes it before entering YAML emission.
-    if document_options && document.skip_file {
-        return false;
-    }
-    let source = if document_options {
-        document.source.as_ref().unwrap_or(source)
-    } else {
-        source
-    };
-    if document.plan_source != Some(source.identity()) {
-        return true;
-    }
-    let options = if document_options {
-        document_emit_options(source, document, options)
-    } else {
-        options
-    };
-    if let Some(ast) = &document.yaml
-        && ast.nodes.iter().any(|node| {
-            matches!(
-                node.emit,
-                YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
-            ) && {
-                let state = document.state(node.state);
-                crate::core::yaml::inline_markdown_plan_needs_resolution(
-                    node,
-                    state.markdown_options(state.yaml_options(options)),
-                )
-            }
-        })
-    {
-        return true;
-    }
-    document.nodes.iter().enumerate().any(|(index, node)| {
-        let state = document.state(node.state);
-        if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
-            return false;
-        }
-        match (
-            MarkdownPlanInput::for_node(node),
-            document.markdown.get(index),
-        ) {
-            (Some(input), Some(plan)) => {
-                plan.input != input
-                    || plan.template_policy_changed(node, document)
-                    || (!plan.preserve && plan.options != Some(state.markdown_options(options)))
-            }
-            (Some(_), None) => true,
-            (None, Some(plan)) => plan.preserve,
-            (None, None) => false,
-        }
-    }) || nested_emit_policies(
-        &document.nodes,
-        &document.states,
-        document.yaml.as_ref(),
-        options,
-    )
-    .any(|(id, options)| {
-        public_document_needs_preparation(source, &document.nested[id], options, true)
-    })
-}
-
-/// Finalize retained recognition under the settled directive state, once per
-/// tree before execution. Only the public compatibility adapter may supply a
-/// replacement source or modified nodes. No emitter calls this function.
+/// Resolve the privately owned tree under its settled directives. Called only
+/// while constructing PreparedTree; execution has no mutable tree access.
 pub(crate) fn finalize_document(
     source: &SourceBuffer,
     document: &mut Document,
@@ -1646,15 +1423,6 @@ pub(crate) fn finalize_document(
     } else {
         source
     };
-    if document.plan_source != Some(source.identity()) {
-        document.markdown = MarkdownPlans::default();
-        if let Some(ast) = &mut document.yaml {
-            for node in &mut ast.nodes {
-                node.inline_markdown = None;
-            }
-        }
-        document.plan_source = Some(source.identity());
-    }
     let options = if document_options {
         document_emit_options(source, document, options)
     } else {

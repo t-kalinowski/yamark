@@ -36,7 +36,7 @@ impl YamlDocumentAst {
         &self.nodes[id.index()]
     }
 
-    pub fn node_mut(&mut self, id: YamlNodeId) -> &mut YamlAstNode {
+    pub(crate) fn node_mut(&mut self, id: YamlNodeId) -> &mut YamlAstNode {
         &mut self.nodes[id.index()]
     }
 }
@@ -105,11 +105,11 @@ impl YamlAstNode {
         decode_yaml_width_cache(self.inline_width.get())
     }
 
-    pub fn set_inline_width(&self, width: Option<usize>) {
+    pub(crate) fn set_inline_width(&self, width: Option<usize>) {
         self.inline_width.set(encode_yaml_width_cache(width));
     }
 
-    pub fn clear_inline_width(&self) {
+    pub(crate) fn clear_inline_width(&self) {
         self.inline_width.set(YAML_WIDTH_CACHE_EMPTY);
     }
 
@@ -117,11 +117,11 @@ impl YamlAstNode {
         decode_yaml_width_cache(self.flow_inline_width.get())
     }
 
-    pub fn set_flow_inline_width(&self, width: Option<usize>) {
+    pub(crate) fn set_flow_inline_width(&self, width: Option<usize>) {
         self.flow_inline_width.set(encode_yaml_width_cache(width));
     }
 
-    pub fn clear_flow_inline_width(&self) {
+    pub(crate) fn clear_flow_inline_width(&self) {
         self.flow_inline_width.set(YAML_WIDTH_CACHE_EMPTY);
     }
 
@@ -130,7 +130,7 @@ impl YamlAstNode {
         (indent != YAML_SOURCE_INDENT_CACHE_EMPTY).then_some(indent as usize)
     }
 
-    pub fn set_source_indent(&self, indent: usize) {
+    pub(crate) fn set_source_indent(&self, indent: usize) {
         assert!(indent < YAML_SOURCE_INDENT_CACHE_EMPTY as usize);
         self.source_indent.set(indent as u32);
     }

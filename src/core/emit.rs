@@ -1,19 +1,40 @@
 use crate::core::document::{
-    CodeFenceSafety, Document, EmitPlan, FormatOptions, MarkdownNodeKind, Node, NodeKind,
+    CodeFenceSafety, Document, DocumentEmitMode, EmitPlan, FormatOptions, MarkdownNodeKind, Node,
+    NodeKind, PreparedDocument, PreparedTree,
 };
 use crate::core::source::{SourceBuffer, Span};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
 use memchr::memchr2;
 
-pub fn emit_document(
+pub fn emit_document(document: &PreparedDocument, plugins: &PluginRegistry) -> Result<String> {
+    emit_prepared_tree(document.source(), document.tree(), plugins).map(|(output, _)| output)
+}
+
+pub(crate) fn emit_prepared_tree(
     source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
+    tree: &PreparedTree,
     plugins: &PluginRegistry,
-) -> Result<String> {
-    let document = crate::core::markdown::prepare_public_document(source, document, options, true);
-    emit_planned_document(source, &document, options, plugins, false)
+) -> Result<(String, usize)> {
+    let document = tree.document();
+    let options = tree.options();
+    if matches!(tree.mode(), DocumentEmitMode::Yaml) {
+        if document.skip_file {
+            return Ok((source.slice(document.range).to_owned(), 0));
+        }
+        return crate::core::yaml::emit_planned_yaml_document_with_stats(
+            source, document, options, plugins,
+        )
+        .map(|(output, stats)| (output, stats.emitted_nodes));
+    }
+    emit_planned_document(
+        source,
+        document,
+        options,
+        plugins,
+        matches!(tree.mode(), DocumentEmitMode::Markdown),
+    )
+    .map(|output| (output, 0))
 }
 
 /// Execute a document whose effective policy has already been finalized.
