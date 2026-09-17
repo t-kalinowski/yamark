@@ -185,7 +185,7 @@ fn unmatched_backtick_run_keeps_later_literals_and_links_distinct() {
 }
 
 #[test]
-fn existing_angle_spans_do_not_open_literals() {
+fn angle_inputs_retain_baseline_normalization() {
     for marker in ['`', '$'] {
         for (source, expected) in [
             (
@@ -222,6 +222,10 @@ fn existing_angle_spans_do_not_open_literals() {
 fn review_examples_retain_baseline_output() {
     for (source, expected) in [
         (
+            "Before <kbd title=\"> `\">[r](  t  )</kbd> then `tail` after [s](  u  ).\n",
+            "Before <kbd title=\"> `\">[r](t)</kbd> then `tail` after [s](u).\n",
+        ),
+        (
             "a < b <kbd title=\"`\">[r](  t  )</kbd> then `tail`\n",
             "a < b <kbd title=\"`\">[r](t)</kbd> then `tail`\n",
         ),
@@ -244,7 +248,7 @@ fn review_examples_retain_baseline_output() {
 }
 
 #[test]
-fn completed_comments_do_not_open_literals() {
+fn comment_inputs_retain_baseline_normalization() {
     for marker in ['`', '$'] {
         for (source, expected) in [
             (
@@ -265,13 +269,13 @@ fn completed_comments_do_not_open_literals() {
                 ),
                 format!("Before <!-- {marker} --> [r](t) <!-- {marker} --> after [s](u).\n"),
             ),
-            // Links inside comments still normalize; literals after them do not.
+            // Raw '<' withdraws literal protection for this whole input.
             (
                 format!(
                     "Before <!-- > {marker}[x](  v  ) ![i](  p  ){marker} --> [r](  t  ) then {marker}[code](  c  ){marker}.\n"
                 ),
                 format!(
-                    "Before <!-- > {marker}[x](v) ![i](p){marker} --> [r](t) then {marker}[code](  c  ){marker}.\n"
+                    "Before <!-- > {marker}[x](v) ![i](p){marker} --> [r](t) then {marker}[code](c){marker}.\n"
                 ),
             ),
         ] {
@@ -299,11 +303,12 @@ fn completed_comments_do_not_open_literals() {
 }
 
 #[test]
-fn comment_exclusions_follow_source_order_and_require_a_complete_token() {
+fn angle_compatibility_respects_literals_and_escapes() {
     for marker in ['`', '$'] {
         for contents in [
             "<!-- > [x](  v  ) -->",
             "<kbd title=\"<!--\">[x](  v  )</kbd> -->",
+            "<kbd title=\">\"> [x](  u  )",
         ] {
             let source = format!("Before {marker}{contents}{marker} after [r](  t  ).\n");
             let expected = format!("Before {marker}{contents}{marker} after [r](t).\n");
@@ -323,12 +328,12 @@ fn comment_exclusions_follow_source_order_and_require_a_complete_token() {
             let source = format!(
                 "Before {candidate} {marker}[x](  v  ){marker}{suffix} after [r](  t  ).\n"
             );
-            // Although this is not a comment, main treats '<!- ... >' as a
-            // flat angle token and normalizes the link inside it.
-            let contents = if candidate == "<!-" {
-                "[x](v)"
-            } else {
+            // Escaped '<' remains eligible; every raw '<' uses baseline links,
+            // whether or not any angle/comment closing delimiter is present.
+            let contents = if candidate == r"\<!--" {
                 "[x](  v  )"
+            } else {
+                "[x](v)"
             };
             let expected =
                 format!("Before {candidate} {marker}{contents}{marker}{suffix} after [r](t).\n");
@@ -372,7 +377,7 @@ fn declaration_and_backtick_reports_keep_their_baseline_cli_output() {
 }
 
 #[test]
-fn historical_flat_angle_tokens_do_not_open_literals() {
+fn raw_angle_spellings_retain_baseline_normalization() {
     for marker in ['`', '$'] {
         for token in [
             format!("<!DOCTYPE x \"{marker}\">"),
@@ -394,7 +399,7 @@ fn historical_flat_angle_tokens_do_not_open_literals() {
             ),
             (
                 format!("Before <42> {marker}[x](  u  ){marker} after [r](  t  ).\n"),
-                format!("Before <42> {marker}[x](  u  ){marker} after [r](t).\n"),
+                format!("Before <42> {marker}[x](u){marker} after [r](t).\n"),
             ),
             (
                 format!("Before {marker}<!DOCTYPE x \"[x](  u  )\">{marker} after [r](  t  ).\n"),
@@ -402,7 +407,7 @@ fn historical_flat_angle_tokens_do_not_open_literals() {
             ),
             (
                 format!("Before < x < x {marker}[x](  u  ){marker} after [r](  t  ).\n"),
-                format!("Before < x < x {marker}[x](  u  ){marker} after [r](t).\n"),
+                format!("Before < x < x {marker}[x](u){marker} after [r](t).\n"),
             ),
         ] {
             for wrap in ["none", "paragraph", "sentence:240"] {
@@ -415,13 +420,51 @@ fn historical_flat_angle_tokens_do_not_open_literals() {
 }
 
 #[test]
-fn ambiguous_raw_angle_tokens_use_baseline_link_normalization() {
-    // A raw angle token can hide a complete comment's opener before its first
-    // '>'. Retry this normalization unit without literal protection, including
-    // any literal processed before the ambiguous token. Prose still formats.
+fn raw_angles_retry_the_entire_normalization_input() {
+    // Retry even a literal processed before the raw '<'. Prose still formats.
     let source =
         "Before `[keep](  u  )` < x <!-- > ` --> [r](  t  ) then `tail after [s](  u  ).\n";
     let expected = "Before `[keep](u)` < x <!-- > ` --> [r](t) then `tail after [s](u).\n";
+    for wrap in ["none", "paragraph", "sentence:240"] {
+        for canonical in [false, true] {
+            assert_format(source, expected, wrap, canonical);
+            for angle in ["< value", "<kbd>", "<http://x>", "<!--"] {
+                assert_format(
+                    &format!("Before `[a](  u  )` {angle} then `[b](  v  )` after [r](  t  ).\n"),
+                    &format!("Before `[a](u)` {angle} then `[b](v)` after [r](t).\n"),
+                    wrap,
+                    canonical,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn angles_consumed_by_links_and_attributes_keep_literal_protection() {
+    for (link, normalized) in [
+        ("[a](  <target>  )", "[a](<target>)"),
+        ("[a](  target  ){key=\"<\"}", "[a](target){key=\"<\"}"),
+        ("[a][<target>]", "[a][<target>]"),
+    ] {
+        for wrap in ["none", "paragraph", "sentence:240"] {
+            for canonical in [false, true] {
+                assert_format(
+                    &format!("Before `[x](  u  )` {link} then `[y](  v  )` after [r](  t  ).\n"),
+                    &format!("Before `[x](  u  )` {normalized} then `[y](  v  )` after [r](t).\n"),
+                    wrap,
+                    canonical,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn raw_angle_compatibility_does_not_disable_other_paragraphs() {
+    let source =
+        "Before < value `[a](  u  )` after [r](  t  ).\n\nBefore `[b](  u  )` after [s](  v  ).\n";
+    let expected = "Before < value `[a](u)` after [r](t).\n\nBefore `[b](  u  )` after [s](v).\n";
     for wrap in ["none", "paragraph", "sentence:240"] {
         for canonical in [false, true] {
             assert_format(source, expected, wrap, canonical);

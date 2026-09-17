@@ -3320,15 +3320,9 @@ fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize)
         return Some(index + close);
     }
     if rest.starts_with('<') && !inline_html_tag_at(text, index) {
-        return flat_angle_token_end(rest).map(|end| index + end);
+        return rest.find('>').map(|close| index + close + 1);
     }
     None
-}
-
-// Historical flat angle boundary, not an HTML element or attribute parser.
-// Callers handle escapes and any syntax recognized before this fallback.
-fn flat_angle_token_end(rest: &str) -> Option<usize> {
-    rest.strip_prefix('<')?.find('>').map(|close| close + 2)
 }
 
 fn inline_html_tag_at(text: &str, index: usize) -> bool {
@@ -3342,10 +3336,6 @@ fn inline_html_tag_at(text: &str, index: usize) -> bool {
     let Some(close) = rest.find('>') else {
         return false;
     };
-    inline_html_tag_before_close(rest, close)
-}
-
-fn inline_html_tag_before_close(rest: &str, close: usize) -> bool {
     let mut name_start = '<'.len_utf8();
     if rest.as_bytes().get(name_start) == Some(&b'/') {
         name_start += '/'.len_utf8();
@@ -3374,9 +3364,7 @@ fn inline_html_tag_before_close(rest: &str, close: usize) -> bool {
     !(after_name.starts_with([':', '@']))
         && (after_name.is_empty()
             || after_name.starts_with(char::is_whitespace)
-            || after_name
-                .strip_prefix('/')
-                .is_some_and(|tail| tail.chars().all(char::is_whitespace)))
+            || after_name.trim() == "/")
 }
 
 fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
@@ -3398,50 +3386,16 @@ fn normalize_links_and_images(source: &str, protect_literals: bool) -> Cow<'_, s
     }
     let mut out = String::with_capacity(source.len());
     let mut index = 0usize;
-    let mut prose_from = 0usize;
-    let mut angle_end_missing = false;
-    let mut comment_end_missing = false;
     while index < source.len() {
         let rest = &source[index..];
-        if protect_literals
-            && index >= prose_from
-            && !comment_end_missing
-            && rest.starts_with("<!--")
-            && !escaped_at(source, index)
-        {
-            // Exclude only literal openers through the complete comment token;
-            // the existing link/image normalization below still visits its text.
-            // A failed search rules out a close for every later comment opener.
-            match rest[4..].find("-->") {
-                Some(close) => prose_from = index + 4 + close + 3,
-                None => comment_end_missing = true,
-            }
-        }
-        if protect_literals
-            && index >= prose_from
-            && !angle_end_missing
-            && rest.starts_with('<')
-            && !escaped_at(source, index)
-        {
-            // Reuse the support scanner's flat boundary, keeping link/image
-            // normalization active inside it. Completed comments above retain
-            // their full '-->' boundary, even with an earlier '>'.
-            if let Some(end) = flat_angle_token_end(rest) {
-                if !inline_html_tag_before_close(rest, end - 1) && rest[1..end - 1].contains('<') {
-                    // A raw angle token can hide another lexical opener (for
-                    // example a comment). Without interpreting nested HTML,
-                    // retry this unit once with baseline normalization. Discard
-                    // any literal protection already applied to this unit.
-                    return normalize_links_and_images(source, false);
-                }
-                prose_from = index + end;
-            } else {
-                angle_end_missing = true;
-            }
+        if protect_literals && rest.starts_with('<') && !escaped_at(source, index) {
+            // Raw angle syntax keeps baseline normalization for this whole
+            // input. Retry once, discarding any already-protected prefix.
+            return normalize_links_and_images(source, false);
         }
         // Visit literals in prose order. A real link below consumes its label,
         // destination and attributes before their delimiters can become openers.
-        if protect_literals && index >= prose_from && rest.starts_with('`') {
+        if protect_literals && rest.starts_with('`') {
             let end = if !escaped_at(source, index)
                 && let Some(end) = scan.code_span_end(index)
             {
@@ -3461,7 +3415,6 @@ fn normalize_links_and_images(source: &str, protect_literals: bool) -> Cow<'_, s
             continue;
         }
         if protect_literals
-            && index >= prose_from
             && rest.starts_with('$')
             && let Some(end) = inline_math_span_end(source, index)
         {
