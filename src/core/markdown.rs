@@ -1040,6 +1040,10 @@ pub(crate) struct MarkdownPlans {
 }
 
 impl MarkdownPlans {
+    pub(crate) fn block_count(&self) -> usize {
+        self.plans.len()
+    }
+
     pub(crate) fn push_node(&mut self) {
         self.by_node.push(None);
     }
@@ -1047,6 +1051,15 @@ impl MarkdownPlans {
     pub(crate) fn get(&self, node: usize) -> Option<&RetainedMarkdown> {
         let id = self.by_node.get(node).copied().flatten()?;
         Some(&self.plans[id.get() - 1])
+    }
+
+    pub(crate) fn take_fragment_block(&mut self, node: usize) -> Option<crate::core::wrap::Plan> {
+        let retained = self.get_mut(node)?;
+        if retained.preserve {
+            None
+        } else {
+            retained.plan.take()
+        }
     }
 
     fn get_mut(&mut self, node: usize) -> Option<&mut RetainedMarkdown> {
@@ -1330,7 +1343,7 @@ fn release_fragment_drafts(document: &mut Document) {
     }
 }
 
-fn document_emit_options(
+pub(crate) fn document_emit_options(
     source: &SourceBuffer,
     document: &Document,
     options: FormatOptions,

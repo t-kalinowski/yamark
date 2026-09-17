@@ -1,7 +1,7 @@
 //! Retained results of the existing paragraph/container helpers, not a new
 //! Markdown grammar. Drafts own normalization alternatives, token spans and
 //! widths, container boundaries, and prefix policy. Resolution records concrete
-//! line breaks and child documents; emission only executes those records.
+//! line breaks and child plans; emission only executes those records.
 //!
 //! Recognition and the existing line-safety/link-splitting scans remain in
 //! planning. A changed child policy can require parsing its retained logical
@@ -11,7 +11,7 @@
 //! external formatter execution still belong to document emission.
 
 use super::*;
-use crate::core::document::Document;
+use crate::core::document::{Document, EmitPlan};
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
 
 /// Text borrowed from the block's source, or a normalization that needs storage.
@@ -92,13 +92,109 @@ pub(super) enum Prefix {
     Footnote { indent: Box<str>, newline: Box<str> },
 }
 
-/// Logical container text and its document have the same explicit owner.
+/// Logical container text and its execution plan have the same explicit owner.
 /// Fragment parsing intentionally uses the historical default configuration.
 #[derive(Debug, Clone)]
 pub(crate) struct Fragment {
     source: std::sync::Arc<SourceBuffer>,
-    document: Option<Box<Document>>,
+    body: Option<FragmentBody>,
     options: FormatOptions,
+}
+
+#[derive(Debug, Clone)]
+enum FragmentBody {
+    Plan(Box<Plan>),
+    Document(Box<Document>),
+}
+
+impl FragmentBody {
+    fn retain(source: &SourceBuffer, mut document: Document, options: FormatOptions) -> Self {
+        // Private block sequences need only their existing plans and source
+        // spans. Documents with other execution work (including skip flags,
+        // nested host documents, or plugins) keep normal document emission.
+        if document.skip_file
+            || document.source.is_some()
+            || !document.nodes.iter().all(|node| {
+                matches!(
+                    node.emit,
+                    EmitPlan::Copy
+                        | EmitPlan::Preserve
+                        | EmitPlan::MarkdownOpaque
+                        | EmitPlan::MarkdownHeading { .. }
+                        | EmitPlan::MarkdownSetextHeading { .. }
+                        | EmitPlan::MarkdownParagraph
+                        | EmitPlan::MarkdownList
+                        | EmitPlan::MarkdownDefinitionList
+                        | EmitPlan::MarkdownBlockquote
+                        | EmitPlan::MarkdownTable
+                        | EmitPlan::MarkdownPandocTable
+                )
+            })
+        {
+            return Self::Document(Box::new(document));
+        }
+        if let [node] = document.nodes.as_slice()
+            && node.span == document.range
+            && !document.state(node.state).preserve
+            && let Some(plan) = document.markdown.take_fragment_block(0)
+        {
+            return Self::Plan(Box::new(plan));
+        }
+        let options = crate::core::markdown::document_emit_options(source, &document, options);
+        // Copied nodes coalesce into gaps between block plans. In particular,
+        // a preserved fragment needs one span, not one slot per parsed node.
+        let capacity = document
+            .nodes
+            .len()
+            .min(2 * document.markdown.block_count() + 1);
+        let mut plan = Plan {
+            items: Vec::with_capacity(capacity),
+            trim_final_newline: false,
+        };
+        let mut cursor = document.range.start;
+        let mut index = 0;
+        while index < document.nodes.len() {
+            let node = &document.nodes[index];
+            if let Some(end) =
+                crate::core::emit::paragraph_separator_blank_run_end(&document, index)
+            {
+                if cursor < node.span.start {
+                    plan.push_str(
+                        source.as_str(),
+                        source.slice(Span::new(cursor, node.span.start)),
+                    );
+                }
+                let newline = crate::core::emit::line_ending_for_span(source, node.span);
+                plan.push_str(source.as_str(), newline_for_join(newline, options));
+                cursor = document.nodes[end - 1].span.end;
+                index = end;
+                continue;
+            }
+            if !document.state(node.state).preserve
+                && let Some(block) = document.markdown.take_fragment_block(index)
+            {
+                if cursor < node.span.start {
+                    plan.push_str(
+                        source.as_str(),
+                        source.slice(Span::new(cursor, node.span.start)),
+                    );
+                }
+                plan.items.push(Item::Scoped {
+                    text: Text::Source(SourceSpan::new(node.span)),
+                    plan: Box::new(block),
+                });
+                cursor = node.span.end;
+            }
+            index += 1;
+        }
+        if cursor < document.range.end {
+            plan.push_str(
+                source.as_str(),
+                source.slice(Span::new(cursor, document.range.end)),
+            );
+        }
+        Self::Plan(Box::new(plan))
+    }
 }
 
 impl Fragment {
@@ -108,7 +204,7 @@ impl Fragment {
 
     fn from_buffer(source: std::sync::Arc<SourceBuffer>, options: FormatOptions) -> Self {
         let range = Span::new(0, source.as_str().len());
-        let document = crate::core::markdown::parse_markdown(
+        let body = crate::core::markdown::parse_markdown(
             &source,
             range,
             options,
@@ -117,11 +213,11 @@ impl Fragment {
         .ok()
         .map(|mut document| {
             crate::core::markdown::finalize_fragment_document(&source, &mut document, options);
-            Box::new(document)
+            FragmentBody::retain(&source, document, options)
         });
         Self {
             source,
-            document,
+            body,
             options,
         }
     }
@@ -141,17 +237,18 @@ impl Fragment {
     }
 
     pub(crate) fn emit(&self) -> String {
-        self.document
+        self.body
             .as_ref()
-            .and_then(|document| {
-                crate::core::emit::emit_planned_document(
+            .and_then(|body| match body {
+                FragmentBody::Plan(plan) => Some(plan.emit(self.source.as_str())),
+                FragmentBody::Document(document) => crate::core::emit::emit_planned_document(
                     &self.source,
                     document,
                     self.options,
                     &crate::plugins::PluginRegistry::default(),
                     false,
                 )
-                .ok()
+                .ok(),
             })
             .unwrap_or_else(|| self.source.as_str().to_owned())
     }
@@ -553,7 +650,12 @@ impl Draft {
             }
             DraftBody::Items(items) => items,
         };
-        let mut plan = Plan::new();
+        // Each retained draft item produces at most one execution item. Reserve
+        // its known size directly instead of growing oversized enum storage.
+        let mut plan = Plan {
+            items: Vec::with_capacity(items.len()),
+            trim_final_newline: false,
+        };
         for item in items {
             match item {
                 DraftItem::Unwrapped {

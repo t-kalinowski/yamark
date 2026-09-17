@@ -517,7 +517,10 @@ impl EmitOutput {
     }
 }
 
-fn paragraph_separator_blank_run_end(document: &Document, index: usize) -> Option<usize> {
+pub(crate) fn paragraph_separator_blank_run_end(
+    document: &Document,
+    index: usize,
+) -> Option<usize> {
     if !node_is_markdown_blank(document.nodes.get(index)?) {
         return None;
     }
@@ -686,7 +689,7 @@ fn closes_code_fence(line: &str, safety: CodeFenceSafety) -> bool {
     marker_len >= safety.min_len && line[indent + marker_len..].trim().is_empty()
 }
 
-fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
+pub(crate) fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
     let text = source.slice(span);
     if text.ends_with("\r\n") {
         "\r\n"
