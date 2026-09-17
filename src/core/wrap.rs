@@ -1,4 +1,5 @@
 mod plan;
+use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
@@ -34,6 +35,132 @@ pub(crate) fn prepare_markdown_paragraph(source: &str) -> Option<Draft> {
         Some(draft)
     };
     Some(Draft::choice(Condition::WrapNone, unwrapped, reflow))
+}
+
+/// Original-source code contents, retained only for paragraph template policy.
+/// None records an ambiguous boundary; policy changes must not rescan inlines.
+#[derive(Debug, Clone)]
+pub(crate) struct ParagraphCodeSpans(Option<Vec<SourceSpan>>);
+
+impl ParagraphCodeSpans {
+    pub(crate) fn recognize(source: &str) -> Self {
+        Self(Self::recognize_contents(source))
+    }
+
+    fn recognize_contents(source: &str) -> Option<Vec<SourceSpan>> {
+        if footnote_definition(source) || has_hard_break(source) {
+            return None;
+        }
+        let mut scan = InlineScan::new(source);
+        let mut contents = Vec::new();
+        let mut index = 0;
+        while index < source.len() {
+            let rest = &source[index..];
+            if rest.starts_with('`') {
+                if escaped_at(source, index) {
+                    return None;
+                }
+                let run = rest.bytes().take_while(|byte| *byte == b'`').count();
+                let end = scan.code_span_end(index)?;
+                // The shared matcher can consume part of a longer closing run.
+                // Reject that ambiguity here without changing its grammar.
+                if source[end..].starts_with('`') || source[index..end].contains(['\n', '\r']) {
+                    return None;
+                }
+                contents.push(SourceSpan::new(Span::new(index + run, end - run)));
+                index = end;
+                continue;
+            }
+            if !escaped_at(source, index) {
+                // Match the link normalizer's raw-angle stop, before any HTML
+                // recognition. Angles inside already-consumed code are literal.
+                if rest.starts_with('<') {
+                    return None;
+                }
+                let end = if rest.starts_with('[') || rest.starts_with("![") {
+                    Some(link_or_bracket_token_end(&mut scan, index)?)
+                } else if rest.starts_with('$') {
+                    let end = inline_math_span_end(source, index)?;
+                    // Existing passes disagree about escaped dollar closers and
+                    // double-dollar runs. Do not admit those math boundaries.
+                    if rest.starts_with("$$") || source[index + 1..end - 1].contains('$') {
+                        return None;
+                    }
+                    Some(end)
+                } else {
+                    // Stop at an unmatched construct instead of repeatedly
+                    // searching its suffix at each later candidate opener.
+                    let end = if rest.starts_with('{') {
+                        Some(balanced_brace_span_end(source, index)?)
+                    } else if rest.starts_with("~~") {
+                        Some(strikethrough_span_end(source, index)?)
+                    } else if rest.starts_with(['*', '_']) {
+                        Some(emphasis_span_end(source, index)?)
+                    } else {
+                        latex_command_token_end(source, index)
+                    };
+                    // Do not descend into nested markup to establish literal or
+                    // raw-angle safety. Links and math above are consumed atoms.
+                    if end.is_some_and(|end| source[index..end].contains(['`', '<'])) {
+                        return None;
+                    }
+                    end
+                };
+                if let Some(end) = end {
+                    if source[index..end].contains(['\n', '\r']) {
+                        return None;
+                    }
+                    index = end;
+                    continue;
+                }
+            }
+            index += rest.chars().next().expect("source character").len_utf8();
+        }
+        Some(contents)
+    }
+
+    pub(crate) fn contains_all_templates(
+        &self,
+        source: &str,
+        delimiters: &[TemplateDelimiter],
+    ) -> bool {
+        let Some(contents) = &self.0 else {
+            return false;
+        };
+        delimiters.iter().all(|delimiter| {
+            if delimiter.open.is_empty() || delimiter.close.is_empty() {
+                return true;
+            }
+            let mut opens = source.match_indices(&delimiter.open);
+            let mut closes = source.match_indices(&delimiter.close);
+            let mut spans = contents.iter().copied();
+            let mut span = spans.next();
+            loop {
+                let open = opens.next();
+                let close = if delimiter.open == delimiter.close {
+                    opens.next()
+                } else {
+                    closes.next()
+                };
+                let (start, end) = match (open, close) {
+                    (None, None) => return true,
+                    (Some((open, _)), Some((close, _))) if open + delimiter.open.len() <= close => {
+                        (open, close + delimiter.close.len())
+                    }
+                    _ => return false,
+                };
+                while span.is_some_and(|span| span.end() <= start) {
+                    span = spans.next();
+                }
+                if !span.is_some_and(|span| span.start() <= start && end <= span.end()) {
+                    return false;
+                }
+                // Inspect every opener AND closer on the original source. A
+                // quoted early closer cannot hide later delimiters outside code;
+                // separate code spans cannot jointly contain a template pair.
+            }
+        })
+    }
 }
 
 fn contains_existing_split_link_destination(source: &str) -> bool {

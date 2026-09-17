@@ -158,7 +158,7 @@ fn link_targets_and_attributes_do_not_open_literals() {
 }
 
 #[test]
-fn template_pairs_keep_the_existing_preservation_policy() {
+fn template_pairs_preserve_except_in_ordinary_paragraph_code() {
     for source in [
         "Before `[x](  url  ) {{ value }}` after [r](  t  ) _outside_.\n",
         "- Before $![x](  url  )$ {{ value }} after [r](  t  ).\n",
@@ -167,7 +167,21 @@ fn template_pairs_keep_the_existing_preservation_policy() {
     ] {
         for wrap in ["none", "paragraph", "sentence", "16", "sentence:16"] {
             for canonical in [false, true] {
-                assert_format(source, source, wrap, canonical);
+                let expected = if source.starts_with("Before") {
+                    // This ordinary paragraph is now eligible. Its code stays
+                    // exact while the real link, emphasis and wrapping format.
+                    let outside = if canonical { "*outside*" } else { "_outside_" };
+                    if matches!(wrap, "16" | "sentence:16") {
+                        format!(
+                            "Before\n`[x](  url  ) {{{{ value }}}}`\nafter [r](t)\n{outside}.\n"
+                        )
+                    } else {
+                        format!("Before `[x](  url  ) {{{{ value }}}}` after [r](t) {outside}.\n")
+                    }
+                } else {
+                    source.to_owned()
+                };
+                assert_format(source, &expected, wrap, canonical);
             }
         }
     }

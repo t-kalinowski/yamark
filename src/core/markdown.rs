@@ -1078,6 +1078,7 @@ pub(crate) struct RetainedMarkdown {
     options: Option<FormatOptions>,
     pub(crate) plan: Option<crate::core::wrap::Plan>,
     draft: Option<crate::core::wrap::Draft>,
+    paragraph_code: Option<crate::core::wrap::ParagraphCodeSpans>,
 }
 
 fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
@@ -1093,6 +1094,26 @@ fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
 }
 
 impl RetainedMarkdown {
+    fn preserves_templates(
+        &mut self,
+        input: &str,
+        kind: MarkdownBlockFormatKind,
+        delimiters: &[TemplateDelimiter],
+    ) -> bool {
+        if matches!(
+            kind,
+            MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+        ) || !contains_markdown_template_span(input, delimiters)
+        {
+            return false;
+        }
+        !matches!(kind, MarkdownBlockFormatKind::Paragraph)
+            || !self
+                .paragraph_code
+                .get_or_insert_with(|| crate::core::wrap::ParagraphCodeSpans::recognize(input))
+                .contains_all_templates(input, delimiters)
+    }
+
     fn template_policy_changed(&self, node: &Node, doc: &Document) -> bool {
         // Parsing and finalization share this tree's append-only state table.
         // A late directive can add delimiters without changing format options.
@@ -1176,29 +1197,29 @@ fn plan_markdown_block(
     let input = source.slice(node.span);
     let options = state.markdown_options(options);
     let preserve_raw = crate::core::wrap::markdown_reflow_changes_raw_semantics(input);
-    let preserve = preserve_raw
-        || (!matches!(
-            kind,
-            MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-        ) && contains_markdown_template_span(input, &state.template_delimiters));
-    let mut draft = (!preserve)
+    let mut retained = RetainedMarkdown {
+        state: node.state,
+        preserve: preserve_raw,
+        preserve_raw,
+        options: resolve.then_some(options),
+        plan: None,
+        draft: None,
+        paragraph_code: None,
+    };
+    retained.preserve =
+        preserve_raw || retained.preserves_templates(input, kind, &state.template_delimiters);
+    retained.draft = (!retained.preserve)
         .then(|| prepare_markdown_block(input, kind))
         .flatten();
-    let plan = resolve
+    retained.plan = resolve
         .then(|| {
-            draft
+            retained
+                .draft
                 .as_mut()
                 .and_then(|draft| draft.resolve(input, options))
         })
         .flatten();
-    RetainedMarkdown {
-        state: node.state,
-        preserve,
-        preserve_raw,
-        options: resolve.then_some(options),
-        plan,
-        draft,
-    }
+    retained
 }
 
 fn prepare_markdown_block(
@@ -1254,11 +1275,9 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
             if let Some(retained) = doc.markdown.get_mut(index) {
                 let was_preserved = retained.preserve;
                 if template_changed {
-                    let template = !matches!(
-                        kind,
-                        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-                    ) && contains_markdown_template_span(
+                    let template = retained.preserves_templates(
                         source.slice(node.span),
+                        kind,
                         &state.template_delimiters,
                     );
                     retained.preserve = retained.preserve_raw || template;
@@ -1331,6 +1350,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     options: Some(options),
                     plan,
                     draft: None,
+                    paragraph_code: None,
                 },
             );
         }
@@ -1341,6 +1361,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
 pub(crate) fn release_drafts(document: &mut Document) {
     for retained in &mut document.markdown.plans {
         retained.draft = None;
+        retained.paragraph_code = None;
     }
     for nested in &mut document.nested {
         release_drafts(nested);
