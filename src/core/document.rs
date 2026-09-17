@@ -193,6 +193,7 @@ pub struct Document {
     pub yaml: Option<YamlDocumentAst>,
     // Indexed by `nodes`; public EmitPlan variants keep their existing shape.
     pub(crate) markdown: crate::core::markdown::MarkdownPlans,
+    pub(crate) plan_source: Option<crate::core::source::SourceIdentity>,
     pub trace: DocumentTrace,
     pub options: FormatOptions,
     pub skip_file: bool,
@@ -209,6 +210,7 @@ impl Document {
             states: DirectiveStateTable::new(),
             yaml: None,
             markdown: crate::core::markdown::MarkdownPlans::default(),
+            plan_source: None,
             trace: DocumentTrace::default(),
             options: FormatOptions::default(),
             skip_file: false,

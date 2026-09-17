@@ -29,14 +29,16 @@ pub fn parse_source_language(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document> {
-    parse_source_language_with_mode(
+    let mut document = parse_source_language_with_mode(
         source,
         range,
         language,
         options,
         config,
         EmbeddedMarkdownParseMode::Concrete,
-    )
+    )?;
+    crate::core::markdown::finalize_document(source, &mut document, options, true);
+    Ok(document)
 }
 
 pub(crate) fn parse_source_language_for_formatting(
@@ -638,7 +640,7 @@ fn parse_generated_embedded_markdown(
     }
     let range = Span::new(0, generated_source.as_str().len());
     let mut nested = match mode {
-        EmbeddedMarkdownParseMode::Concrete => crate::core::markdown::parse_markdown(
+        EmbeddedMarkdownParseMode::Concrete => crate::core::markdown::parse_markdown_retained(
             &generated_source,
             range,
             options,
@@ -682,7 +684,7 @@ fn parse_generated_embedded_yaml(
     let range = Span::new(0, generated_source.as_str().len());
     let mut nested = match mode {
         EmbeddedMarkdownParseMode::Concrete => {
-            crate::core::yaml::parse_yaml(&generated_source, range, options, config)?
+            crate::core::yaml::parse_yaml_retained(&generated_source, range, options, config)?
         }
         EmbeddedMarkdownParseMode::SemanticOnly => {
             crate::core::yaml::parse_yaml_for_formatting(&generated_source, range, options, config)?

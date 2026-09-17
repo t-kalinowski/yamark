@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::core::document::{Document, DocumentKind, FileKind, FormatOptions};
-use crate::core::emit::{emit_document, emit_markdown_document};
+use crate::core::emit::emit_planned_document;
 use crate::core::source::{MAX_SOURCE_SPAN_OFFSET, SourceBuffer, Span};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
@@ -185,10 +185,27 @@ pub(crate) fn format_source_report_with_policy(
     validate_compact_source_range(Span::new(0, input.len()))?;
     let source = SourceBuffer::new(input);
     let range = Span::new(0, source.as_str().len());
-    let document =
+    let mut document =
         parse_source_for_formatting(&source, range, kind, options, config, collect_trace)?;
     let input_trace = document.trace;
     let source_lines = source.lines.len();
+    let mut emit_options = options;
+    if kind == DocumentKind::Yaml
+        && !matches!(
+            source.dominant_line_ending,
+            crate::core::source::LineEnding::None
+        )
+    {
+        emit_options.default_line_ending = source.dominant_line_ending.as_str();
+    }
+    if !document.skip_file {
+        crate::core::markdown::finalize_document(
+            &source,
+            &mut document,
+            emit_options,
+            kind != DocumentKind::Yaml,
+        );
+    }
     #[cfg(feature = "format-trace")]
     let diagnostics = if collect_trace {
         crate::core::format_trace::markdown_decision_diagnostics(&source, &document)
@@ -199,14 +216,7 @@ pub(crate) fn format_source_report_with_policy(
         if document.skip_file {
             (source.slice(document.range).to_owned(), 0)
         } else {
-            let mut emit_options = options;
-            if !matches!(
-                source.dominant_line_ending,
-                crate::core::source::LineEnding::None
-            ) {
-                emit_options.default_line_ending = source.dominant_line_ending.as_str();
-            }
-            let (output, stats) = crate::core::yaml::emit_yaml_document_with_stats(
+            let (output, stats) = crate::core::yaml::emit_planned_yaml_document_with_stats(
                 &source,
                 &document,
                 emit_options,
@@ -214,13 +224,17 @@ pub(crate) fn format_source_report_with_policy(
             )?;
             (output, stats.emitted_nodes)
         }
-    } else if kind == DocumentKind::Markdown {
+    } else {
         (
-            emit_markdown_document(&source, &document, options, plugins)?,
+            emit_planned_document(
+                &source,
+                &document,
+                options,
+                plugins,
+                kind == DocumentKind::Markdown,
+            )?,
             0,
         )
-    } else {
-        (emit_document(&source, &document, options, plugins)?, 0)
     };
     let changed = output != source.as_str();
     let mut output_parse_passes = 0;

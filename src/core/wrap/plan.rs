@@ -204,7 +204,7 @@ impl Fragment {
 
     fn from_buffer(source: std::sync::Arc<SourceBuffer>, options: FormatOptions) -> Self {
         let range = Span::new(0, source.as_str().len());
-        let body = crate::core::markdown::parse_markdown(
+        let body = crate::core::markdown::parse_markdown_retained(
             &source,
             range,
             options,
@@ -240,6 +240,8 @@ impl Fragment {
         self.body
             .as_ref()
             .and_then(|body| match body {
+                // Like the historical fragment emitter, this does not apply
+                // top-level Markdown line cleanup to copied or opaque text.
                 FragmentBody::Plan(plan) => Some(plan.emit(self.source.as_str())),
                 FragmentBody::Document(document) => crate::core::emit::emit_planned_document(
                     &self.source,

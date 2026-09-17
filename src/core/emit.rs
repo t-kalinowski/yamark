@@ -12,33 +12,8 @@ pub fn emit_document(
     options: FormatOptions,
     plugins: &PluginRegistry,
 ) -> Result<String> {
-    emit_document_with_normalization(source, document, options, plugins, false)
-}
-
-pub(crate) fn emit_markdown_document(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_document_with_normalization(source, document, options, plugins, true)
-}
-
-fn emit_document_with_normalization(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-    normalize_markdown_output: bool,
-) -> Result<String> {
-    let document = crate::core::markdown::resolve_emission_policy(source, document, options);
-    emit_planned_document(
-        source,
-        &document,
-        options,
-        plugins,
-        normalize_markdown_output,
-    )
+    let document = crate::core::markdown::prepare_public_document(source, document, options, true);
+    emit_planned_document(source, &document, options, plugins, false)
 }
 
 /// Execute a document whose effective policy has already been finalized.
@@ -259,9 +234,12 @@ fn emit_document_inner(
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
             EmitPlan::YamlDocument => {
-                out.push_str(&crate::core::yaml::emit_yaml_document(
-                    source, document, options, plugins,
-                )?);
+                out.push_str(
+                    &crate::core::yaml::emit_planned_yaml_document_with_stats(
+                        source, document, options, plugins,
+                    )?
+                    .0,
+                );
             }
             EmitPlan::EmbeddedMarkdownString {
                 opening,

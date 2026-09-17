@@ -29,6 +29,17 @@ pub fn parse_yaml(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document> {
+    let mut document = parse_yaml_retained(source, range, options, config)?;
+    crate::core::markdown::finalize_document(source, &mut document, options, true);
+    Ok(document)
+}
+
+pub(crate) fn parse_yaml_retained(
+    source: &SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+) -> Result<Document> {
     parse_yaml_impl(source, range, options, config, YamlParseMode::CONCRETE)
 }
 
@@ -157,6 +168,7 @@ fn parse_yaml_impl(
     }
     let parser = YamlParser::new(source, range, options, config, scan, mode);
     let mut doc = parser.parse()?;
+    doc.plan_source = Some(source.identity());
     doc.push_node(Node {
         kind: NodeKind::Yaml(YamlNodeKind::Document),
         span: range,
@@ -3345,7 +3357,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         }
         let nested = if state_value.markdown_target || tagged_markdown {
             let nested = if self.plan_emits {
-                crate::core::markdown::parse_markdown(
+                crate::core::markdown::parse_markdown_retained(
                     self.source,
                     block.body,
                     state_value.markdown_options(self.options),
@@ -4847,11 +4859,11 @@ pub fn emit_yaml_document_with_stats(
     options: FormatOptions,
     plugins: &PluginRegistry,
 ) -> Result<(String, YamlEmissionStats)> {
-    let document = crate::core::markdown::resolve_yaml_emission_policy(source, document, options);
+    let document = crate::core::markdown::prepare_public_document(source, document, options, false);
     emit_planned_yaml_document_with_stats(source, &document, options, plugins)
 }
 
-fn emit_planned_yaml_document_with_stats(
+pub(crate) fn emit_planned_yaml_document_with_stats(
     source: &SourceBuffer,
     document: &Document,
     options: FormatOptions,
@@ -8816,11 +8828,12 @@ fn emit_yaml_nested_markdown_block_scalar(
     let header_span = scalar.header.expect("block scalars have headers");
     out.push_str(&render_yaml_block_scalar_value_header(source, scalar));
     let state = document.state(node.state);
-    let mut nested_output = crate::core::emit::emit_document(
+    let mut nested_output = crate::core::emit::emit_planned_document(
         source,
         &document.nested[nested],
         state.markdown_options(options),
         plugins,
+        false,
     )?;
     if !nested_output.is_empty() && !nested_output.ends_with('\n') && !nested_output.ends_with('\r')
     {
