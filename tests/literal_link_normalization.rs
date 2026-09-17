@@ -323,14 +323,108 @@ fn comment_exclusions_follow_source_order_and_require_a_complete_token() {
             let source = format!(
                 "Before {candidate} {marker}[x](  v  ){marker}{suffix} after [r](  t  ).\n"
             );
+            // Although this is not a comment, main treats '<!- ... >' as a
+            // flat angle token and normalizes the link inside it.
+            let contents = if candidate == "<!-" {
+                "[x](v)"
+            } else {
+                "[x](  v  )"
+            };
             let expected =
-                format!("Before {candidate} {marker}[x](  v  ){marker}{suffix} after [r](t).\n");
+                format!("Before {candidate} {marker}{contents}{marker}{suffix} after [r](t).\n");
             for wrap in ["none", "paragraph"] {
                 for canonical in [false, true] {
-                    // No completed comment: existing code/math recognition applies.
                     assert_format(&source, &expected, wrap, canonical);
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn declaration_and_backtick_reports_keep_their_baseline_cli_output() {
+    for (source, expected) in [
+        (
+            "Before <!DOCTYPE x \"`\"> [r](  t  ) then `tail` after [s](  u  ).\n",
+            "Before <!DOCTYPE x \"`\"> [r](  t  ) then `tail` after [s](  u  ).\n",
+        ),
+        // Exact closing-run recognition is a pre-existing limitation. The
+        // second input forces the cache with an earlier unmatched opener.
+        (
+            "Before `code`` [x](  url  ) tail` after [r](  t  ).\n",
+            "Before `code`` [x](url) tail` after [r](t).\n",
+        ),
+        (
+            "Before *```` unmatched `code`` [x](  url  ) tail`* after [r](  t  ).\n",
+            "Before *```` unmatched `code`` [x](url) tail`* after [r](t).\n",
+        ),
+        (
+            "Before *```` unmatched `[x](  url  )`* after [r](  t  ).\n",
+            "Before *```` unmatched `[x](  url  )`* after [r](t).\n",
+        ),
+    ] {
+        for wrap in ["none", "paragraph", "sentence:240"] {
+            for canonical in [false, true] {
+                assert_format(source, expected, wrap, canonical);
+            }
+        }
+    }
+}
+
+#[test]
+fn historical_flat_angle_tokens_do_not_open_literals() {
+    for marker in ['`', '$'] {
+        for token in [
+            format!("<!DOCTYPE x \"{marker}\">"),
+            format!("<?x {marker}?>"),
+            format!("<42 {marker}>"),
+        ] {
+            let source = format!("Before {token} [r](  t  ) then {marker}tail after [s](  u  ).\n");
+            let expected = format!("Before {token} [r](t) then {marker}tail after [s](u).\n");
+            for wrap in ["none", "paragraph", "sentence:240"] {
+                for canonical in [false, true] {
+                    assert_format(&source, &expected, wrap, canonical);
+                }
+            }
+        }
+        for (source, expected) in [
+            (
+                format!("Before <42 {marker}[x](  u  ){marker}> after [r](  t  ).\n"),
+                format!("Before <42 {marker}[x](u){marker}> after [r](t).\n"),
+            ),
+            (
+                format!("Before <42> {marker}[x](  u  ){marker} after [r](  t  ).\n"),
+                format!("Before <42> {marker}[x](  u  ){marker} after [r](t).\n"),
+            ),
+            (
+                format!("Before {marker}<!DOCTYPE x \"[x](  u  )\">{marker} after [r](  t  ).\n"),
+                format!("Before {marker}<!DOCTYPE x \"[x](  u  )\">{marker} after [r](t).\n"),
+            ),
+            (
+                format!("Before < x < x {marker}[x](  u  ){marker} after [r](  t  ).\n"),
+                format!("Before < x < x {marker}[x](  u  ){marker} after [r](t).\n"),
+            ),
+        ] {
+            for wrap in ["none", "paragraph", "sentence:240"] {
+                for canonical in [false, true] {
+                    assert_format(&source, &expected, wrap, canonical);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn ambiguous_raw_angle_tokens_use_baseline_link_normalization() {
+    // A raw angle token can hide a complete comment's opener before its first
+    // '>'. Retry this normalization unit without literal protection, including
+    // any literal processed before the ambiguous token. Prose still formats.
+    let source =
+        "Before `[keep](  u  )` < x <!-- > ` --> [r](  t  ) then `tail after [s](  u  ).\n";
+    let expected = "Before `[keep](u)` < x <!-- > ` --> [r](t) then `tail after [s](u).\n";
+    for wrap in ["none", "paragraph", "sentence:240"] {
+        for canonical in [false, true] {
+            assert_format(source, expected, wrap, canonical);
         }
     }
 }
