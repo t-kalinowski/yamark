@@ -37,17 +37,31 @@ pub(crate) fn prepare_markdown_paragraph(source: &str) -> Option<Draft> {
     Some(Draft::choice(Condition::WrapNone, unwrapped, reflow))
 }
 
-/// Original-source code contents, retained only for paragraph template policy.
+/// Original-source ranges, retained only for paragraph template policy.
 /// None records an ambiguous boundary; policy changes must not rescan inlines.
 #[derive(Debug, Clone)]
-pub(crate) struct ParagraphCodeSpans(Option<Vec<SourceSpan>>);
+pub(crate) struct ParagraphTemplateSpans(Option<Vec<ParagraphTemplateSpan>>);
 
-impl ParagraphCodeSpans {
+#[derive(Debug, Clone, Copy)]
+enum ParagraphTemplateSpan {
+    CodeContent(SourceSpan),
+    BareExpression(SourceSpan),
+}
+
+impl ParagraphTemplateSpan {
+    fn span(self) -> SourceSpan {
+        match self {
+            Self::CodeContent(span) | Self::BareExpression(span) => span,
+        }
+    }
+}
+
+impl ParagraphTemplateSpans {
     pub(crate) fn recognize(source: &str) -> Self {
         Self(Self::recognize_contents(source))
     }
 
-    fn recognize_contents(source: &str) -> Option<Vec<SourceSpan>> {
+    fn recognize_contents(source: &str) -> Option<Vec<ParagraphTemplateSpan>> {
         if footnote_definition(source) || has_hard_break(source) {
             return None;
         }
@@ -67,7 +81,9 @@ impl ParagraphCodeSpans {
                 if source[end..].starts_with('`') || source[index..end].contains(['\n', '\r']) {
                     return None;
                 }
-                contents.push(SourceSpan::new(Span::new(index + run, end - run)));
+                contents.push(ParagraphTemplateSpan::CodeContent(SourceSpan::new(
+                    Span::new(index + run, end - run),
+                )));
                 index = end;
                 continue;
             }
@@ -91,7 +107,21 @@ impl ParagraphCodeSpans {
                     // Stop at an unmatched construct instead of repeatedly
                     // searching its suffix at each later candidate opener.
                     let end = if rest.starts_with('{') {
-                        Some(balanced_brace_span_end(source, index)?)
+                        let end = balanced_brace_span_end(source, index)?;
+                        if simple_bare_template(&source[index..end])
+                            && (index == 0 || source.as_bytes()[index - 1].is_ascii_whitespace())
+                            && (end == source.len()
+                                || source.as_bytes()[end].is_ascii_whitespace()
+                                || matches!(
+                                    source.as_bytes()[end],
+                                    b'.' | b',' | b';' | b':' | b'!' | b'?'
+                                ))
+                        {
+                            contents.push(ParagraphTemplateSpan::BareExpression(SourceSpan::new(
+                                Span::new(index, end),
+                            )));
+                        }
+                        Some(end)
                     } else if rest.starts_with("~~") {
                         Some(strikethrough_span_end(source, index)?)
                     } else if rest.starts_with(['*', '_']) {
@@ -116,7 +146,40 @@ impl ParagraphCodeSpans {
             }
             index += rest.chars().next().expect("source character").len_utf8();
         }
+        // Sweep physical lines and the retained bare ranges together. A line
+        // consisting only of one or more expressions keeps the old policy.
+        let mut bare = contents
+            .iter()
+            .filter_map(|span| match span {
+                ParagraphTemplateSpan::BareExpression(span) => Some(*span),
+                ParagraphTemplateSpan::CodeContent(_) => None,
+            })
+            .peekable();
+        let standalone = markdown_lines(source).any(|line| {
+            let end = line.body_start + line.body.len();
+            let mut cursor = line.body_start;
+            let mut has_bare = false;
+            let mut only_bare = true;
+            while let Some(span) = bare.next_if(|span| span.start() < end) {
+                has_bare = true;
+                only_bare &= source[cursor..span.start()].trim_ascii().is_empty();
+                cursor = span.end();
+            }
+            has_bare && only_bare && source[cursor..end].trim_ascii().is_empty()
+        });
+        if standalone {
+            contents.retain(|span| matches!(span, ParagraphTemplateSpan::CodeContent(_)));
+        }
         Some(contents)
+    }
+
+    pub(crate) fn has_bare_templates(&self, delimiters: &[TemplateDelimiter]) -> bool {
+        delimiters.iter().any(double_brace_delimiter)
+            && self.0.as_ref().is_some_and(|spans| {
+                spans
+                    .iter()
+                    .any(|span| matches!(span, ParagraphTemplateSpan::BareExpression(_)))
+            })
     }
 
     pub(crate) fn contains_all_templates(
@@ -133,7 +196,12 @@ impl ParagraphCodeSpans {
             }
             let mut opens = source.match_indices(&delimiter.open);
             let mut closes = source.match_indices(&delimiter.close);
-            let mut spans = contents.iter().copied();
+            let mut spans = contents.iter().copied().filter_map(|span| match span {
+                ParagraphTemplateSpan::BareExpression(_) if !double_brace_delimiter(delimiter) => {
+                    None
+                }
+                _ => Some(span.span()),
+            });
             let mut span = spans.next();
             loop {
                 let open = opens.next();
@@ -157,10 +225,33 @@ impl ParagraphCodeSpans {
                 }
                 // Inspect every opener AND closer on the original source. A
                 // quoted early closer cannot hide later delimiters outside code;
-                // separate code spans cannot jointly contain a template pair.
+                // separate retained ranges cannot jointly contain a template pair.
             }
         })
     }
+}
+
+fn double_brace_delimiter(delimiter: &TemplateDelimiter) -> bool {
+    delimiter.open == "{{" && delimiter.close == "}}"
+}
+
+// A lexical whitelist only. Existing balanced-brace recognition supplies the
+// complete unit; all normalization passes already protect that same unit.
+fn simple_bare_template(text: &str) -> bool {
+    let Some(inner) = text
+        .strip_prefix("{{")
+        .and_then(|text| text.strip_suffix("}}"))
+    else {
+        return false;
+    };
+    let name = inner.trim_matches([' ', '\t']);
+    name.split('.').all(|component| {
+        let mut bytes = component.bytes();
+        bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+            && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    })
 }
 
 fn contains_existing_split_link_destination(source: &str) -> bool {
@@ -2708,7 +2799,12 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         suffix: &'static str,
     ) -> Option<()> {
         let start = self.tokens.len();
+        let mut bare_templates_only = true;
         for token in tokens {
+            // This is a layout property, not eligibility recognition. It is
+            // consulted only after the original-source whitelist admits every
+            // bare occurrence. Code spans and punctuation count as other text.
+            bare_templates_only &= token.starts_with("{{") && token.ends_with("}}");
             let piece = Text::retain(self.text, token);
             // A laid-out line usually occupies one contiguous normalized span.
             // Keep separate pieces only where joining or a rewrite requires it.
@@ -2733,6 +2829,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             tokens: start..self.tokens.len(),
             suffix,
             block_start_checked: self.check_block_starts && self.line_count > 0 && suffix.is_none(),
+            bare_templates_only: bare_templates_only && self.tokens.len() > start,
         });
         self.line_count += 1;
         Some(())

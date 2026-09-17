@@ -83,6 +83,7 @@ pub(super) struct PlannedLine {
     pub tokens: std::ops::Range<usize>,
     pub suffix: Option<MarkdownHardBreakMarker>,
     pub block_start_checked: bool,
+    pub bare_templates_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -255,6 +256,15 @@ impl Fragment {
 }
 
 impl Plan {
+    pub(crate) fn has_standalone_bare_templates(&self) -> bool {
+        self.items.iter().any(|item| match item {
+            Item::Inline(inline) => inline.lines.iter().any(|line| line.bare_templates_only),
+            // Unwrapped paragraphs retain their physical lines, checked on the
+            // original source. Ordinary reflow has one direct Inline item.
+            _ => false,
+        })
+    }
+
     pub(super) fn new() -> Self {
         Self {
             items: Vec::with_capacity(1),

@@ -1,0 +1,12 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md
+-- stdin
+First
+sentence with {{   user.name   }} and [real](  target  ). Second
+sentence with _outside_.
+-- stdout
+First sentence with {{   user.name   }} and [real](target).
+Second sentence with *outside*.
+-- stderr
+-- status
+0

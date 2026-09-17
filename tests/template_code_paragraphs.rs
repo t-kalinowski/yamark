@@ -122,7 +122,18 @@ fn ambiguous_or_non_code_templates_keep_the_original_paragraph() {
         for wrap in ["none", "paragraph", "sentence", "16", "sentence:16"] {
             for canonical in [false, true] {
                 let source = format!("Before\n{body} after [real](  target  ) _outside_.\n");
-                assert_format(&source, &source, wrap, canonical);
+                // Only this mixed case gains the bare-expression exception.
+                // Narrow layouts would isolate it, so they still preserve.
+                let expected = if body == "`{{ foo }}` and {{ outside }}"
+                    && !matches!(wrap, "16" | "sentence:16")
+                {
+                    let outside = if canonical { "*outside*" } else { "_outside_" };
+                    let separator = if wrap == "none" { "\n" } else { " " };
+                    format!("Before{separator}{body} after [real](target) {outside}.\n")
+                } else {
+                    source.clone()
+                };
+                assert_format(&source, &expected, wrap, canonical);
             }
         }
     }
@@ -265,12 +276,19 @@ fn explicit_targets_keep_other_rejections_and_skip_precedence() {
             .write_stdin(source.as_str())
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(1));
-        assert!(output.stdout.is_empty());
-        assert_eq!(
-            output.stderr,
-            b"input.md:2:1: error: fmt: markdown targets an unsupported Markdown block\n"
-        );
+        if body == "Before {{ foo }}.\n" {
+            // This target was rejected solely for its simple bare expression.
+            assert_eq!(output.status.code(), Some(0));
+            assert_eq!(output.stdout, source.as_bytes());
+            assert!(output.stderr.is_empty());
+        } else {
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            assert_eq!(
+                output.stderr,
+                b"input.md:2:1: error: fmt: markdown targets an unsupported Markdown block\n"
+            );
+        }
         let skipped = format!("<!-- fmt: skip file -->\n{source}");
         assert_format(&skipped, &skipped, "sentence", false);
     }

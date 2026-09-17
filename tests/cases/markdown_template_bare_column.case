@@ -1,0 +1,11 @@
+-- args
+format --wrap 36 --stdin-file-path input.md
+-- stdin
+Before {{   user.name   }} after some more
+prose with [real](  t  ).
+-- stdout
+Before {{   user.name   }} after
+some more prose with [real](t).
+-- stderr
+-- status
+0

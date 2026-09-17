@@ -1,0 +1,21 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md
+-- stdin
+Before
+{{ foo }}
+after [real](  target  ) _outside_.
+
+Before
+{{ foo }} {{ bar }}
+after.
+-- stdout
+Before
+{{ foo }}
+after [real](  target  ) _outside_.
+
+Before
+{{ foo }} {{ bar }}
+after.
+-- stderr
+-- status
+0
