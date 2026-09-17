@@ -185,7 +185,7 @@ fn unmatched_backtick_run_keeps_later_literals_and_links_distinct() {
 }
 
 #[test]
-fn angle_inputs_retain_baseline_normalization() {
+fn angle_inputs_preserve_links_during_normalization() {
     for marker in ['`', '$'] {
         for (source, expected) in [
             (
@@ -193,7 +193,7 @@ fn angle_inputs_retain_baseline_normalization() {
                     "Before <kbd title=\"{marker}\">[r](  t  )</kbd> then {marker}tail{marker} after [s](  u  ).\n"
                 ),
                 format!(
-                    "Before <kbd title=\"{marker}\">[r](t)</kbd> then {marker}tail{marker} after [s](u).\n"
+                    "Before <kbd title=\"{marker}\">[r](  t  )</kbd> then {marker}tail{marker} after [s]( u ).\n"
                 ),
             ),
             (
@@ -201,17 +201,18 @@ fn angle_inputs_retain_baseline_normalization() {
                     "Before <http://a/{marker}> [r](  t  ) then {marker}tail{marker} after [s](  u  ).\n"
                 ),
                 format!(
-                    "Before <http://a/{marker}> [r](t) then {marker}tail{marker} after [s](u).\n"
+                    "Before <http://a/{marker}> [r]( t ) then {marker}tail{marker} after [s]( u ).\n"
                 ),
             ),
             (
                 format!("Before <kbd title=\"{marker}[x](  v  ){marker}\">[r](  t  )</kbd>.\n"),
-                format!("Before <kbd title=\"{marker}[x](v){marker}\">[r](t)</kbd>.\n"),
+                format!("Before <kbd title=\"{marker}[x](  v  ){marker}\">[r](  t  )</kbd>.\n"),
             ),
         ] {
             for wrap in ["none", "paragraph", "sentence", "240", "sentence:240"] {
                 for canonical in [false, true] {
-                    assert_format(&source, &expected, wrap, canonical);
+                    let expected = if wrap == "none" { &source } else { &expected };
+                    assert_format(&source, expected, wrap, canonical);
                 }
             }
         }
@@ -219,15 +220,15 @@ fn angle_inputs_retain_baseline_normalization() {
 }
 
 #[test]
-fn review_examples_retain_baseline_output() {
+fn review_examples_preserve_ambiguous_links() {
     for (source, expected) in [
         (
             "Before <kbd title=\"> `\">[r](  t  )</kbd> then `tail` after [s](  u  ).\n",
-            "Before <kbd title=\"> `\">[r](t)</kbd> then `tail` after [s](u).\n",
+            "Before <kbd title=\"> `\">[r](  t  )</kbd> then `tail` after [s]( u ).\n",
         ),
         (
             "a < b <kbd title=\"`\">[r](  t  )</kbd> then `tail`\n",
-            "a < b <kbd title=\"`\">[r](t)</kbd> then `tail`\n",
+            "a < b <kbd title=\"`\">[r](  t  )</kbd> then `tail`\n",
         ),
         // These exact reviewer inputs already fall back unchanged on main.
         (
@@ -241,6 +242,7 @@ fn review_examples_retain_baseline_output() {
     ] {
         for wrap in ["none", "paragraph", "sentence:240"] {
             for canonical in [false, true] {
+                let expected = if wrap == "none" { source } else { expected };
                 assert_format(source, expected, wrap, canonical);
             }
         }
@@ -248,40 +250,43 @@ fn review_examples_retain_baseline_output() {
 }
 
 #[test]
-fn comment_inputs_retain_baseline_normalization() {
+fn comment_inputs_preserve_links_during_normalization() {
     for marker in ['`', '$'] {
         for (source, expected) in [
             (
                 format!(
                     "Before <!-- {marker} --> [r](  t  ) then {marker}tail after [s](  u  ).\n"
                 ),
-                format!("Before <!-- {marker} --> [r](t) then {marker}tail after [s](u).\n"),
+                format!("Before <!-- {marker} --> [r](  t  ) then {marker}tail after [s]( u ).\n"),
             ),
             (
                 format!(
                     "Before <!-- > {marker} --> [r](  t  ) then {marker}tail after [s](  u  ).\n"
                 ),
-                format!("Before <!-- > {marker} --> [r](t) then {marker}tail after [s](u).\n"),
+                format!(
+                    "Before <!-- > {marker} --> [r](  t  ) then {marker}tail after [s]( u ).\n"
+                ),
             ),
             (
                 format!(
                     "Before <!-- {marker} --> [r](  t  ) <!-- {marker} --> after [s](  u  ).\n"
                 ),
-                format!("Before <!-- {marker} --> [r](t) <!-- {marker} --> after [s](u).\n"),
+                format!("Before <!-- {marker} --> [r](  t  ) <!-- {marker} --> after [s]( u ).\n"),
             ),
-            // Raw '<' withdraws literal protection for this whole input.
+            // Raw '<' skips link normalization for this whole input.
             (
                 format!(
                     "Before <!-- > {marker}[x](  v  ) ![i](  p  ){marker} --> [r](  t  ) then {marker}[code](  c  ){marker}.\n"
                 ),
                 format!(
-                    "Before <!-- > {marker}[x](v) ![i](p){marker} --> [r](t) then {marker}[code](c){marker}.\n"
+                    "Before <!-- > {marker}[x](  v  ) ![i](  p  ){marker} --> [r]( t ) then {marker}[code](  c  ){marker}.\n"
                 ),
             ),
         ] {
             for wrap in ["none", "paragraph", "sentence:240"] {
                 for canonical in [false, true] {
-                    assert_format(&source, &expected, wrap, canonical);
+                    let expected = if wrap == "none" { &source } else { &expected };
+                    assert_format(&source, expected, wrap, canonical);
                 }
             }
         }
@@ -292,7 +297,7 @@ fn comment_inputs_retain_baseline_normalization() {
                         "Before <!-- > {marker} --> [r](  t  ) then {marker}tail after [s](  u  ).\n"
                     ),
                     &format!(
-                        "Before <!-- > {marker} --> [r](t) then {marker}tail\nafter [s](u).\n"
+                        "Before <!-- >\n{marker} --> [r](  t  ) then {marker}tail after\n[s]( u ).\n"
                     ),
                     wrap,
                     canonical,
@@ -328,18 +333,23 @@ fn angle_compatibility_respects_literals_and_escapes() {
             let source = format!(
                 "Before {candidate} {marker}[x](  v  ){marker}{suffix} after [r](  t  ).\n"
             );
-            // Escaped '<' remains eligible; every raw '<' uses baseline links,
+            // Escaped '<' remains eligible; raw '<' skips link normalization,
             // whether or not any angle/comment closing delimiter is present.
-            let contents = if candidate == r"\<!--" {
-                "[x](  v  )"
+            let real = if candidate == r"\<!--" {
+                "[r](t)"
             } else {
-                "[x](v)"
+                "[r]( t )"
             };
             let expected =
-                format!("Before {candidate} {marker}{contents}{marker}{suffix} after [r](t).\n");
+                format!("Before {candidate} {marker}[x](  v  ){marker}{suffix} after {real}.\n");
             for wrap in ["none", "paragraph"] {
                 for canonical in [false, true] {
-                    assert_format(&source, &expected, wrap, canonical);
+                    let expected = if wrap == "none" && candidate != r"\<!--" {
+                        &source
+                    } else {
+                        &expected
+                    };
+                    assert_format(&source, expected, wrap, canonical);
                 }
             }
         }
@@ -377,7 +387,7 @@ fn declaration_and_backtick_reports_keep_their_baseline_cli_output() {
 }
 
 #[test]
-fn raw_angle_spellings_retain_baseline_normalization() {
+fn raw_angle_spellings_preserve_links_during_normalization() {
     for marker in ['`', '$'] {
         for token in [
             format!("<!DOCTYPE x \"{marker}\">"),
@@ -385,21 +395,22 @@ fn raw_angle_spellings_retain_baseline_normalization() {
             format!("<42 {marker}>"),
         ] {
             let source = format!("Before {token} [r](  t  ) then {marker}tail after [s](  u  ).\n");
-            let expected = format!("Before {token} [r](t) then {marker}tail after [s](u).\n");
+            let expected = format!("Before {token} [r](  t  ) then {marker}tail after [s]( u ).\n");
             for wrap in ["none", "paragraph", "sentence:240"] {
                 for canonical in [false, true] {
-                    assert_format(&source, &expected, wrap, canonical);
+                    let expected = if wrap == "none" { &source } else { &expected };
+                    assert_format(&source, expected, wrap, canonical);
                 }
             }
         }
         for (source, expected) in [
             (
                 format!("Before <42 {marker}[x](  u  ){marker}> after [r](  t  ).\n"),
-                format!("Before <42 {marker}[x](u){marker}> after [r](t).\n"),
+                format!("Before <42 {marker}[x](  u  ){marker}> after [r]( t ).\n"),
             ),
             (
                 format!("Before <42> {marker}[x](  u  ){marker} after [r](  t  ).\n"),
-                format!("Before <42> {marker}[x](u){marker} after [r](t).\n"),
+                format!("Before <42> {marker}[x](  u  ){marker} after [r]( t ).\n"),
             ),
             (
                 format!("Before {marker}<!DOCTYPE x \"[x](  u  )\">{marker} after [r](  t  ).\n"),
@@ -407,12 +418,17 @@ fn raw_angle_spellings_retain_baseline_normalization() {
             ),
             (
                 format!("Before < x < x {marker}[x](  u  ){marker} after [r](  t  ).\n"),
-                format!("Before < x < x {marker}[x](u){marker} after [r](t).\n"),
+                format!("Before < x < x {marker}[x](  u  ){marker} after [r]( t ).\n"),
             ),
         ] {
             for wrap in ["none", "paragraph", "sentence:240"] {
                 for canonical in [false, true] {
-                    assert_format(&source, &expected, wrap, canonical);
+                    let expected = if wrap == "none" && source.starts_with("Before <") {
+                        &source
+                    } else {
+                        &expected
+                    };
+                    assert_format(&source, expected, wrap, canonical);
                 }
             }
         }
@@ -420,18 +436,25 @@ fn raw_angle_spellings_retain_baseline_normalization() {
 }
 
 #[test]
-fn raw_angles_retry_the_entire_normalization_input() {
-    // Retry even a literal processed before the raw '<'. Prose still formats.
+fn raw_angles_preserve_the_entire_normalization_input() {
+    // Discard partial normalization before the raw '<'. Prose still formats.
     let source =
         "Before `[keep](  u  )` < x <!-- > ` --> [r](  t  ) then `tail after [s](  u  ).\n";
-    let expected = "Before `[keep](u)` < x <!-- > ` --> [r](t) then `tail after [s](u).\n";
+    let expected =
+        "Before `[keep](  u  )` < x <!-- > ` --> [r](  t  ) then `tail after [s]( u ).\n";
     for wrap in ["none", "paragraph", "sentence:240"] {
         for canonical in [false, true] {
+            let expected = if wrap == "none" { source } else { expected };
             assert_format(source, expected, wrap, canonical);
             for angle in ["< value", "<kbd>", "<http://x>", "<!--"] {
+                let real = if wrap == "none" {
+                    "[r](  t  )"
+                } else {
+                    "[r]( t )"
+                };
                 assert_format(
                     &format!("Before `[a](  u  )` {angle} then `[b](  v  )` after [r](  t  ).\n"),
-                    &format!("Before `[a](u)` {angle} then `[b](v)` after [r](t).\n"),
+                    &format!("Before `[a](  u  )` {angle} then `[b](  v  )` after {real}.\n"),
                     wrap,
                     canonical,
                 );
@@ -461,13 +484,20 @@ fn angles_consumed_by_links_and_attributes_keep_literal_protection() {
 }
 
 #[test]
-fn raw_angle_compatibility_does_not_disable_other_paragraphs() {
+fn raw_angle_preservation_does_not_disable_other_paragraphs() {
     let source =
         "Before < value `[a](  u  )` after [r](  t  ).\n\nBefore `[b](  u  )` after [s](  v  ).\n";
-    let expected = "Before < value `[a](u)` after [r](t).\n\nBefore `[b](  u  )` after [s](v).\n";
     for wrap in ["none", "paragraph", "sentence:240"] {
         for canonical in [false, true] {
-            assert_format(source, expected, wrap, canonical);
+            let real = if wrap == "none" {
+                "[r](  t  )"
+            } else {
+                "[r]( t )"
+            };
+            let expected = format!(
+                "Before < value `[a](  u  )` after {real}.\n\nBefore `[b](  u  )` after [s](v).\n"
+            );
+            assert_format(source, &expected, wrap, canonical);
         }
     }
 }

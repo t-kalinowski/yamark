@@ -3375,10 +3375,6 @@ fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
 }
 
 fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
-    normalize_links_and_images(source, true)
-}
-
-fn normalize_links_and_images(source: &str, protect_literals: bool) -> Cow<'_, str> {
     let mut scan = InlineScan::new(source);
 
     if !source.as_bytes().contains(&b'[') {
@@ -3388,14 +3384,15 @@ fn normalize_links_and_images(source: &str, protect_literals: bool) -> Cow<'_, s
     let mut index = 0usize;
     while index < source.len() {
         let rest = &source[index..];
-        if protect_literals && rest.starts_with('<') && !escaped_at(source, index) {
-            // Raw angle syntax keeps baseline normalization for this whole
-            // input. Retry once, discarding any already-protected prefix.
-            return normalize_links_and_images(source, false);
+        if rest.starts_with('<') && !escaped_at(source, index) {
+            // Without interpreting angle syntax, literal boundaries may be
+            // ambiguous. Preserve this input instead of rewriting any links,
+            // including ones already visited before the angle marker.
+            return Cow::Borrowed(source);
         }
         // Visit literals in prose order. A real link below consumes its label,
         // destination and attributes before their delimiters can become openers.
-        if protect_literals && rest.starts_with('`') {
+        if rest.starts_with('`') {
             let end = if !escaped_at(source, index)
                 && let Some(end) = scan.code_span_end(index)
             {
@@ -3414,8 +3411,7 @@ fn normalize_links_and_images(source: &str, protect_literals: bool) -> Cow<'_, s
             index = end;
             continue;
         }
-        if protect_literals
-            && rest.starts_with('$')
+        if rest.starts_with('$')
             && let Some(end) = inline_math_span_end(source, index)
         {
             out.push_str(&source[index..end]);
