@@ -1,8 +1,8 @@
 use crate::config::Config;
 use crate::core::directives::{
-    Directive, DirectiveDelta, DirectiveEngine, DirectiveState, Scope, StateId, TemplateDelimiter,
-    contains_markdown_template_span, file_scope_delta, parse_markdown_html_directive,
-    parse_markdown_html_directive_checked,
+    Directive, DirectiveDelta, DirectiveEngine, DirectiveState, DirectiveStateTable, Scope,
+    StateId, TemplateDelimiter, contains_markdown_template_span, file_scope_delta,
+    parse_markdown_html_directive, parse_markdown_html_directive_checked,
 };
 use crate::core::document::{
     CodeFenceSafety, Document, DocumentKind, EmitPlan, FormatOptions, MarkdownNodeKind,
@@ -10,10 +10,12 @@ use crate::core::document::{
 };
 use crate::core::markdown_marker::markdown_list_marker_len;
 use crate::core::source::{SourceBuffer, Span};
-use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlNodeId, YamlScalar};
+use crate::core::yaml_model::{
+    YamlAstKind, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind, YamlScalar,
+};
 use crate::diagnostic::Result;
 
-pub fn parse_markdown(
+pub(crate) fn parse_markdown(
     source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
@@ -356,26 +358,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::DefinitionList,
-                definition_list_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::DefinitionList)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::DefinitionList),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::DefinitionList,
+                span,
+                MarkdownBlockFormatKind::DefinitionList,
+                options,
+                definition_list_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -482,26 +474,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::List,
-                list_block_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::List)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::List),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::List,
+                span,
+                MarkdownBlockFormatKind::List,
+                options,
+                list_block_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -516,26 +498,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::Blockquote,
-                blockquote_block_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::Blockquote)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::Blockquote),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::Blockquote,
+                span,
+                MarkdownBlockFormatKind::Blockquote,
+                options,
+                blockquote_block_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -806,6 +778,7 @@ fn parse_markdown_with_mode(
         ));
     }
 
+    retain_markdown_drafts(source, &mut doc, options);
     Ok(doc)
 }
 
@@ -1049,6 +1022,86 @@ fn plan_markdown_thematic_break() -> EmitPlan {
     EmitPlan::MarkdownThematicBreak
 }
 
+/// Only formatted nodes own a retained record; other nodes need one small index.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MarkdownPlans {
+    by_node: Vec<Option<std::num::NonZeroUsize>>,
+    plans: Vec<RetainedMarkdown>,
+}
+
+impl MarkdownPlans {
+    pub(crate) fn block_count(&self) -> usize {
+        self.plans.len()
+    }
+
+    pub(crate) fn push_node(&mut self) {
+        self.by_node.push(None);
+    }
+
+    pub(crate) fn get(&self, node: usize) -> Option<&RetainedMarkdown> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&self.plans[id.get() - 1])
+    }
+
+    pub(crate) fn take_fragment_block(&mut self, node: usize) -> Option<crate::core::wrap::Plan> {
+        let retained = self.get_mut(node)?;
+        if retained.preserve {
+            None
+        } else {
+            retained.plan.take()
+        }
+    }
+
+    fn get_mut(&mut self, node: usize) -> Option<&mut RetainedMarkdown> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&mut self.plans[id.get() - 1])
+    }
+
+    fn insert(&mut self, node: usize, plan: RetainedMarkdown) {
+        if let Some(id) = self.by_node[node] {
+            self.plans[id.get() - 1] = plan;
+        } else {
+            if self.plans.is_empty() {
+                self.plans.reserve_exact(1);
+            }
+            self.plans.push(plan);
+            self.by_node[node] = std::num::NonZeroUsize::new(self.plans.len());
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RetainedMarkdown {
+    state: StateId,
+    pub(crate) preserve: bool,
+    preserve_raw: bool,
+    options: Option<FormatOptions>,
+    pub(crate) plan: Option<crate::core::wrap::Plan>,
+    draft: Option<crate::core::wrap::Draft>,
+}
+
+fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
+    Some(match emit {
+        EmitPlan::MarkdownParagraph => MarkdownBlockFormatKind::Paragraph,
+        EmitPlan::MarkdownList => MarkdownBlockFormatKind::List,
+        EmitPlan::MarkdownDefinitionList => MarkdownBlockFormatKind::DefinitionList,
+        EmitPlan::MarkdownBlockquote => MarkdownBlockFormatKind::Blockquote,
+        EmitPlan::MarkdownTable => MarkdownBlockFormatKind::Table,
+        EmitPlan::MarkdownPandocTable => MarkdownBlockFormatKind::PandocTable,
+        _ => return None,
+    })
+}
+
+impl RetainedMarkdown {
+    fn template_policy_changed(&self, node: &Node, doc: &Document) -> bool {
+        // Parsing and finalization share this tree's append-only state table.
+        // A late directive can add delimiters without changing format options.
+        self.state != node.state
+            && doc.state(self.state).template_delimiters
+                != doc.state(node.state).template_delimiters
+    }
+}
+
 fn push_markdown_format_node(
     source: &SourceBuffer,
     doc: &mut Document,
@@ -1058,80 +1111,348 @@ fn push_markdown_format_node(
     format_kind: MarkdownBlockFormatKind,
     options: FormatOptions,
 ) -> Result<()> {
-    let supported =
-        markdown_block_emit_supported(source, span, doc.state(state), options, format_kind, true);
-    validate_markdown_format_target(source, doc, state, span, supported)?;
-    let emit = if supported {
-        markdown_format_emit_plan(format_kind)
-    } else {
-        EmitPlan::Copy
-    };
-    doc.push_node(Node {
+    push_structural_markdown_format_node(source, doc, state, kind, span, format_kind, options, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_structural_markdown_format_node(
+    source: &SourceBuffer,
+    doc: &mut Document,
+    state: StateId,
+    kind: MarkdownNodeKind,
+    span: Span,
+    format_kind: MarkdownBlockFormatKind,
+    options: FormatOptions,
+    structurally_supported: bool,
+) -> Result<()> {
+    let mut node = Node {
         kind: NodeKind::Markdown(kind),
         span,
         state,
-        emit,
-    });
+        emit: markdown_format_emit_plan(format_kind),
+    };
+    // Explicit targets are checked here to preserve diagnostic/skip precedence.
+    // The successful plan is retained and reused after file directives settle.
+    let planned = if structurally_supported && doc.state(state).markdown_target {
+        Some(plan_markdown_block(
+            source,
+            &node,
+            doc.state(state),
+            options,
+            format_kind,
+            true,
+        ))
+    } else {
+        None
+    };
+    let supported = structurally_supported
+        && planned.as_ref().is_none_or(|plan| {
+            !plan.preserve
+                && (plan.plan.is_some()
+                    || matches!(
+                        format_kind,
+                        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+                    ))
+        });
+    validate_markdown_format_target(source, doc, state, span, supported)?;
+    if !supported {
+        node.emit = EmitPlan::Copy;
+    }
+    doc.push_node(node);
+    if let Some(planned) = planned {
+        doc.markdown.insert(doc.nodes.len() - 1, planned);
+    }
     Ok(())
 }
 
-fn markdown_block_emit_supported(
+fn plan_markdown_block(
     source: &SourceBuffer,
-    span: Span,
+    node: &Node,
     state: &DirectiveState,
     options: FormatOptions,
     kind: MarkdownBlockFormatKind,
-    structurally_supported: bool,
-) -> bool {
-    structurally_supported
-        && (!state.markdown_target
-            || markdown_block_format_supported(source, span, state, options, kind))
-}
-
-fn markdown_block_format_supported(
-    source: &SourceBuffer,
-    span: Span,
-    state: &DirectiveState,
-    options: FormatOptions,
-    kind: MarkdownBlockFormatKind,
-) -> bool {
-    let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
-        return false;
-    }
-    if contains_markdown_template_span(input, &state.template_delimiters)
-        && !matches!(
+    resolve: bool,
+) -> RetainedMarkdown {
+    let input = source.slice(node.span);
+    let options = state.markdown_options(options);
+    let preserve_raw = crate::core::wrap::markdown_reflow_changes_raw_semantics(input);
+    let preserve = preserve_raw
+        || (!matches!(
             kind,
             MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-        )
-    {
-        return false;
+        ) && contains_markdown_template_span(input, &state.template_delimiters));
+    let mut draft = (!preserve)
+        .then(|| prepare_markdown_block(input, kind))
+        .flatten();
+    let plan = resolve
+        .then(|| {
+            draft
+                .as_mut()
+                .and_then(|draft| draft.resolve(input, options))
+        })
+        .flatten();
+    RetainedMarkdown {
+        state: node.state,
+        preserve,
+        preserve_raw,
+        options: resolve.then_some(options),
+        plan,
+        draft,
     }
+}
+
+fn prepare_markdown_block(
+    input: &str,
+    kind: MarkdownBlockFormatKind,
+) -> Option<crate::core::wrap::Draft> {
     match kind {
-        MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::markdown_paragraph_format_supported(
-                input,
-                state.markdown_options(options),
-            )
-        }
-        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => true,
-        MarkdownBlockFormatKind::List => crate::core::wrap::markdown_list_format_supported(
-            input,
-            state.markdown_options(options),
-        ),
+        MarkdownBlockFormatKind::Paragraph => crate::core::wrap::prepare_markdown_paragraph(input),
+        MarkdownBlockFormatKind::List => crate::core::wrap::prepare_markdown_list(input),
         MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::markdown_definition_list_format_supported(
-                input,
-                state.markdown_options(options),
-            )
+            crate::core::wrap::prepare_markdown_definition_list(input)
         }
         MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::markdown_blockquote_format_supported(
-                input,
-                state.markdown_options(options),
-            )
+            crate::core::wrap::prepare_markdown_blockquote(input)
+        }
+        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => None,
+    }
+}
+
+fn retain_markdown_drafts(source: &SourceBuffer, doc: &mut Document, options: FormatOptions) {
+    if doc.skip_file {
+        return;
+    }
+    for (index, node) in doc.nodes.iter().enumerate() {
+        let state = doc.state(node.state);
+        if !state.preserve
+            && doc.markdown.get(index).is_none()
+            && let Some(kind) = markdown_block_kind(&node.emit)
+        {
+            doc.markdown.insert(
+                index,
+                plan_markdown_block(source, node, state, options, kind, false),
+            );
         }
     }
+}
+
+fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: FormatOptions) {
+    if doc.skip_file {
+        return;
+    }
+    for (index, node) in doc.nodes.iter().enumerate() {
+        let state = doc.states.get(node.state);
+        if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
+            continue;
+        }
+        if let Some(kind) = markdown_block_kind(&node.emit) {
+            let effective = state.markdown_options(options);
+            let template_changed = doc
+                .markdown
+                .get(index)
+                .is_some_and(|retained| retained.template_policy_changed(node, doc));
+            if let Some(retained) = doc.markdown.get_mut(index) {
+                let was_preserved = retained.preserve;
+                if template_changed {
+                    let template = !matches!(
+                        kind,
+                        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+                    ) && contains_markdown_template_span(
+                        source.slice(node.span),
+                        &state.template_delimiters,
+                    );
+                    retained.preserve = retained.preserve_raw || template;
+                }
+                if was_preserved && !retained.preserve && retained.draft.is_none() {
+                    retained.draft = prepare_markdown_block(source.slice(node.span), kind);
+                }
+                if !retained.preserve && (retained.options != Some(effective) || was_preserved) {
+                    retained.plan = retained
+                        .draft
+                        .as_mut()
+                        .and_then(|draft| draft.resolve(source.slice(node.span), effective));
+                    retained.options = Some(effective);
+                }
+                retained.state = node.state;
+            } else {
+                doc.markdown.insert(
+                    index,
+                    plan_markdown_block(source, node, state, options, kind, true),
+                );
+            }
+            if matches!(
+                kind,
+                MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+            ) {
+                let retained = doc.markdown.get_mut(index).expect("planned table");
+                if !retained.preserve {
+                    let input = source.slice(node.span);
+                    let text = match kind {
+                        MarkdownBlockFormatKind::Table => {
+                            crate::core::wrap::format_markdown_table(input, effective)
+                        }
+                        _ => crate::core::wrap::format_markdown_pandoc_table(input, effective),
+                    };
+                    retained.plan = Some(crate::core::wrap::Plan::normalized_block(input, &text));
+                }
+            }
+        } else if matches!(
+            node.emit,
+            EmitPlan::MarkdownHeading { .. } | EmitPlan::MarkdownSetextHeading { .. }
+        ) {
+            let preserve = contains_markdown_template_span(
+                source.slice(node.span),
+                &state.template_delimiters,
+            );
+            let options = state.markdown_options(options);
+            let plan = if preserve {
+                None
+            } else {
+                let text = match node.emit {
+                    EmitPlan::MarkdownHeading { marker, content } => {
+                        render_markdown_heading(source, node.span, marker, content, options)
+                    }
+                    EmitPlan::MarkdownSetextHeading { content, depth } => {
+                        render_markdown_setext_heading(source, node.span, content, depth, options)
+                    }
+                    _ => unreachable!("heading plan"),
+                };
+                Some(crate::core::wrap::Plan::normalized_block(
+                    source.slice(node.span),
+                    &text,
+                ))
+            };
+            doc.markdown.insert(
+                index,
+                RetainedMarkdown {
+                    state: node.state,
+                    preserve,
+                    preserve_raw: false,
+                    options: Some(options),
+                    plan,
+                    draft: None,
+                },
+            );
+        }
+    }
+}
+
+/// Finalization is consuming: no owner needs these recognition drafts again.
+pub(crate) fn release_drafts(document: &mut Document) {
+    for retained in &mut document.markdown.plans {
+        retained.draft = None;
+    }
+    for nested in &mut document.nested {
+        release_drafts(nested);
+    }
+}
+
+pub(crate) fn document_emit_options(
+    source: &SourceBuffer,
+    document: &Document,
+    options: FormatOptions,
+) -> FormatOptions {
+    let mut options = if document.options == FormatOptions::default() {
+        options
+    } else {
+        document.options
+    };
+    if !matches!(
+        source.dominant_line_ending,
+        crate::core::source::LineEnding::None
+    ) {
+        options.default_line_ending = source.dominant_line_ending.as_str();
+    }
+    options
+}
+
+fn nested_emit_policies<'a>(
+    nodes: &'a [Node],
+    states: &'a DirectiveStateTable,
+    yaml: Option<&'a YamlDocumentAst>,
+    options: FormatOptions,
+) -> impl Iterator<Item = (usize, FormatOptions)> + 'a {
+    let nodes = nodes.iter().filter_map(move |node| {
+        let id = match node.emit {
+            EmitPlan::MarkdownFrontMatter { nested, .. }
+            | EmitPlan::MarkdownDiv { nested, .. }
+            | EmitPlan::EmbeddedMarkdownString { nested, .. }
+            | EmitPlan::EmbeddedMarkdownComment { nested, .. }
+            | EmitPlan::EmbeddedYamlComment { nested, .. }
+            | EmitPlan::MarkdownCodeFence {
+                nested: Some(nested),
+                ..
+            } => nested,
+            _ => return None,
+        };
+        let state = states.get(node.state);
+        (!state.preserve).then(|| (id, state.markdown_options(options)))
+    });
+    let scalars = yaml
+        .into_iter()
+        .flat_map(|ast| &ast.nodes)
+        .filter_map(move |node| {
+            // Finalize the child selected by the YAML executor.
+            let (YamlAstKind::Scalar(_), YamlEmitPlan::NestedMarkdownBlockScalar { nested }) =
+                (&node.kind, &node.emit)
+            else {
+                return None;
+            };
+            Some((
+                *nested as usize,
+                states.get(node.state).markdown_options(options),
+            ))
+        });
+    nodes.chain(scalars)
+}
+
+/// Resolve the privately owned tree under its settled directives. Called only
+/// while constructing PreparedTree; execution has no mutable tree access.
+pub(crate) fn finalize_document(
+    source: &SourceBuffer,
+    document: &mut Document,
+    options: FormatOptions,
+    document_options: bool,
+) {
+    if document_options && document.skip_file {
+        return;
+    }
+    let owned_source = document.source.take();
+    let source = if document_options {
+        owned_source.as_ref().unwrap_or(source)
+    } else {
+        source
+    };
+    let options = if document_options {
+        document_emit_options(source, document, options)
+    } else {
+        options
+    };
+    finalize_markdown_plans(source, document, options);
+    if let Some(ast) = &mut document.yaml {
+        for node in &mut ast.nodes {
+            if matches!(
+                node.emit,
+                YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+            ) {
+                let state = document.states.get(node.state);
+                crate::core::yaml::resolve_inline_markdown_plan(
+                    source,
+                    node,
+                    state.markdown_options(state.yaml_options(options)),
+                );
+            }
+        }
+    }
+    for (id, options) in nested_emit_policies(
+        &document.nodes,
+        &document.states,
+        document.yaml.as_ref(),
+        options,
+    ) {
+        finalize_document(source, &mut document.nested[id], options, true);
+    }
+    document.source = owned_source;
 }
 
 fn validate_markdown_format_target(
@@ -1218,34 +1539,6 @@ pub(crate) fn render_markdown_thematic_break(
     let mut output = options.markdown_horizontal_rule.to_owned();
     output.push_str(line_ending_for_span(source, span));
     output
-}
-
-pub(crate) fn render_markdown_format(
-    source: &SourceBuffer,
-    span: Span,
-    options: FormatOptions,
-    kind: MarkdownBlockFormatKind,
-) -> String {
-    let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
-        return input.to_owned();
-    }
-    match kind {
-        MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::format_markdown_paragraph(input, options)
-        }
-        MarkdownBlockFormatKind::Table => crate::core::wrap::format_markdown_table(input, options),
-        MarkdownBlockFormatKind::PandocTable => {
-            crate::core::wrap::format_markdown_pandoc_table(input, options)
-        }
-        MarkdownBlockFormatKind::List => crate::core::wrap::format_markdown_list(input, options),
-        MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::format_markdown_definition_list(input, options)
-        }
-        MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::format_markdown_blockquote(input, options)
-        }
-    }
 }
 
 fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {

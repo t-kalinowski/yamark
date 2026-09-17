@@ -1,31 +1,44 @@
-use crate::core::directives::contains_markdown_template_span;
 use crate::core::document::{
-    CodeFenceSafety, Document, EmitPlan, FormatOptions, MarkdownNodeKind, Node, NodeKind,
+    CodeFenceSafety, Document, DocumentEmitMode, EmitPlan, FormatOptions, MarkdownNodeKind, Node,
+    NodeKind, PreparedDocument, PreparedTree,
 };
 use crate::core::source::{SourceBuffer, Span};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
 use memchr::memchr2;
 
-pub fn emit_document(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_document_with_normalization(source, document, options, plugins, false)
+pub fn emit_document(document: &PreparedDocument, plugins: &PluginRegistry) -> Result<String> {
+    emit_prepared_tree(document.source(), document.tree(), plugins).map(|(output, _)| output)
 }
 
-pub(crate) fn emit_markdown_document(
+pub(crate) fn emit_prepared_tree(
     source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
+    tree: &PreparedTree,
     plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_document_with_normalization(source, document, options, plugins, true)
+) -> Result<(String, usize)> {
+    let document = tree.document();
+    let options = tree.options();
+    if matches!(tree.mode(), DocumentEmitMode::Yaml) {
+        if document.skip_file {
+            return Ok((source.slice(document.range).to_owned(), 0));
+        }
+        return crate::core::yaml::emit_planned_yaml_document_with_stats(
+            source, document, options, plugins,
+        )
+        .map(|(output, stats)| (output, stats.emitted_nodes));
+    }
+    emit_planned_document(
+        source,
+        document,
+        options,
+        plugins,
+        matches!(tree.mode(), DocumentEmitMode::Markdown),
+    )
+    .map(|output| (output, 0))
 }
 
-fn emit_document_with_normalization(
+/// Execute a document whose effective policy has already been finalized.
+pub(crate) fn emit_planned_document(
     source: &SourceBuffer,
     document: &Document,
     options: FormatOptions,
@@ -123,7 +136,11 @@ fn emit_document_inner(
             index += 1;
             continue;
         }
-        if markdown_emit_should_preserve_template_span(source, node.span, state, &node.emit) {
+        if document
+            .markdown
+            .get(index)
+            .is_some_and(|plan| plan.preserve)
+        {
             out.push_str(source.slice(node.span));
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
@@ -132,24 +149,6 @@ fn emit_document_inner(
         }
         match &node.emit {
             EmitPlan::Copy | EmitPlan::Preserve => out.push_str(source.slice(node.span)),
-            EmitPlan::MarkdownHeading {
-                marker, content, ..
-            } => out.push_str(&crate::core::markdown::render_markdown_heading(
-                source,
-                node.span,
-                *marker,
-                *content,
-                state.markdown_options(options),
-            )),
-            EmitPlan::MarkdownSetextHeading { content, depth } => {
-                out.push_str(&crate::core::markdown::render_markdown_setext_heading(
-                    source,
-                    node.span,
-                    *content,
-                    *depth,
-                    state.markdown_options(options),
-                ))
-            }
             EmitPlan::MarkdownThematicBreak => {
                 out.push_str(&crate::core::markdown::render_markdown_thematic_break(
                     source,
@@ -157,51 +156,23 @@ fn emit_document_inner(
                     state.markdown_options(options),
                 ))
             }
-            EmitPlan::MarkdownParagraph => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::Paragraph,
-                ))
-            }
-            EmitPlan::MarkdownTable => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::Table,
-                ))
-            }
-            EmitPlan::MarkdownPandocTable => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::PandocTable,
-                ))
-            }
-            EmitPlan::MarkdownList => out.push_str(&crate::core::markdown::render_markdown_format(
-                source,
-                node.span,
-                state.markdown_options(options),
-                crate::core::markdown::MarkdownBlockFormatKind::List,
-            )),
-            EmitPlan::MarkdownDefinitionList => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::DefinitionList,
-                ))
-            }
-            EmitPlan::MarkdownBlockquote => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::Blockquote,
-                ))
+            EmitPlan::MarkdownHeading { .. }
+            | EmitPlan::MarkdownSetextHeading { .. }
+            | EmitPlan::MarkdownParagraph
+            | EmitPlan::MarkdownList
+            | EmitPlan::MarkdownDefinitionList
+            | EmitPlan::MarkdownBlockquote
+            | EmitPlan::MarkdownTable
+            | EmitPlan::MarkdownPandocTable => {
+                let retained = document
+                    .markdown
+                    .get(index)
+                    .expect("retained Markdown plan");
+                if let Some(plan) = &retained.plan {
+                    out.push_str(&plan.emit(source.slice(node.span)));
+                } else {
+                    out.push_str(source.slice(node.span));
+                }
             }
             EmitPlan::MarkdownFrontMatter {
                 opening,
@@ -284,9 +255,12 @@ fn emit_document_inner(
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
             EmitPlan::YamlDocument => {
-                out.push_str(&crate::core::yaml::emit_yaml_document(
-                    source, document, options, plugins,
-                )?);
+                out.push_str(
+                    &crate::core::yaml::emit_planned_yaml_document_with_stats(
+                        source, document, options, plugins,
+                    )?
+                    .0,
+                );
             }
             EmitPlan::EmbeddedMarkdownString {
                 opening,
@@ -542,7 +516,10 @@ impl EmitOutput {
     }
 }
 
-fn paragraph_separator_blank_run_end(document: &Document, index: usize) -> Option<usize> {
+pub(crate) fn paragraph_separator_blank_run_end(
+    document: &Document,
+    index: usize,
+) -> Option<usize> {
     if !node_is_markdown_blank(document.nodes.get(index)?) {
         return None;
     }
@@ -567,23 +544,6 @@ fn node_is_emitted_markdown_paragraph(document: &Document, node: &Node) -> bool 
     !document.state(node.state).preserve
         && matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Paragraph))
         && matches!(node.emit, EmitPlan::MarkdownParagraph)
-}
-
-fn markdown_emit_should_preserve_template_span(
-    source: &SourceBuffer,
-    span: Span,
-    state: &crate::core::directives::DirectiveState,
-    emit: &EmitPlan,
-) -> bool {
-    matches!(
-        emit,
-        EmitPlan::MarkdownHeading { .. }
-            | EmitPlan::MarkdownSetextHeading { .. }
-            | EmitPlan::MarkdownParagraph
-            | EmitPlan::MarkdownList
-            | EmitPlan::MarkdownDefinitionList
-            | EmitPlan::MarkdownBlockquote
-    ) && contains_markdown_template_span(source.slice(span), &state.template_delimiters)
 }
 
 fn emit_opening(
@@ -728,7 +688,7 @@ fn closes_code_fence(line: &str, safety: CodeFenceSafety) -> bool {
     marker_len >= safety.min_len && line[indent + marker_len..].trim().is_empty()
 }
 
-fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
+pub(crate) fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
     let text = source.slice(span);
     if text.ends_with("\r\n") {
         "\r\n"

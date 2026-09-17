@@ -1,82 +1,39 @@
+mod plan;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
+use crate::core::source::{SourceSpan, Span};
+use plan::{Condition, FragmentInput, PlannedLine, Prefix, Text};
+pub(crate) use plan::{Draft, Fragment, Plan};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use unicode_width::UnicodeWidthStr;
 
 pub fn format_markdown_paragraph(source: &str, options: FormatOptions) -> String {
-    try_format_markdown_paragraph(source, options).unwrap_or_else(|| source.to_owned())
+    prepare_markdown_paragraph(source)
+        .and_then(|mut draft| draft.resolve(source, options))
+        .map(|plan| plan.emit(source))
+        .unwrap_or_else(|| source.to_owned())
 }
 
-pub(crate) fn markdown_paragraph_format_supported(source: &str, options: FormatOptions) -> bool {
-    try_format_markdown_paragraph(source, options).is_some()
-}
-
-fn try_format_markdown_paragraph(source: &str, options: FormatOptions) -> Option<String> {
+pub(crate) fn prepare_markdown_paragraph(source: &str) -> Option<Draft> {
     let (body, newline) = strip_final_newline(source);
     if footnote_definition(body) {
-        return if options.markdown_format_footnotes {
-            format_markdown_footnote(source, options)
-        } else {
-            Some(source.to_owned())
-        };
+        return Some(Draft::choice(
+            Condition::FormatFootnotes,
+            prepare_markdown_footnote(source),
+            Some(Draft::text(source, source)),
+        ));
     }
-    if matches!(options.markdown_wrap, MarkdownWrap::None)
-        && contains_existing_split_link_destination(body)
-    {
-        inline_tokens(body)?;
-        let normalized = normalize_supported_links_and_images(source);
-        return if options.markdown_canonical {
-            Some(canonicalize_inline(&normalized))
-        } else {
-            Some(normalized.into_owned())
-        };
-    }
-    if has_hard_break(body) {
-        if matches!(options.markdown_wrap, MarkdownWrap::None) {
-            inline_tokens(body)?;
-            let normalized = normalize_inline_whitespace_preserving_lines(source);
-            let normalized = normalize_supported_links_and_images(&normalized);
-            return if options.markdown_canonical {
-                Some(canonicalize_inline(&normalized))
-            } else {
-                Some(normalized.into_owned())
-            };
-        }
-        return format_markdown_hard_break_paragraph(body, newline, options);
-    }
-    if matches!(options.markdown_wrap, MarkdownWrap::None) {
-        inline_tokens(body)?;
-        let normalized = normalize_inline_whitespace_preserving_lines(source);
-        let normalized = normalize_supported_links_and_images(&normalized);
-        return if options.markdown_canonical {
-            Some(canonicalize_inline(&normalized))
-        } else {
-            Some(normalized.into_owned())
-        };
-    }
-    let normalized_spaces = normalize_spaces_preserving_protected_spans(body);
-    if normalized_spaces.is_empty() {
-        return Some(source.to_owned());
-    }
-    let normalized_links = normalize_supported_links_and_images(&normalized_spaces);
-    let text = if options.markdown_canonical {
-        Cow::Owned(canonicalize_inline(&normalized_links))
+    let unwrapped = Some(Draft::unwrapped(source, body, source));
+    let reflow = if has_hard_break(body) {
+        prepare_markdown_hard_break_paragraph(source, body, newline)
     } else {
-        normalized_links
+        let mut draft = Draft::inline(source, body, "", "", newline, true, false, "", true);
+        draft.paragraph(single_line_body(body));
+        Some(draft)
     };
-    let tokens = inline_tokens(&text)?;
-    let join_newline = newline_for_join(newline, options);
-    let mut out = String::with_capacity(text.len());
-    let mut writer = TokenLineWriter::separated(&mut out, join_newline);
-    write_markdown_token_lines(&mut writer, &tokens, options.markdown_wrap, "")?;
-    out.push_str(newline);
-    escape_first_markdown_block_start(&mut out);
-    if single_line_body(body) && formatted_introduces_markdown_block_start(&out) {
-        return None;
-    }
-    Some(out)
+    Some(Draft::choice(Condition::WrapNone, unwrapped, reflow))
 }
 
 fn contains_existing_split_link_destination(source: &str) -> bool {
@@ -650,35 +607,31 @@ fn emit_grid_row(out: &mut String, row: &[String], widths: &[usize], newline: &s
 }
 
 pub fn format_markdown_list(source: &str, options: FormatOptions) -> String {
-    try_format_markdown_list(source, options).unwrap_or_else(|| source.to_owned())
+    prepare_markdown_list(source)
+        .and_then(|mut draft| draft.resolve(source, options))
+        .map(|plan| plan.emit(source))
+        .unwrap_or_else(|| source.to_owned())
 }
 
-pub(crate) fn markdown_list_format_supported(source: &str, options: FormatOptions) -> bool {
-    try_format_markdown_list(source, options).is_some()
-}
-
-fn try_format_markdown_list(source: &str, options: FormatOptions) -> Option<String> {
+pub(crate) fn prepare_markdown_list(source: &str) -> Option<Draft> {
     let lines = markdown_lines(source).collect::<Vec<_>>();
     if list_needs_rich_format(&lines) {
-        try_format_rich_markdown_list(&lines, options)
+        prepare_rich_markdown_list(source, &lines)
     } else {
-        try_format_simple_markdown_list(&lines, options)
+        prepare_simple_markdown_list(source, &lines)
     }
 }
 
-fn try_format_simple_markdown_list(
-    lines: &[MarkdownLine<'_>],
-    options: FormatOptions,
-) -> Option<String> {
-    let mut out = String::new();
+fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Option<Draft> {
+    let mut out = Draft::new();
     let mut index = 0usize;
     while index < lines.len() {
         let line = lines[index];
         let body = line.body;
         let newline = line.newline;
         if body.trim().is_empty() {
-            out.push_str(body);
-            out.push_str(newline);
+            out.push_str(source, body);
+            out.push_str(source, newline);
             index += 1;
             continue;
         }
@@ -705,7 +658,7 @@ fn try_format_simple_markdown_list(
         let mut paragraph_newline = newline;
         loop {
             let mut pieces = Vec::new();
-            let mut nested_quote = String::new();
+            let mut nested_quote_start = None;
             let mut saw_nested_quote = false;
             if !paragraph_content.trim().is_empty() {
                 pieces.push(paragraph_content);
@@ -733,7 +686,7 @@ fn try_format_simple_markdown_list(
                         return None;
                     }
                     saw_nested_quote = true;
-                    nested_quote.push_str(lines[index].full);
+                    nested_quote_start.get_or_insert(index);
                     index += 1;
                     continue;
                 }
@@ -745,19 +698,28 @@ fn try_format_simple_markdown_list(
             }
             let segments = markdown_hard_break_segments(pieces.iter().copied());
             if segments.is_empty() {
-                out.push_str(paragraph_prefix.trim_end());
-                out.push_str(paragraph_newline);
+                out.push_str(source, paragraph_prefix.trim_end());
+                out.push_str(source, paragraph_newline);
             } else {
-                out.push_str(&format_prefixed_markdown_segments(
+                out.append(prepare_prefixed_markdown_segments(
+                    source,
                     &segments,
                     &paragraph_prefix,
                     &continuation_prefix,
                     paragraph_newline,
-                    options,
                 )?);
             }
-            if !nested_quote.is_empty() {
-                out.push_str(&try_format_markdown_blockquote(&nested_quote, options)?);
+            if let Some(start) = nested_quote_start {
+                let first = lines[start].full;
+                let last = lines[index - 1].full;
+                let start = first.as_ptr() as usize - source.as_ptr() as usize;
+                let end = last.as_ptr() as usize - source.as_ptr() as usize + last.len();
+                let nested_quote = &source[start..end];
+                out.push_scoped(
+                    source,
+                    nested_quote,
+                    prepare_markdown_blockquote(nested_quote)?,
+                );
             }
             if index >= lines.len() || !lines[index].body.trim().is_empty() {
                 break;
@@ -769,7 +731,7 @@ fn try_format_simple_markdown_list(
             }
             if index >= lines.len() {
                 for blank in &lines[blank_start..index] {
-                    out.push_str(blank.full);
+                    out.push_str(source, blank.full);
                 }
                 break;
             }
@@ -789,7 +751,7 @@ fn try_format_simple_markdown_list(
             }
 
             for blank in &lines[blank_start..index] {
-                out.push_str(blank.full);
+                out.push_str(source, blank.full);
             }
             paragraph_prefix = continuation_prefix.clone();
             paragraph_content = continuation_trimmed;
@@ -800,23 +762,21 @@ fn try_format_simple_markdown_list(
     Some(out)
 }
 
-fn try_format_rich_markdown_list(
-    lines: &[MarkdownLine<'_>],
-    options: FormatOptions,
-) -> Option<String> {
-    let mut out = String::new();
+fn prepare_rich_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Option<Draft> {
+    let mut out = Draft::new();
     let mut index = 0usize;
     let mut changed = false;
     while index < lines.len() {
         if let Some(indent) = rich_list_child_indent(lines[index].body) {
             let end = rich_list_child_block_end(lines, index, indent);
             let nested = strip_rich_list_child_indent(&lines[index..end], indent)?;
-            let mut nested_options = options;
-            nested_options.markdown_wrap = nested_options
-                .markdown_wrap
-                .with_reduced_column_width(indent);
-            let formatted = format_markdown_fragment(&nested, nested_options);
-            out.push_str(&reindent_markdown_fragment(&formatted, indent));
+            out.child(
+                FragmentInput::Buffer(std::sync::Arc::new(crate::core::source::SourceBuffer::new(
+                    nested,
+                ))),
+                Prefix::Indent(indent),
+                indent,
+            );
             changed = true;
             index = end;
             continue;
@@ -826,10 +786,7 @@ fn try_format_rich_markdown_list(
         while index < lines.len() && rich_list_child_indent(lines[index].body).is_none() {
             index += 1;
         }
-        out.push_str(&try_format_simple_markdown_list(
-            &lines[start..index],
-            options,
-        )?);
+        out.append(prepare_simple_markdown_list(source, &lines[start..index])?);
     }
     changed.then_some(out)
 }
@@ -905,21 +862,6 @@ fn strip_rich_list_child_indent(lines: &[MarkdownLine<'_>], indent: usize) -> Op
     Some(nested)
 }
 
-fn reindent_markdown_fragment(fragment: &str, indent: usize) -> String {
-    let prefix = " ".repeat(indent);
-    let mut out = String::new();
-    for line in markdown_lines(fragment) {
-        if line.body.is_empty() {
-            out.push_str(line.newline);
-            continue;
-        }
-        out.push_str(&prefix);
-        out.push_str(line.body);
-        out.push_str(line.newline);
-    }
-    out
-}
-
 fn code_fence_line(trimmed: &str) -> bool {
     trimmed.starts_with("```") || trimmed.starts_with("~~~")
 }
@@ -940,27 +882,23 @@ fn task_list_checkbox(body: &str) -> Option<(&str, &str)> {
 }
 
 pub fn format_markdown_definition_list(source: &str, options: FormatOptions) -> String {
-    try_format_markdown_definition_list(source, options).unwrap_or_else(|| source.to_owned())
+    prepare_markdown_definition_list(source)
+        .and_then(|mut draft| draft.resolve(source, options))
+        .map(|plan| plan.emit(source))
+        .unwrap_or_else(|| source.to_owned())
 }
 
-pub(crate) fn markdown_definition_list_format_supported(
-    source: &str,
-    options: FormatOptions,
-) -> bool {
-    try_format_markdown_definition_list(source, options).is_some()
-}
-
-fn try_format_markdown_definition_list(source: &str, options: FormatOptions) -> Option<String> {
+pub(crate) fn prepare_markdown_definition_list(source: &str) -> Option<Draft> {
     let lines = markdown_lines(source).collect::<Vec<_>>();
-    let mut out = String::new();
+    let mut out = Draft::new();
     let mut index = 0usize;
     while index < lines.len() {
         let line = lines[index];
         let body = line.body;
         let newline = line.newline;
         let Some((prefix, content)) = definition_marker_parts(body) else {
-            out.push_str(body.trim_end());
-            out.push_str(newline);
+            out.push_str(source, body.trim_end());
+            out.push_str(source, newline);
             index += 1;
             continue;
         };
@@ -981,38 +919,39 @@ fn try_format_markdown_definition_list(source: &str, options: FormatOptions) -> 
         }
         let segments = markdown_hard_break_segments(pieces.iter().copied());
         if segments.is_empty() {
-            out.push_str(prefix.trim_end());
-            out.push_str(newline);
+            out.push_str(source, prefix.trim_end());
+            out.push_str(source, newline);
             continue;
         }
         let continuation_prefix = definition_continuation_indent(&prefix);
-        out.push_str(&format_prefixed_markdown_segments(
+        out.append(prepare_prefixed_markdown_segments(
+            source,
             &segments,
             &prefix,
             &continuation_prefix,
             newline,
-            options,
         )?);
     }
     Some(out)
 }
 
 pub fn format_markdown_blockquote(source: &str, options: FormatOptions) -> String {
-    try_format_markdown_blockquote(source, options).unwrap_or_else(|| source.to_owned())
+    prepare_markdown_blockquote(source)
+        .and_then(|mut draft| draft.resolve(source, options))
+        .map(|plan| plan.emit(source))
+        .unwrap_or_else(|| source.to_owned())
 }
 
-pub(crate) fn markdown_blockquote_format_supported(source: &str, options: FormatOptions) -> bool {
-    try_format_markdown_blockquote(source, options).is_some()
+pub(crate) fn prepare_markdown_blockquote(source: &str) -> Option<Draft> {
+    Some(Draft::fallback(
+        prepare_simple_markdown_blockquote(source),
+        prepare_rich_markdown_blockquote(source),
+    ))
 }
 
-fn try_format_markdown_blockquote(source: &str, options: FormatOptions) -> Option<String> {
-    try_format_simple_markdown_blockquote(source, options)
-        .or_else(|| try_format_rich_markdown_blockquote(source, options))
-}
-
-fn try_format_simple_markdown_blockquote(source: &str, options: FormatOptions) -> Option<String> {
+fn prepare_simple_markdown_blockquote(source: &str) -> Option<Draft> {
     if has_nested_blockquote_marker(source) {
-        return format_nested_blockquote_markers(source, options);
+        return prepare_nested_blockquote_markers(source);
     }
     if blockquote_needs_rich_format(source) {
         return None;
@@ -1054,13 +993,13 @@ fn try_format_simple_markdown_blockquote(source: &str, options: FormatOptions) -
     let prefix = format!("{indent}> ");
     let segments = markdown_hard_break_segments(pieces.iter().copied());
     if segments.is_empty() {
-        Some(format!("{indent}>{newline}"))
+        Some(Draft::text(source, &format!("{indent}>{newline}")))
     } else {
-        format_prefixed_markdown_segments(&segments, &prefix, &prefix, newline, options)
+        prepare_prefixed_markdown_segments(source, &segments, &prefix, &prefix, newline)
     }
 }
 
-fn try_format_rich_markdown_blockquote(source: &str, options: FormatOptions) -> Option<String> {
+fn prepare_rich_markdown_blockquote(source: &str) -> Option<Draft> {
     if !blockquote_needs_rich_format(source) {
         return None;
     }
@@ -1088,21 +1027,14 @@ fn try_format_rich_markdown_blockquote(source: &str, options: FormatOptions) -> 
 
     let indent = indent.unwrap_or("");
     let quote_prefix_width = indent.chars().count() + "> ".chars().count();
-    let mut nested_options = options;
-    nested_options.markdown_wrap = nested_options
-        .markdown_wrap
-        .with_reduced_column_width(quote_prefix_width);
-    let formatted = format_markdown_fragment(&nested, nested_options);
-    let mut out = String::new();
-    for line in markdown_lines(&formatted) {
-        out.push_str(indent);
-        out.push('>');
-        if !line.body.is_empty() {
-            out.push(' ');
-            out.push_str(line.body);
-        }
-        out.push_str(line.newline);
-    }
+    let mut out = Draft::new();
+    out.child(
+        FragmentInput::Buffer(std::sync::Arc::new(crate::core::source::SourceBuffer::new(
+            nested,
+        ))),
+        Prefix::Quote(indent.into()),
+        quote_prefix_width,
+    );
     Some(out)
 }
 
@@ -1135,24 +1067,41 @@ fn rich_child_block_start(trimmed: &str) -> bool {
         || markdown_list_marker(trimmed).is_some()
 }
 
-fn format_nested_blockquote_markers(source: &str, options: FormatOptions) -> Option<String> {
-    if matches!(options.markdown_wrap, MarkdownWrap::None) {
-        return markdown_lines(source)
-            .map(|line| {
-                let body = line.body;
-                let newline = line.newline;
-                let (indent, depth, rest) = nested_blockquote_parts(body)?;
-                let markers = "> ".repeat(depth);
-                let prefix = format!("{indent}{markers}");
-                let segments = markdown_hard_break_segments([rest.trim_start()]);
-                if segments.is_empty() {
-                    Some(format!("{indent}{}{newline}", markers.trim_end()))
-                } else {
-                    format_prefixed_markdown_segments(&segments, &prefix, &prefix, newline, options)
-                }
-            })
-            .collect();
+fn prepare_nested_blockquote_markers(source: &str) -> Option<Draft> {
+    Some(Draft::choice(
+        Condition::WrapNone,
+        prepare_nested_blockquote_lines(source),
+        prepare_nested_blockquote_group(source),
+    ))
+}
+
+fn prepare_nested_blockquote_lines(source: &str) -> Option<Draft> {
+    let plans = markdown_lines(source)
+        .map(|line| {
+            let body = line.body;
+            let newline = line.newline;
+            let (indent, depth, rest) = nested_blockquote_parts(body)?;
+            let markers = "> ".repeat(depth);
+            let prefix = format!("{indent}{markers}");
+            let segments = markdown_hard_break_segments([rest.trim_start()]);
+            if segments.is_empty() {
+                Some(Draft::text(
+                    source,
+                    &format!("{indent}{}{newline}", markers.trim_end()),
+                ))
+            } else {
+                prepare_prefixed_markdown_segments(source, &segments, &prefix, &prefix, newline)
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let mut out = Draft::new();
+    for plan in plans {
+        out.append(plan);
     }
+    Some(out)
+}
+
+fn prepare_nested_blockquote_group(source: &str) -> Option<Draft> {
     let mut indent = None::<&str>;
     let mut depth = None::<usize>;
     let mut newline = "";
@@ -1185,7 +1134,7 @@ fn format_nested_blockquote_markers(source: &str, options: FormatOptions) -> Opt
     let depth = depth?;
     let prefix = format!("{indent}{}", "> ".repeat(depth));
     let segments = markdown_hard_break_segments(pieces.iter().copied());
-    format_prefixed_markdown_segments(&segments, &prefix, &prefix, newline, options)
+    prepare_prefixed_markdown_segments(source, &segments, &prefix, &prefix, newline)
 }
 
 fn nested_blockquote_parts(body: &str) -> Option<(&str, usize, &str)> {
@@ -1218,16 +1167,7 @@ fn blockquote_marker_depth(line: &str) -> usize {
 }
 
 pub fn format_markdown_fragment(source: &str, options: FormatOptions) -> String {
-    let buffer = crate::core::source::SourceBuffer::new(source.to_owned());
-    let config = crate::config::Config::default();
-    let plugins = crate::plugins::PluginRegistry::default();
-    let range = crate::core::source::Span::new(0, source.len());
-    let Ok(document) = crate::core::markdown::parse_markdown(&buffer, range, options, &config)
-    else {
-        return source.to_owned();
-    };
-    crate::core::emit::emit_document(&buffer, &document, options, &plugins)
-        .unwrap_or_else(|_| source.to_owned())
+    Fragment::plan(source.to_owned(), options).emit()
 }
 
 fn normalize_inline_whitespace_preserving_lines(source: &str) -> String {
@@ -1251,24 +1191,27 @@ fn normalize_inline_whitespace_preserving_lines(source: &str) -> String {
         .collect()
 }
 
-fn format_markdown_hard_break_paragraph(
+fn prepare_markdown_hard_break_paragraph(
+    source: &str,
     body: &str,
     final_newline: &str,
-    options: FormatOptions,
-) -> Option<String> {
+) -> Option<Draft> {
     let segments = markdown_hard_break_segments(markdown_line_bodies(body));
     if segments.is_empty() {
-        return Some(body.to_owned());
+        return Some(Draft::text(source, body));
     }
-    let join_newline = newline_for_join(final_newline, options);
-    let mut out = format_prefixed_markdown_segments(&segments, "", "", join_newline, options)?;
+    let mut out = prepare_prefixed_markdown_segments_with_default(
+        source,
+        &segments,
+        "",
+        "",
+        final_newline,
+        true,
+    )?;
     if final_newline.is_empty() {
-        trim_trailing_line_ending(&mut out);
+        out.trim_final_newline();
     }
-    escape_first_markdown_block_start(&mut out);
-    if single_line_body(body) && formatted_introduces_markdown_block_start(&out) {
-        return None;
-    }
+    out.paragraph(single_line_body(body));
     Some(out)
 }
 
@@ -1354,27 +1297,6 @@ fn has_hard_break(source: &str) -> bool {
 
 fn single_line_body(source: &str) -> bool {
     !source.contains('\n') && !source.contains('\r')
-}
-
-fn formatted_introduces_markdown_block_start(source: &str) -> bool {
-    let (body, _) = strip_final_newline(source);
-    markdown_line_bodies(body)
-        .skip(1)
-        .any(markdown_block_start_line)
-}
-
-fn escape_first_markdown_block_start(source: &mut String) {
-    let first_line_end = source.find(['\n', '\r']).unwrap_or(source.len());
-    let first_line = &source[..first_line_end];
-    if !markdown_block_start_line(first_line) {
-        return;
-    }
-    let marker = first_line
-        .char_indices()
-        .find(|(_, ch)| !matches!(ch, ' ' | '\t'))
-        .map(|(index, _)| index)
-        .unwrap_or(0);
-    source.insert(marker, '\\');
 }
 
 fn markdown_block_start_line(line: &str) -> bool {
@@ -1537,7 +1459,7 @@ fn footnote_definition(source: &str) -> bool {
     indent <= 3 && trimmed.starts_with("[^") && trimmed.contains("]:")
 }
 
-fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<String> {
+fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
     let (body, newline) = strip_final_newline(source);
     let mut lines = markdown_line_bodies(body);
     let first_line = lines.next()?;
@@ -1588,26 +1510,26 @@ fn format_markdown_footnote(source: &str, options: FormatOptions) -> Option<Stri
         )
     {
         let block_continuation_refs = block_continuation_refs?;
-        return Some(format_markdown_footnote_block(
+        return Some(prepare_markdown_footnote_block(
+            source,
             &label,
             first_content.trim_end(),
             &block_continuation_refs,
             &block_continuation_prefix,
             newline,
-            options,
         ));
     }
     let segments = markdown_hard_break_segments(pieces.iter().copied());
-    let join_newline = newline_for_join(newline, options);
-    let mut out = format_prefixed_markdown_segments(
+    let mut out = prepare_prefixed_markdown_segments_with_default(
+        source,
         &segments,
         &prefix,
         &continuation_prefix,
-        join_newline,
-        options,
+        newline,
+        true,
     )?;
     if newline.is_empty() {
-        trim_trailing_line_ending(&mut out);
+        out.trim_final_newline();
     }
     Some(out)
 }
@@ -1619,50 +1541,39 @@ fn footnote_needs_recursive_body(first_content: &str, continuation_lines: &[&str
             .any(|line| markdown_block_start_line(line))
 }
 
-fn format_markdown_footnote_block(
+fn prepare_markdown_footnote_block(
+    source: &str,
     label: &str,
     first_content: &str,
     continuation_lines: &[&str],
     continuation_prefix: &str,
     newline: &str,
-    options: FormatOptions,
-) -> String {
-    let join_newline = newline_for_join(newline, options);
-    let mut nested = String::new();
+) -> Draft {
+    let mut lines = Vec::new();
     if !first_content.is_empty() {
-        nested.push_str(first_content);
-        nested.push_str(join_newline);
+        lines.push(Text::retain(source, first_content));
     }
-    for line in continuation_lines {
-        nested.push_str(line);
-        nested.push_str(join_newline);
-    }
-
-    let mut nested_options = options;
-    nested_options.markdown_wrap = nested_options
-        .markdown_wrap
-        .with_reduced_column_width(continuation_prefix.chars().count());
-    let formatted = format_markdown_fragment(&nested, nested_options);
-    let mut out = String::new();
-    out.push_str(label);
-    out.push_str(join_newline);
-    for line in markdown_lines(&formatted) {
-        let body = line.body;
-        let line_newline = line.newline;
-        if body.is_empty() {
-            out.push_str(line_newline);
-            continue;
-        }
-        out.push_str(continuation_prefix);
-        out.push_str(body);
-        out.push_str(if line_newline.is_empty() {
-            join_newline
-        } else {
-            line_newline
-        });
-    }
+    lines.extend(
+        continuation_lines
+            .iter()
+            .map(|line| Text::retain(source, line)),
+    );
+    let mut out = Draft::new();
+    out.push_str(source, label);
+    out.push_join_newline(newline);
+    out.child(
+        FragmentInput::Lines {
+            lines,
+            newline: newline.into(),
+        },
+        Prefix::Footnote {
+            indent: continuation_prefix.into(),
+            newline: newline.into(),
+        },
+        continuation_prefix.chars().count(),
+    );
     if newline.is_empty() {
-        trim_trailing_line_ending(&mut out);
+        out.trim_final_newline();
     }
     out
 }
@@ -1683,13 +1594,6 @@ struct InlineToken<'a> {
 }
 
 impl<'a> InlineToken<'a> {
-    fn borrowed(text: &'a str) -> Self {
-        Self {
-            text: Cow::Borrowed(text),
-            width: token_width(text),
-        }
-    }
-
     fn owned(text: String) -> Self {
         let width = token_width(&text);
         Self {
@@ -1703,22 +1607,50 @@ impl<'a> InlineToken<'a> {
     }
 }
 
+/// A borrowed view of measured tokens. Layout reads it without rebuilding a
+/// document-sized vector of temporary inline tokens.
+#[derive(Clone, Copy)]
+struct TokenSlice<'a> {
+    text: &'a str,
+    measured: &'a [(SourceSpan, usize)],
+}
+
+impl<'a> TokenSlice<'a> {
+    fn len(self) -> usize {
+        self.measured.len()
+    }
+
+    fn slice(self, range: std::ops::Range<usize>) -> Self {
+        Self {
+            text: self.text,
+            measured: &self.measured[range],
+        }
+    }
+
+    fn iter(self) -> impl Iterator<Item = InlineToken<'a>> {
+        self.measured.iter().map(move |(span, width)| InlineToken {
+            text: Cow::Borrowed(span.span().slice(self.text)),
+            width: *width,
+        })
+    }
+}
+
 fn write_sentence_token_lines(
     out: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
-    suffix: &str,
+    tokens: TokenSlice<'_>,
+    suffix: &'static str,
 ) -> Option<()> {
     write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
-        out.write_token_slice(sentence, sentence_suffix)
+        out.write_retained_slice(sentence, sentence_suffix)
     })
 }
 
 fn write_wrapped_sentence_token_lines(
     out: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
+    tokens: TokenSlice<'_>,
     first_width: usize,
     continuation_width: usize,
-    suffix: &str,
+    suffix: &'static str,
 ) -> Option<()> {
     let mut first_sentence = true;
     write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
@@ -1739,16 +1671,16 @@ fn write_wrapped_sentence_token_lines(
 }
 
 fn write_sentence_token_slices<'token>(
-    tokens: &[InlineToken<'token>],
-    suffix: &str,
-    mut write: impl FnMut(&[InlineToken<'token>], &str) -> Option<()>,
+    tokens: TokenSlice<'token>,
+    suffix: &'static str,
+    mut write: impl FnMut(TokenSlice<'token>, &'static str) -> Option<()>,
 ) -> Option<()> {
     let mut start = 0usize;
     let mut pending = None::<(usize, usize)>;
     for (index, token) in tokens.iter().enumerate() {
         if token_ends_sentence(token.text()) && !token_is_sentence_abbreviation(token.text()) {
             if let Some((from, to)) = pending.take() {
-                write(&tokens[from..to], "")?;
+                write(tokens.slice(from..to), "")?;
             }
             pending = Some((start, index + 1));
             start = index + 1;
@@ -1756,12 +1688,12 @@ fn write_sentence_token_slices<'token>(
     }
     if start < tokens.len() {
         if let Some((from, to)) = pending.take() {
-            write(&tokens[from..to], "")?;
+            write(tokens.slice(from..to), "")?;
         }
         pending = Some((start, tokens.len()));
     }
     if let Some((from, to)) = pending {
-        write(&tokens[from..to], suffix)?;
+        write(tokens.slice(from..to), suffix)?;
     }
     Some(())
 }
@@ -2574,53 +2506,38 @@ impl<'a> TokenLine<'a> {
         token_slice_width(&self.tokens[at..])
     }
 
-    fn markdown_block_start(&self) -> bool {
-        token_slice_markdown_block_start(&self.tokens)
+    fn markdown_block_start(&self, scratch: &mut String) -> bool {
+        token_slice_markdown_block_start(&self.tokens, scratch)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum TokenLineWriteMode {
-    Separated,
-    Terminated,
-}
-
 struct TokenLineWriter<'out, 'prefix> {
-    out: &'out mut String,
+    out: &'out mut Vec<PlannedLine>,
+    tokens: &'out mut Vec<Text>,
+    text: &'prefix str,
     first_prefix: &'prefix str,
     continuation_prefix: &'prefix str,
-    newline: &'prefix str,
-    mode: TokenLineWriteMode,
     check_block_starts: bool,
+    safety_line: String,
     line_count: usize,
 }
 
 impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
-    fn separated(out: &'out mut String, newline: &'prefix str) -> Self {
-        Self {
-            out,
-            first_prefix: "",
-            continuation_prefix: "",
-            newline,
-            mode: TokenLineWriteMode::Separated,
-            check_block_starts: false,
-            line_count: 0,
-        }
-    }
-
-    fn terminated(
-        out: &'out mut String,
+    fn new(
+        out: &'out mut Vec<PlannedLine>,
+        tokens: &'out mut Vec<Text>,
+        text: &'prefix str,
         first_prefix: &'prefix str,
         continuation_prefix: &'prefix str,
-        newline: &'prefix str,
     ) -> Self {
         Self {
             out,
+            tokens,
+            text,
             first_prefix,
             continuation_prefix,
-            newline,
-            mode: TokenLineWriteMode::Terminated,
             check_block_starts: false,
+            safety_line: String::new(),
             line_count: 0,
         }
     }
@@ -2629,30 +2546,67 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         self.check_block_starts = true;
     }
 
-    fn write_line(&mut self, line: &TokenLine<'_>, suffix: &str) -> Option<()> {
+    fn write_line(&mut self, line: &TokenLine<'_>, suffix: &'static str) -> Option<()> {
         self.write_token_slice(&line.tokens, suffix)
     }
 
-    fn write_token_slice(&mut self, tokens: &[InlineToken<'_>], suffix: &str) -> Option<()> {
+    fn write_token_slice(
+        &mut self,
+        tokens: &[InlineToken<'_>],
+        suffix: &'static str,
+    ) -> Option<()> {
         if self.check_block_starts
             && self.line_count > 0
-            && token_slice_markdown_block_start(tokens)
+            && token_slice_markdown_block_start(tokens, &mut self.safety_line)
         {
             return None;
         }
-        if matches!(self.mode, TokenLineWriteMode::Separated) && self.line_count > 0 {
-            self.out.push_str(self.newline);
+        self.record_tokens(tokens.iter().map(InlineToken::text), suffix)
+    }
+
+    fn write_retained_slice(&mut self, tokens: TokenSlice<'_>, suffix: &'static str) -> Option<()> {
+        debug_assert!(!self.check_block_starts);
+        self.record_tokens(
+            tokens
+                .measured
+                .iter()
+                .map(|(span, _)| span.span().slice(tokens.text)),
+            suffix,
+        )
+    }
+
+    fn record_tokens<'a>(
+        &mut self,
+        tokens: impl Iterator<Item = &'a str>,
+        suffix: &'static str,
+    ) -> Option<()> {
+        let start = self.tokens.len();
+        for token in tokens {
+            let piece = Text::retain(self.text, token);
+            // A laid-out line usually occupies one contiguous normalized span.
+            // Keep separate pieces only where joining or a rewrite requires it.
+            if self.tokens.len() > start
+                && let Text::Source(next) = &piece
+                && let Some(Text::Source(previous)) = self.tokens.last_mut()
+                && previous.end() + 1 == next.start()
+                && self.text.as_bytes()[previous.end()] == b' '
+            {
+                *previous = SourceSpan::new(Span::new(previous.start(), next.end()));
+            } else {
+                self.tokens.push(piece);
+            }
         }
-        if self.line_count == 0 {
-            self.out.push_str(self.first_prefix);
-        } else {
-            self.out.push_str(self.continuation_prefix);
-        }
-        write_joined_tokens(self.out, tokens);
-        self.out.push_str(suffix);
-        if matches!(self.mode, TokenLineWriteMode::Terminated) {
-            self.out.push_str(self.newline);
-        }
+        let suffix = match suffix {
+            "" => None,
+            "\\" => Some(MarkdownHardBreakMarker::CompactBackslash),
+            " \\" => Some(MarkdownHardBreakMarker::SpaceBackslash),
+            _ => unreachable!("planned hard break"),
+        };
+        self.out.push(PlannedLine {
+            tokens: start..self.tokens.len(),
+            suffix,
+            block_start_checked: self.check_block_starts && self.line_count > 0 && suffix.is_none(),
+        });
         self.line_count += 1;
         Some(())
     }
@@ -2697,7 +2651,7 @@ impl<'a> WrapLineBuffer<'a> {
         Some(())
     }
 
-    fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &str) -> Option<()> {
+    fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &'static str) -> Option<()> {
         if !self.current.is_empty() {
             if let Some(pending) = self.pending.take() {
                 writer.write_line(&pending, "")?;
@@ -2725,7 +2679,7 @@ impl<'a> WrapLineBuffer<'a> {
             self.commit_current(writer)?;
             self.current.push(first);
         }
-        self.repair_current_line_if_markdown_block_start()?;
+        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
 
         let mut rest = split.map(InlineToken::owned).collect::<Vec<_>>();
         if rest.is_empty() {
@@ -2744,12 +2698,14 @@ impl<'a> WrapLineBuffer<'a> {
         if self.current.width > self.continuation_width {
             self.commit_current(writer)?;
         }
-        self.repair_current_line_if_markdown_block_start()?;
+        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
         Some(())
     }
 
-    fn repair_current_line_if_markdown_block_start(&mut self) -> Option<()> {
-        if self.pending.is_none() || self.current.is_empty() || !self.current.markdown_block_start()
+    fn repair_current_line_if_markdown_block_start(&mut self, scratch: &mut String) -> Option<()> {
+        if self.pending.is_none()
+            || self.current.is_empty()
+            || !self.current.markdown_block_start(scratch)
         {
             return Some(());
         }
@@ -2763,7 +2719,7 @@ impl<'a> WrapLineBuffer<'a> {
             let mut candidate = TokenLine::default();
             candidate.extend_from_slice(&previous.tokens[split..]);
             candidate.extend_from_slice(&self.current.tokens);
-            if !candidate.markdown_block_start() {
+            if !candidate.markdown_block_start(scratch) {
                 let mut moved = previous.split_off(split);
                 moved.append(std::mem::take(&mut self.current));
                 self.current = moved;
@@ -2776,13 +2732,13 @@ impl<'a> WrapLineBuffer<'a> {
 
 fn write_wrapped_tokens_with_first_width(
     writer: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
+    tokens: TokenSlice<'_>,
     first_width: usize,
     continuation_width: usize,
-    suffix: &str,
+    suffix: &'static str,
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width);
-    for token in tokens {
+    for token in tokens.iter() {
         if token.width > lines.width
             && let Some(split) = split_long_link_token(token.text(), lines.width)
         {
@@ -2790,26 +2746,26 @@ fn write_wrapped_tokens_with_first_width(
             lines.width = lines.continuation_width;
             continue;
         }
-        if lines.current.can_fit(token, lines.width) {
-            lines.current.push(token.clone());
+        if lines.current.can_fit(&token, lines.width) {
+            lines.current.push(token);
         } else {
             lines.commit_current(writer)?;
-            lines.current.push(token.clone());
+            lines.current.push(token);
         }
-        lines.repair_current_line_if_markdown_block_start()?;
+        lines.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
     }
     lines.finish(writer, suffix)
 }
 
 fn write_markdown_token_lines(
     writer: &mut TokenLineWriter<'_, '_>,
-    tokens: &[InlineToken<'_>],
+    tokens: TokenSlice<'_>,
     wrap: MarkdownWrap,
-    suffix: &str,
+    suffix: &'static str,
 ) -> Option<()> {
     let column_width = wrap.column_width();
     match wrap {
-        MarkdownWrap::None | MarkdownWrap::Paragraph => writer.write_token_slice(tokens, suffix),
+        MarkdownWrap::None | MarkdownWrap::Paragraph => writer.write_retained_slice(tokens, suffix),
         MarkdownWrap::Sentence => write_sentence_token_lines(writer, tokens, suffix),
         MarkdownWrap::Column(_) => {
             let width = column_width.expect("column wrap has a width");
@@ -2852,10 +2808,12 @@ fn token_slice_width(tokens: &[InlineToken<'_>]) -> usize {
     tokens.iter().map(|token| token.width).sum::<usize>() + tokens.len().saturating_sub(1)
 }
 
-fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>]) -> bool {
-    let mut line = String::new();
-    write_joined_tokens(&mut line, tokens);
-    markdown_block_start_line(&line)
+fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>], scratch: &mut String) -> bool {
+    // Layout checks growing candidate lines repeatedly. Reuse their temporary
+    // storage while keeping the existing recognition input and rules unchanged.
+    scratch.clear();
+    write_joined_tokens(scratch, tokens);
+    markdown_block_start_line(scratch)
 }
 
 fn write_joined_tokens(out: &mut String, tokens: &[InlineToken<'_>]) {
@@ -3142,62 +3100,88 @@ fn is_pandoc_attribute_content(value: &str) -> bool {
     !value.is_empty() && (value.starts_with(['#', '.']) || value.contains('='))
 }
 
-fn format_prefixed_markdown_segments(
+fn prepare_prefixed_markdown_segments(
+    source: &str,
     segments: &[MarkdownHardBreakSegment],
     first_prefix: &str,
     continuation_prefix: &str,
     newline: &str,
-    options: FormatOptions,
-) -> Option<String> {
+) -> Option<Draft> {
+    prepare_prefixed_markdown_segments_with_default(
+        source,
+        segments,
+        first_prefix,
+        continuation_prefix,
+        newline,
+        false,
+    )
+}
+
+fn prepare_prefixed_markdown_segments_with_default(
+    source: &str,
+    segments: &[MarkdownHardBreakSegment],
+    first_prefix: &str,
+    continuation_prefix: &str,
+    newline: &str,
+    default_newline: bool,
+) -> Option<Draft> {
     let Some((first, rest)) = segments.split_first() else {
-        return Some(format!("{first_prefix}{newline}"));
+        let mut draft = Draft::text(source, first_prefix);
+        if default_newline {
+            draft.push_join_newline(newline);
+        } else {
+            draft.push_str(source, newline);
+        }
+        return Some(draft);
     };
-    let mut out = String::new();
-    out.push_str(&format_prefixed_markdown_segment(
+    let mut draft = prepare_prefixed_markdown_segment(
+        source,
         first,
         first_prefix,
         continuation_prefix,
         newline,
-        options,
-    )?);
+        default_newline,
+    );
     for segment in rest {
-        out.push_str(&format_prefixed_markdown_segment(
+        draft.append(prepare_prefixed_markdown_segment(
+            source,
             segment,
             continuation_prefix,
             continuation_prefix,
             newline,
-            options,
-        )?);
+            default_newline,
+        ));
     }
-    Some(out)
+    Some(draft)
 }
 
-fn format_prefixed_markdown_segment(
+fn prepare_prefixed_markdown_segment(
+    source: &str,
     segment: &MarkdownHardBreakSegment,
     first_prefix: &str,
     continuation_prefix: &str,
     newline: &str,
-    options: FormatOptions,
-) -> Option<String> {
+    default_newline: bool,
+) -> Draft {
     let text = normalize_supported_links_and_images(&segment.text);
-    let text = if options.markdown_canonical {
-        Cow::Owned(canonicalize_inline(&text))
-    } else {
-        text
-    };
-    let tokens = inline_tokens(&text)?;
     let suffix = segment
         .hard_break
         .map(MarkdownHardBreakMarker::suffix)
         .unwrap_or("");
-    let mut out = String::new();
-    let mut writer =
-        TokenLineWriter::terminated(&mut out, first_prefix, continuation_prefix, newline);
-    write_markdown_token_lines(&mut writer, &tokens, options.markdown_wrap, suffix)?;
-    Some(out)
+    Draft::inline(
+        source,
+        &text,
+        first_prefix,
+        continuation_prefix,
+        newline,
+        default_newline,
+        true,
+        suffix,
+        false,
+    )
 }
 
-fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
+fn inline_tokens(text: &str) -> Option<Vec<(SourceSpan, usize)>> {
     let mut scan = InlineScan::new(text);
 
     if simple_inline_tokens_supported(text) {
@@ -3221,7 +3205,10 @@ fn inline_tokens(text: &str) -> Option<Vec<InlineToken<'_>>> {
         }
 
         let end = inline_token_end(&mut scan, index)?;
-        tokens.push(InlineToken::borrowed(&text[index..end]));
+        tokens.push((
+            SourceSpan::new(Span::new(index, end)),
+            token_width(&text[index..end]),
+        ));
         index = end;
     }
 
@@ -3241,9 +3228,15 @@ fn simple_inline_tokens_supported(text: &str) -> bool {
     true
 }
 
-fn simple_inline_tokens(text: &str) -> Vec<InlineToken<'_>> {
+fn simple_inline_tokens(text: &str) -> Vec<(SourceSpan, usize)> {
     text.split_ascii_whitespace()
-        .map(InlineToken::borrowed)
+        .map(|token| {
+            let start = token.as_ptr() as usize - text.as_ptr() as usize;
+            (
+                SourceSpan::new(Span::new(start, start + token.len())),
+                token_width(token),
+            )
+        })
         .collect()
 }
 

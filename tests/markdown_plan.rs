@@ -15,13 +15,14 @@ fn markdown_format_blocks_store_deferred_plans_after_file_scope_patches() {
     let input = "This is __strong__ text.\n\n<!-- fmt: canonical=true scope=file -->\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Markdown,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
 
     let paragraph = document
         .nodes
@@ -33,9 +34,7 @@ fn markdown_format_blocks_store_deferred_plans_after_file_scope_patches() {
         panic!("expected markdown paragraph plan, got {:?}", paragraph.emit);
     };
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions::default(),
+        &document.finalize(FormatOptions::default()),
         &PluginRegistry::default(),
     )
     .unwrap();
@@ -60,7 +59,7 @@ This is __strong__ text.
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Markdown,
         FormatOptions::default(),
@@ -103,9 +102,7 @@ This is __strong__ text.
     assert_eq!(planned, vec!["paragraph", "table", "list", "blockquote"]);
 
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions::default(),
+        &document.finalize(FormatOptions::default()),
         &PluginRegistry::default(),
     )
     .unwrap();
@@ -130,7 +127,7 @@ fn embedded_markdown_string_emit_consumes_nested_document_plan() {
     let input = "# fmt: markdown\nDOC = \"\"\"\n#   Title ##\n\"\"\"\n";
     let source = SourceBuffer::new(input.to_owned());
     let mut document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Python,
         FormatOptions {
@@ -149,12 +146,10 @@ fn embedded_markdown_string_emit_consumes_nested_document_plan() {
             _ => None,
         })
         .unwrap();
-    document.nested[nested].skip_file = true;
+    document.skip_nested(nested);
 
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions::default(),
+        &document.finalize(FormatOptions::default()),
         &PluginRegistry::default(),
     )
     .unwrap();
@@ -171,7 +166,7 @@ fn embedded_source_fragments_borrow_the_supplied_buffer() {
     let input = "# fmt: markdown\nDOC = \"\"\"\n  #   Title ##\n  \"\"\"\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Python,
         FormatOptions {
@@ -181,6 +176,7 @@ fn embedded_source_fragments_borrow_the_supplied_buffer() {
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
 
     let (indent, closing_indent) = document
         .nodes
@@ -195,8 +191,8 @@ fn embedded_source_fragments_borrow_the_supplied_buffer() {
         })
         .unwrap();
 
-    assert_eq!(fragment(&source, indent), "  ");
-    assert_eq!(fragment(&source, closing_indent), "  ");
+    assert_eq!(fragment(source, indent), "  ");
+    assert_eq!(fragment(source, closing_indent), "  ");
 }
 
 #[test]
@@ -227,7 +223,7 @@ x = 1
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Python,
         FormatOptions {
@@ -241,9 +237,7 @@ x = 1
     assert_eq!(document.nested.len(), 1);
 
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions::default(),
+        &document.finalize(FormatOptions::default()),
         &PluginRegistry::default(),
     )
     .unwrap();
@@ -275,7 +269,7 @@ Term
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Markdown,
         FormatOptions::default(),
@@ -313,7 +307,7 @@ Paragraph.
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Markdown,
         FormatOptions::default(),
@@ -347,7 +341,7 @@ This paragraph should wrap to sentence. This one too.
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Markdown,
         FormatOptions {
@@ -372,9 +366,7 @@ This paragraph should wrap to sentence. This one too.
     );
 
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions::default(),
+        &document.finalize(FormatOptions::default()),
         &PluginRegistry::default(),
     )
     .unwrap();

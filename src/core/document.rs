@@ -191,6 +191,8 @@ pub struct Document {
     pub nested: Vec<Document>,
     pub states: DirectiveStateTable,
     pub yaml: Option<YamlDocumentAst>,
+    // Indexed by `nodes`; public EmitPlan variants keep their existing shape.
+    pub(crate) markdown: crate::core::markdown::MarkdownPlans,
     pub trace: DocumentTrace,
     pub options: FormatOptions,
     pub skip_file: bool,
@@ -206,6 +208,7 @@ impl Document {
             nested: Vec::new(),
             states: DirectiveStateTable::new(),
             yaml: None,
+            markdown: crate::core::markdown::MarkdownPlans::default(),
             trace: DocumentTrace::default(),
             options: FormatOptions::default(),
             skip_file: false,
@@ -218,6 +221,7 @@ impl Document {
 
     pub fn push_node(&mut self, node: Node) {
         self.nodes.push(node);
+        self.markdown.push_node();
     }
 
     pub fn push_nested(&mut self, document: Document) -> usize {
@@ -236,6 +240,144 @@ impl Document {
         for (node, state) in self.nodes.iter_mut().zip(patched_ids) {
             node.state = state;
         }
+    }
+}
+
+/// A parsed tree and the source its spans refer to. Inspection does not grant
+/// mutable access to the tree: directives are applied by the parsers, and the
+/// supported skip operation below does not invalidate retained recognition.
+#[derive(Debug)]
+pub struct ParsedDocument {
+    source: SourceBuffer,
+    document: Document,
+    mode: DocumentEmitMode,
+}
+
+impl ParsedDocument {
+    pub(crate) fn new(source: SourceBuffer, document: Document, mode: DocumentEmitMode) -> Self {
+        Self {
+            source,
+            document,
+            mode,
+        }
+    }
+
+    pub fn source(&self) -> &SourceBuffer {
+        &self.source
+    }
+
+    pub fn skip_nested(&mut self, nested: usize) {
+        self.document.nested[nested].skip_file = true;
+    }
+
+    /// Transfer the tree into its execution phase after options have settled.
+    pub fn finalize(self, options: FormatOptions) -> PreparedDocument {
+        let tree = PreparedTree::new(&self.source, self.document, options, self.mode);
+        PreparedDocument {
+            source: self.source,
+            tree,
+        }
+    }
+}
+
+impl std::ops::Deref for ParsedDocument {
+    type Target = Document;
+
+    fn deref(&self) -> &Document {
+        &self.document
+    }
+}
+
+/// Finalized plans cannot be separated from their source or supplied new options
+/// at execution. The owned buffers move through this boundary without cloning.
+#[derive(Debug)]
+pub struct PreparedDocument {
+    source: SourceBuffer,
+    tree: PreparedTree,
+}
+
+impl PreparedDocument {
+    pub fn emit(
+        &self,
+        plugins: &crate::plugins::PluginRegistry,
+    ) -> crate::diagnostic::Result<String> {
+        crate::core::emit::emit_document(self, plugins)
+    }
+
+    pub(crate) fn source(&self) -> &SourceBuffer {
+        &self.source
+    }
+
+    pub(crate) fn tree(&self) -> &PreparedTree {
+        &self.tree
+    }
+
+    pub(crate) fn into_parts(self) -> (SourceBuffer, Document) {
+        (self.source, self.tree.into_document())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DocumentEmitMode {
+    Document,
+    Markdown,
+    Yaml,
+}
+
+/// A finalized tree may use the enclosing document's source or a fragment's
+/// shared logical buffer. Both owners keep the pair private during execution.
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedTree {
+    document: Document,
+    options: FormatOptions,
+    mode: DocumentEmitMode,
+}
+
+impl PreparedTree {
+    pub(crate) fn new(
+        source: &SourceBuffer,
+        mut document: Document,
+        mut options: FormatOptions,
+        mode: DocumentEmitMode,
+    ) -> Self {
+        if matches!(mode, DocumentEmitMode::Yaml)
+            && !matches!(
+                source.dominant_line_ending,
+                crate::core::source::LineEnding::None
+            )
+        {
+            options.default_line_ending = source.dominant_line_ending.as_str();
+        }
+        if !document.skip_file {
+            crate::core::markdown::finalize_document(
+                source,
+                &mut document,
+                options,
+                !matches!(mode, DocumentEmitMode::Yaml),
+            );
+        }
+        crate::core::markdown::release_drafts(&mut document);
+        Self {
+            document,
+            options,
+            mode,
+        }
+    }
+
+    pub(crate) fn document(&self) -> &Document {
+        &self.document
+    }
+
+    pub(crate) fn options(&self) -> FormatOptions {
+        self.options
+    }
+
+    pub(crate) fn mode(&self) -> DocumentEmitMode {
+        self.mode
+    }
+
+    pub(crate) fn into_document(self) -> Document {
+        self.document
     }
 }
 
