@@ -1,0 +1,14 @@
+-- args
+format --diff tests/fixtures/markdown_literal_eof.md
+-- stdin
+-- stdout
+--- tests/fixtures/markdown_literal_eof.md
++++ tests/fixtures/markdown_literal_eof.md
+@@ -1 +1 @@
+-Before `code`
+\ No newline at end of file
++Before `code`
+-- stderr
+1 files scanned, 1 formatted, 0 unchanged, 0 skipped, 0 failed
+-- status
+1

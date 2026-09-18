@@ -60,9 +60,43 @@ pub(crate) fn emit_planned_document(
 
 // Verbatim ranges refer to bytes in `text`, not source offsets. Nested Markdown
 // fences/divs carry them through parent cleanup; ordinary gaps still normalize.
-struct EmittedText {
-    text: String,
-    verbatim: Vec<Span>,
+#[derive(Default)]
+pub(crate) struct EmittedText {
+    pub(crate) text: String,
+    pub(crate) verbatim: Vec<Span>,
+    // EOF policy belongs to explicit preservation, not inline literal ranges.
+    // An output offset keeps it tied to the actual tail after composition.
+    pub(crate) preserve_eof_at: usize,
+}
+
+impl EmittedText {
+    pub(crate) fn push_slice(&mut self, text: &str, verbatim: &[Span], slice: Span) {
+        let start = self.text.len();
+        self.text.push_str(&text[slice.start..slice.end]);
+        let first = verbatim.partition_point(|span| span.end <= slice.start);
+        for span in &verbatim[first..] {
+            if span.start >= slice.end {
+                break;
+            }
+            self.verbatim.push(Span::new(
+                start + span.start.max(slice.start) - slice.start,
+                start + span.end.min(slice.end) - slice.start,
+            ));
+        }
+    }
+}
+
+pub(crate) fn emit_fragment(source: &SourceBuffer, tree: &PreparedTree) -> Result<EmittedText> {
+    emit_document_inner(
+        source,
+        tree.document(),
+        tree.options(),
+        &PluginRegistry::default(),
+        EmitContext {
+            blank_between_adjacent_divs: false,
+        },
+        false,
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -86,7 +120,15 @@ fn emit_document_inner(
         } else {
             Vec::new()
         };
-        return Ok(EmittedText { text, verbatim });
+        return Ok(EmittedText {
+            preserve_eof_at: if document.kind == DocumentKind::Markdown {
+                text.len()
+            } else {
+                0
+            },
+            text,
+            verbatim,
+        });
     }
     let mut options = if document.options == FormatOptions::default() {
         options
@@ -144,7 +186,7 @@ fn emit_document_inner(
         }
         let state = document.state(node.state);
         if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode)) {
-            out.push_verbatim(source.slice(node.span));
+            out.push_verbatim(source.slice(node.span), true);
             cursor = node.span.end;
             previous_adjacent_div = false;
             index += 1;
@@ -152,7 +194,7 @@ fn emit_document_inner(
         }
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
             if document.kind == DocumentKind::Markdown {
-                out.push_verbatim(source.slice(node.span));
+                out.push_verbatim(source.slice(node.span), true);
             } else {
                 out.push_str(source.slice(node.span));
             }
@@ -194,7 +236,7 @@ fn emit_document_inner(
                     .get(index)
                     .expect("retained Markdown plan");
                 if let Some(plan) = &retained.plan {
-                    out.push_str(&plan.emit(source.slice(node.span)));
+                    out.push_fragment(&plan.emit_protected(source.slice(node.span)));
                 } else {
                     out.push_str(source.slice(node.span));
                 }
@@ -440,6 +482,7 @@ struct EmitOutput {
     final_line_ending: &'static str,
     line_trim_end: usize,
     verbatim: Vec<Span>,
+    preserve_eof_at: usize,
 }
 
 impl EmitOutput {
@@ -454,6 +497,7 @@ impl EmitOutput {
             final_line_ending,
             line_trim_end: 0,
             verbatim: Vec::new(),
+            preserve_eof_at: 0,
         }
     }
 
@@ -474,7 +518,7 @@ impl EmitOutput {
         self.push_markdown_normalized_str(text);
     }
 
-    fn push_verbatim(&mut self, text: &str) {
+    fn push_verbatim(&mut self, text: &str, preserve_eof: bool) {
         if text.is_empty() {
             return;
         }
@@ -483,16 +527,22 @@ impl EmitOutput {
         // Later line/final cleanup may trim gaps, but never this output.
         self.line_trim_end = self.text.len();
         self.verbatim.push(Span::new(start, self.text.len()));
+        if preserve_eof {
+            self.preserve_eof_at = self.text.len();
+        }
     }
 
     fn push_fragment(&mut self, fragment: &EmittedText) {
         let mut cursor = 0;
         for span in &fragment.verbatim {
             self.push_str(&fragment.text[cursor..span.start]);
-            self.push_verbatim(&fragment.text[span.start..span.end]);
+            self.push_verbatim(&fragment.text[span.start..span.end], false);
             cursor = span.end;
         }
         self.push_str(&fragment.text[cursor..]);
+        if !fragment.text.is_empty() && fragment.preserve_eof_at == fragment.text.len() {
+            self.preserve_eof_at = self.text.len();
+        }
     }
 
     fn push_verbatim_lines(&mut self, text: &str) {
@@ -506,10 +556,7 @@ impl EmitOutput {
 
     fn finish(mut self) -> EmittedText {
         if self.normalize_markdown
-            && !self
-                .verbatim
-                .last()
-                .is_some_and(|span| span.end == self.text.len())
+            && self.preserve_eof_at != self.text.len()
             && !self.text.is_empty()
             && !self.text.ends_with('\n')
             && !self.text.ends_with('\r')
@@ -520,6 +567,7 @@ impl EmitOutput {
         EmittedText {
             text: self.text,
             verbatim: self.verbatim,
+            preserve_eof_at: self.preserve_eof_at,
         }
     }
 

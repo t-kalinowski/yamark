@@ -1,0 +1,37 @@
+-- args
+format --stdin-file-path input.md --wrap 24
+-- stdin
+-
+
+>
+
+> -
+
+- >
+
+```markdown
+-
+```
+
+- `  `
+
+> $  $
+-- stdout
+-
+
+>
+
+> -
+
+- >
+
+```markdown
+-
+```
+
+- `  `
+
+> $  $
+-- stderr
+-- status
+0
