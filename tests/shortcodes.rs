@@ -69,7 +69,7 @@ fn shortcode_transcript_outputs_are_idempotent() {
         include_str!("cases/markdown_shortcode_disabled_raw_blocks.case"),
         include_str!("cases/markdown_shortcode_bom_angle.case"),
         include_str!("cases/markdown_shortcode_bom_percent.case"),
-        include_str!("cases/markdown_shortcode_nested_skip_file_known_bug.case"),
+        include_str!("cases/markdown_shortcode_nested_skip_file.case"),
         include_str!("cases/markdown_shortcode_unterminated_token.case"),
         include_str!("cases/markdown_shortcode_unterminated_fragments.case"),
         include_str!("cases/markdown_shortcode_placement_controls.case"),

@@ -1033,10 +1033,28 @@ A recognized `fmt: on` line resumes formatting regardless of surrounding
 shortcode, quote, fence, HTML, or math-like text. Disabled-region scanning does
 not interpret those structures.
 
-The pre-existing nested `fmt: skip file` limitation remains: the parent of a
-skipped Markdown fence or div can trim trailing whitespace from its contents,
-including shortcode arguments. The compatibility tests record this bug; skipped
-fragments do not gain token recognition or a byte-preservation guarantee here.
+Explicitly preserved Markdown is opaque to whitespace cleanup: `fmt: skip`
+copies the complete selected node, `fmt: off` copies the disabled region up to
+the existing linewise `fmt: on` boundary, and `fmt: skip file` copies the entire
+enclosing Markdown document or fragment. Trailing spaces, line endings, and an
+absent final newline survive, including through supported nested Markdown
+fences/divs. Contents need not be recognized syntax. Ordinary gaps and automatic
+formatting fallback retain their existing cleanup behavior.
+
+The emitter carries verbatim ranges in its returned text, using output offsets
+rather than source offsets. A skipped document marks its entire nonempty output;
+a skipped container contributes one complete source slice without walking its
+children to recover shortcode boundaries. Explicit directive state and
+`EmitPlan::Preserve` produce these ranges for Markdown; `EmitPlan::Copy`,
+missing format plans, and retained-plan preservation do not. Other document
+kinds, source-language adapters, reindentation, and external formatters are
+unchanged.
+
+Future literal-aware formatting can append already-identified literal bytes at
+this same output boundary and carry the ranges through nested emission. It must
+preserve those bytes before they reach the emitter; this boundary cannot undo
+earlier trimming in actively formatted content. No new inline literal producers
+are introduced here.
 
 This support does not interpret template expressions or validate arguments, and
 does not extend inline, mixed token/prose line, list, or blockquote support.

@@ -89,6 +89,12 @@ To disable body formatting, surround the region with `<!-- fmt: off -->` and
 linewise policy: a recognized `fmt: on` line resumes formatting even if the
 surrounding text resembles a shortcode argument, code fence, HTML, or math block.
 
+Explicitly skipped Markdown retains its bytes, including trailing spaces and
+line endings: `<!-- fmt: skip -->` preserves the next selected node,
+`<!-- fmt: off -->` preserves the disabled region, and `<!-- fmt: skip file -->`
+preserves the enclosing Markdown document or fragment. This protection survives
+supported nesting in Markdown fences and divs; surrounding Markdown still formats.
+
 ## Editor integrations
 
 The VS Code and Positron formatter extension lives in `editors/vscode/`.
