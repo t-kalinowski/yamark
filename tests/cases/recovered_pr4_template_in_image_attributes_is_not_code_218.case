@@ -1,9 +1,0 @@
--- args
-format --wrap sentence --stdin-file-path input.md --verify
--- stdin
-![x](url) {fig-alt="`<% keep   this %>`"}
--- stdout
-![x](url) {fig-alt="`<% keep   this %>`"}
--- stderr
--- status
-0

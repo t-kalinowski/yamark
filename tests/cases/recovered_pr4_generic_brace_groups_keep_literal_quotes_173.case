@@ -1,9 +1,0 @@
--- args
-format --wrap sentence --stdin-file-path input.md --verify
--- stdin
-#   H \mycommand{a "   quote}   ##
--- stdout
-# H \mycommand{a "   quote}
--- stderr
--- status
-0

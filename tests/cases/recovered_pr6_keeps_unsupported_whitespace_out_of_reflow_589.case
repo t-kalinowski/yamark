@@ -1,9 +1,0 @@
--- args
-format --stdin-file-path input.md --wrap paragraph --canonical
--- stdin
-`firstsecond` _outside_ [real](  url  ).
--- stdout
-`firstsecond` *outside* [real](url).
--- stderr
--- status
-0

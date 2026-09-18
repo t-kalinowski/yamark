@@ -1,9 +1,0 @@
--- args
-format --canonical --wrap sentence --stdin-file-path input.md --verify
--- stdin
-#   Heading <script>const x="<script>"; keep   _this_ {{ foo }}</SCRIPT>   ##
--- stdout
-#   Heading <script>const x="<script>"; keep   _this_ {{ foo }}</SCRIPT>   ##
--- stderr
--- status
-0

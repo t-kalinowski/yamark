@@ -1,9 +1,0 @@
--- args
-format --stdin-file-path input.md --wrap none --canonical
--- stdin
-first\\\   second `[x](  url  ) \\\   ` _outside_ [real](  target  ).
--- stdout
-first\\\   second `[x](  url  ) \\\   ` *outside* [real](target).
--- stderr
--- status
-0

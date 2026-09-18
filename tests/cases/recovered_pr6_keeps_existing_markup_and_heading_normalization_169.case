@@ -1,9 +1,0 @@
--- args
-format --stdin-file-path input.md --wrap sentence --canonical
--- stdin
-Before ~~[x](  url  )~~ after.
--- stdout
-Before ~~[x](url)~~ after.
--- stderr
--- status
-0

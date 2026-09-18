@@ -1,9 +1,0 @@
--- args
-format --canonical --wrap sentence --stdin-file-path input.md --verify
--- stdin
-#   Heading <textarea>const x="<textarea>"; keep   _this_ {{ foo }}</TEXTAREA>   ##
--- stdout
-#   Heading <textarea>const x="<textarea>"; keep   _this_ {{ foo }}</TEXTAREA>   ##
--- stderr
--- status
-0

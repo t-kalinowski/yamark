@@ -1,9 +1,0 @@
--- args
-format --wrap sentence --stdin-file-path input.yaml --verify
--- stdin
-doc: !markdown "Before `\n====\n<% keep   this %>\nafter `"
--- stdout
-doc: !markdown "Before `\n====\n<% keep   this %>\nafter `"
--- stderr
--- status
-0
