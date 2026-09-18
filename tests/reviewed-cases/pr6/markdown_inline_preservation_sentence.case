@@ -1,80 +1,0 @@
--- args
-format --stdin-file-path input.md --wrap sentence
--- stdin
-Before
-`[x](< url >)` after.
-
-Before
-`[x](  url  )` after [real](  target  ).
-
-Before
-$[x](  url  )$ after [real](  target  ).
-
-- Before
-  `[x](  url  )` after [real](  target  ).
-
-> Before
-> $[x](  url  )$ after [real](  target  ).
-
-Before
-`[x]( url ) {{< include file >}}` after.
-
-firstsecond `ab` $cd$
-
-- firstsecond `ab` $cd$
-
-> firstsecond `ab` $cd$
-
-first\   second `[x](  url  ) \   ` after.
-
-- first\	second `[x](  url  ) \	` after.
-
-> first\second `[x](  url  ) \` after.
-
-firstsecond _outside_ [real](  url  ).
-
-first\second _outside_ [real](  url  ).
-
-Term
-   : Before
-    after [real](  target  ).
-
-100. Before `first  
-    second [x]( url )` after [real](  target  ).
--- stdout
-Before `[x](< url >)` after.
-
-Before `[x](  url  )` after [real](target).
-
-Before $[x](  url  )$ after [real](target).
-
-- Before `[x](  url  )` after [real](target).
-
-> Before $[x](  url  )$ after [real](target).
-
-Before `[x]( url ) {{< include file >}}` after.
-
-first second `ab` $cd$
-
-- first second `ab` $cd$
-
-> first second `ab` $cd$
-
-first\ second `[x](  url  ) \   ` after.
-
-- first\ second `[x](  url  ) \	` after.
-
-> first\ second `[x](  url  ) \` after.
-
-firstsecond _outside_ [real](  url  ).
-
-first\second _outside_ [real](  url  ).
-
-Term
-   : Before after [real](target).
-
-100. Before `first  
-     second [x]( url )` after [real](target).
--- stderr
--- status
-0

@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap none --canonical
+-- stdin
+# _Before `_a_ [x]( url )` after_
+
+# _Before $x + _a_ [x]( url )$ after_
+-- stdout
+# *Before `*a_ [x]( url )` after_
+
+# *Before $x + _a* [x]( url )$ after_
+-- stderr
+-- status
+0

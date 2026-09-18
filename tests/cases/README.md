@@ -18,7 +18,3 @@ expected stderr
 The test harness intentionally avoids calling library internals. This keeps the
 public CLI contract readable and prevents implementation details from becoming
 part of the test API.
-
-Recovered transcripts from PRs #4 and #6 are indexed in
-[the reviewed-case inventory](../reviewed-cases/README.md), with historical
-expectations and explanations of differences from the recorded main revision.

@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+- {{ render_item() }}
+  Follow-up prose.
+
+> {{ render_item() }}
+> Follow-up prose.
+-- stdout
+- {{ render_item() }}
+  Follow-up prose.
+
+> {{ render_item() }}
+> Follow-up prose.
+-- stderr
+-- status
+0
