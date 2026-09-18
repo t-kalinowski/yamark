@@ -125,7 +125,7 @@ impl ParagraphTemplateSpans {
                     } else if rest.starts_with("~~") {
                         Some(strikethrough_span_end(source, index)?)
                     } else if rest.starts_with(['*', '_']) {
-                        Some(emphasis_span_end(source, index)?)
+                        Some(emphasis_span_end(&mut scan, index)?)
                     } else {
                         latex_command_token_end(source, index)
                     };
@@ -1951,21 +1951,14 @@ pub fn canonicalize_inline(source: &str) -> String {
             index = end;
             continue;
         }
-        if rest.starts_with('`') {
-            let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
-            let marker = &rest[..tick_count];
-            if let Some(close) = rest[tick_count..].find(marker) {
-                let end = index + tick_count + close + tick_count;
-                out.push_str(&source[index..end]);
-                index = end;
-                continue;
-            }
+        if let Some(end) = scan.literal_span_end(index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
         }
-        if rest.starts_with('$')
-            && !escaped_at(source, index)
-            && let Some(close) = rest[1..].find('$')
-        {
-            let end = index + 1 + close + 1;
+        if rest.starts_with('`') && escaped_at(source, index) {
+            // An escaped run cannot start a literal partway through the run.
+            let end = index + delimiter_run_len_at(source, index, b'`');
             out.push_str(&source[index..end]);
             index = end;
             continue;
@@ -1983,7 +1976,7 @@ pub fn canonicalize_inline(source: &str) -> String {
         let ch = rest.chars().next().expect("index is on a char boundary");
         if ch == '_'
             && !escaped_at(source, index)
-            && let Some(span) = emphasis_span_at(source, index)
+            && let Some(span) = emphasis_span_at(&mut scan, index)
         {
             let delimiter = "*".repeat(span.run);
             out.push_str(&delimiter);
@@ -2649,7 +2642,7 @@ fn protected_spacing_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option
         .or_else(|| inline_html_tag_span_end(source, index))
         .or_else(|| inline_code_span_end(source, index))
         .or_else(|| inline_math_span_end(source, index))
-        .or_else(|| emphasis_span_end(source, index))
+        .or_else(|| emphasis_span_end(scan, index))
         .or_else(|| latex_command_token_end(source, index))
 }
 
@@ -3727,7 +3720,7 @@ fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String>
             index = end;
             continue;
         }
-        if let Some(end) = link_label_protected_span_end(label, index) {
+        if let Some(end) = link_label_protected_span_end(&mut scan, index) {
             out.push_str(&label[index..end]);
             index = end;
             continue;
@@ -3742,13 +3735,14 @@ fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String>
     Some(normalize_spaces_preserving_protected_spans(out.trim()).into_owned())
 }
 
-fn link_label_protected_span_end(label: &str, index: usize) -> Option<usize> {
+fn link_label_protected_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let label = scan.text;
     strikethrough_span_end(label, index)
         .or_else(|| inline_code_span_end(label, index))
         .or_else(|| inline_math_span_end(label, index))
         .or_else(|| paired_inline_html_span_end(label, index))
         .or_else(|| inline_html_tag_span_end(label, index))
-        .or_else(|| emphasis_span_end(label, index))
+        .or_else(|| emphasis_span_end(scan, index))
         .or_else(|| latex_command_token_end(label, index))
 }
 
@@ -3922,7 +3916,7 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
     if rest.starts_with('\\') && rest[1..].chars().next().is_some_and(char::is_alphabetic) {
         return latex_command_token_end(text, start);
     }
-    if let Some(end) = emphasis_span_end(text, start) {
+    if let Some(end) = emphasis_span_end(scan, start) {
         return Some(end);
     }
     if rest.starts_with("![") || rest.starts_with('[') {
@@ -4017,11 +4011,12 @@ struct EmphasisSpan {
     run: usize,
 }
 
-fn emphasis_span_end(text: &str, start: usize) -> Option<usize> {
-    emphasis_span_at(text, start).map(|span| span.end)
+fn emphasis_span_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    emphasis_span_at(scan, start).map(|span| span.end)
 }
 
-fn emphasis_span_at(text: &str, start: usize) -> Option<EmphasisSpan> {
+fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisSpan> {
+    let text = scan.text;
     if escaped_at(text, start) {
         return None;
     }
@@ -4043,9 +4038,36 @@ fn emphasis_span_at(text: &str, start: usize) -> Option<EmphasisSpan> {
     }
     let delimiter = &text[start..start + run];
     let mut search = start + run;
+    let mut opaque_end = search;
     while search < text.len() {
-        let relative = text[search..].find(delimiter)?;
-        let close = search + relative;
+        let byte = text.as_bytes()[search];
+        if search >= opaque_end && matches!(byte, b'`' | b'$') {
+            if let Some(end) = scan.literal_span_end(search) {
+                search = end;
+                continue;
+            }
+            if byte == b'`' && escaped_at(text, search) {
+                search += delimiter_run_len_at(text, search, b'`');
+                continue;
+            }
+        }
+        // Existing nonliteral ranges cannot open code/math spans. Retain the
+        // old emphasis delimiter search within them; changing how emphasis
+        // interacts with links, HTML/raw angles or attributes is separate work.
+        if search >= opaque_end
+            && matches!(byte, b'[' | b'!' | b'<' | b'{' | b'\\')
+            && let Some(end) = paired_inline_html_span_end(text, search)
+                .or_else(|| protected_inline_token_end(scan, search))
+        {
+            opaque_end = end;
+        }
+        if byte != marker || !text[search..].starts_with(delimiter) {
+            // Only ASCII candidates above are sliced, so bytewise advancement
+            // also skips ordinary UTF-8 prose without decoding it.
+            search += 1;
+            continue;
+        }
+        let close = search;
         let inner = &text[start + run..close];
         if close <= start + run
             || escaped_at(text, close)
@@ -4343,6 +4365,14 @@ impl<'a> InlineScan<'a> {
         }
     }
 
+    fn literal_span_end(&mut self, start: usize) -> Option<usize> {
+        match self.text.as_bytes().get(start)? {
+            b'`' if !escaped_at(self.text, start) => self.code_span_end(start),
+            b'$' => inline_math_span_end(self.text, start),
+            _ => None,
+        }
+    }
+
     fn code_span_end(&mut self, start: usize) -> Option<usize> {
         if !self.text[start..].starts_with('`') {
             return None;
@@ -4354,28 +4384,31 @@ impl<'a> InlineScan<'a> {
             return Some(end);
         }
         // A failed opener must not make every later backtick rescan the suffix.
-        // Index the same marker searches as inline_code_span_end at run starts
-        // in work proportional to the remaining source bytes.
+        // Cache the same marker searches as inline_code_span_end, including
+        // suffixes of unmatched runs accepted by canonicalization. Include
+        // earlier runs because a failed emphasis lookahead can return to them.
         // This caches existing recognition; it does not tighten its grammar.
         let mut ends = HashMap::new();
         let mut next = vec![None];
         let bytes = self.text.as_bytes();
         let mut index = bytes.len();
-        while index > start {
+        while index > 0 {
             if bytes[index - 1] != b'`' {
                 index -= 1;
                 continue;
             }
             let end = index;
-            while index > start && bytes[index - 1] == b'`' {
+            while index > 0 && bytes[index - 1] == b'`' {
                 index -= 1;
             }
             let run = end - index;
             if next.len() <= run {
                 next.resize(run + 1, None);
             }
-            if let Some(close) = next[run] {
-                ends.insert(index, close + run);
+            for (length, &close) in next.iter().enumerate().take(run + 1).skip(1) {
+                if let Some(close) = close {
+                    ends.insert(end - length, close + length);
+                }
             }
             next[1..=run].fill(Some(index));
         }
