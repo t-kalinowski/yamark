@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:80 --canonical
+-- stdin
+Before `first  
+  second [x]( url )` after _outside_. Next sentence.
+
+- Before `first  
+    second [x]( url )` after _outside_. Next sentence.
+
+> Before $first  
+>   second \$ [x]( url )$ after _outside_. Next sentence.
+-- stdout
+Before `first
+  second [x]( url )` after _outside_. Next sentence.
+
+- Before `first
+    second [x]( url )` after _outside_. Next sentence.
+
+> Before $first
+>   second \$ [x]( url )$ after _outside_. Next sentence.
+-- stderr
+-- status
+0
