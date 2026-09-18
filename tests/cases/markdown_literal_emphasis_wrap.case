@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap 16
+-- stdin
+Lead *Before `*a*` after* tail.
+
+- Lead _Before $_a_$ after_ tail.
+
+> Lead **Before `**a**` after** tail.
+-- stdout
+Lead
+*Before `*a*` after*
+tail.
+
+- Lead
+  _Before $_a_$ after_
+  tail.
+
+> Lead
+> **Before `**a**` after**
+> tail.
+-- stderr
+-- status
+0

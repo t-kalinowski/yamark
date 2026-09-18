@@ -4,10 +4,14 @@ format --stdin-file-path input.md --wrap none --canonical
 # _Before `_a_ [x]( url )` after_
 
 # _Before $x + _a_ [x]( url )$ after_
--- stdout
-# *Before `*a_ [x]( url )` after_
 
-# *Before $x + _a* [x]( url )$ after_
+# _Before **`_a_ [x](< url >)`** after_
+-- stdout
+# *Before `_a_ [x]( url )` after*
+
+# *Before $x + _a_ [x]( url )$ after*
+
+# *Before **`_a_ [x](< url >)`** after*
 -- stderr
 -- status
 0
