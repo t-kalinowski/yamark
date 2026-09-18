@@ -29,7 +29,13 @@ fn cli_cases() {
         command.write_stdin(case.stdin);
         let assert = command.assert().code(case.status);
         let output = assert.get_output();
-        if std::env::var_os("YAMARK_UPDATE_CASES").is_some() {
+        if std::env::var("YAMARK_UPDATE_CASES").is_ok_and(|prefix| {
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with(&prefix)
+        }) {
             let original = fs::read_to_string(&path).unwrap();
             let (input, _) = original.split_once("-- stdout\n").unwrap();
             fs::write(

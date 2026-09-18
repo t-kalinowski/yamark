@@ -6,6 +6,7 @@ use super::*;
 pub(super) struct InlineContent<'a> {
     parts: Vec<InlinePart<'a>>,
     supported: bool,
+    normalize_links: bool,
 }
 
 enum InlinePart<'a> {
@@ -91,6 +92,7 @@ impl<'a> InlineContent<'a> {
         let mut scan = InlineScan::new(source);
         let mut parts = Vec::new();
         let mut supported = true;
+        let mut normalize_links = true;
         let mut index = 0;
         while index < source.len() {
             let rest = &source[index..];
@@ -102,11 +104,20 @@ impl<'a> InlineContent<'a> {
             // Escapes belong to prose. Consume the escaped character together
             // with its backslash so it cannot open a protected fragment.
             if rest.starts_with('\\') && escaped_at(source, index + 1) {
-                let end = index + 2;
+                let mut end = index + 2;
+                if source.as_bytes()[index + 1] == b'`' {
+                    end += source[end..]
+                        .bytes()
+                        .take_while(|byte| *byte == b'`')
+                        .count();
+                }
                 parts.push(InlinePart::Text(&source[index..end]));
                 index = end;
                 continue;
             }
+            // Keep main's raw-angle policy: only angles consumed by a literal
+            // or a real link may participate in link normalization.
+            normalize_links &= !rest.starts_with('<');
             if let Some(end) = immutable_span_end(&mut scan, index) {
                 let text = &source[index..end];
                 supported &= !multiline_brace_span_at(source, index);
@@ -116,9 +127,11 @@ impl<'a> InlineContent<'a> {
                 continue;
             }
             if let Some((open_end, close_start, end)) = markup_span(source, index) {
+                let content = Self::parse(&source[open_end..close_start]);
+                normalize_links &= content.normalize_links;
                 parts.push(InlinePart::Markup {
                     opening: &source[index..open_end],
-                    content: Self::parse(&source[open_end..close_start]),
+                    content,
                     closing: &source[close_start..end],
                 });
                 index = end;
@@ -133,7 +146,7 @@ impl<'a> InlineContent<'a> {
             }
             if let Some(span) = emphasis_span_at(source, index) {
                 let content = Self::parse(&source[index + span.run..span.close]);
-                supported &= content.supported;
+                normalize_links &= content.normalize_links;
                 let relative = EmphasisSpan {
                     close: span.close - index,
                     end: span.end - index,
@@ -154,9 +167,18 @@ impl<'a> InlineContent<'a> {
                 index = end;
                 continue;
             }
-            supported &= !rest.starts_with(['`', '$', '['])
-                && !rest.starts_with("![")
-                && !rest.starts_with("~~");
+            // An unmatched run is one literal opener, not a sequence of
+            // progressively shorter candidate code delimiters. As before, the
+            // outer emphasis/markup scanner determines its own eligibility.
+            if rest.starts_with('`') {
+                let end = index + rest.bytes().take_while(|byte| *byte == b'`').count();
+                parts.push(InlinePart::Text(&source[index..end]));
+                supported = false;
+                index = end;
+                continue;
+            }
+            supported &=
+                !rest.starts_with(['$', '[']) && !rest.starts_with("![") && !rest.starts_with("~~");
             let ch = rest.chars().next().expect("index is on a char boundary");
             supported &= !ch.is_whitespace() || ch.is_ascii_whitespace();
             let end = index + ch.len_utf8();
@@ -168,13 +190,17 @@ impl<'a> InlineContent<'a> {
             }
             index = end;
         }
-        Self { parts, supported }
+        Self {
+            parts,
+            supported,
+            normalize_links,
+        }
     }
 
     pub(super) fn render(&self, links: bool, canonical: bool) -> String {
         self.parts
             .iter()
-            .map(|part| part.render(links, canonical, true))
+            .map(|part| part.render(links && self.normalize_links, canonical, true))
             .collect()
     }
 
@@ -223,7 +249,7 @@ impl<'a> InlineContent<'a> {
                     out.push_str(text);
                 }
             } else {
-                out.push_str(&part.render(links, canonical, true));
+                out.push_str(&part.render(links && self.normalize_links, canonical, true));
             }
         }
         out
@@ -248,14 +274,15 @@ impl<'a> InlineContent<'a> {
                 }
                 continue;
             }
-            let text = part.render(true, canonical, false);
+            let text = part.render(self.normalize_links, canonical, false);
             if let Some(token) = &mut current {
                 token.text.to_mut().push_str(&text);
                 token.width = token_width(token.text());
                 token.splittable_link &= matches!(part, InlinePart::Text(_));
             } else {
                 let mut token = InlineToken::new(text);
-                token.splittable_link = matches!(part, InlinePart::Link(..));
+                token.splittable_link =
+                    self.normalize_links && matches!(part, InlinePart::Link(..));
                 current = Some(token);
             }
         }
@@ -284,8 +311,10 @@ impl<'a> InlinePart<'a> {
             Self::Link(source, link) => {
                 if links {
                     Cow::Owned(link.render(preserve_lines))
-                } else {
+                } else if preserve_lines {
                     Cow::Borrowed(source)
+                } else {
+                    normalize_spaces_preserving_protected_spans(source)
                 }
             }
             Self::Emphasis {

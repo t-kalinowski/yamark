@@ -1,30 +1,22 @@
 # Inline formatting
 
-Paragraphs and container paragraphs share `InlineContent` in `src/core/wrap/inline.rs`. It uses the existing inline scanners to distinguish prose, whitespace, protected source slices, links, and inline markup. It is not a separate Markdown block parser.
+`InlineContent` in `src/core/wrap/inline.rs` recognizes paragraph content with the existing inline scanners. It distinguishes editable gaps, protected source slices, real links, and supported markup. The block parser still owns block recognition and container prefixes.
 
-## Formatting order
+## Planning and emission
 
-1. The block parser selects paragraphs and containers. Container formatters remove their prefixes and pass content lines, including their line endings, to `format_prefixed_markdown_lines` or recursive Markdown formatting. They normalize structural blank lines separately from paragraph content.
-2. `InlineContent::parse` recognizes inline structure before formatting. Code, math, reference links, autolinks, brace spans, and LaTeX commands retain their source slices. Existing emphasis and inline markup boundaries contain inline content; normalization can reach their real links without entering literals.
-3. Formatting consumes the representation. Editable gaps supply word and hard break boundaries. Links receive their existing label, target, and attribute normalization. Canonicalization changes supported emphasis delimiters.
-4. The wrapper receives tokens with an explicit flag identifying splittable links. Protected tokens retain their contents even when wider than the requested column. The writer restores container prefixes on literal continuation lines.
-5. Paragraph and container output bypasses the emitter's general line trimming. When emitting Markdown, each fragment and child Markdown document finishes its own normalization, including fenced divs and Markdown code fences. Parents append formatted child Markdown verbatim; trimming its physical lines again would remove spaces from multiline literals.
+1. Containers pass prefix-stripped content with authored line endings into `prepare_prefixed_markdown_lines`. Structural separators receive their own whitespace cleanup.
+2. Inline recognition precedes whitespace normalization, link normalization, and canonicalization. Code, math, reference links, autolinks, brace spans, and LaTeX commands retain their source slices. Editable gaps supply word and hard-break boundaries.
+3. Main's retained `Draft` stores normalized alternatives, measured token ranges, authored breaks, and link identity. Resolving effective options chooses an alternative and records layout in `Plan`. Emission executes the plan without reinterpreting Markdown.
+4. Wrapping splits only tokens classified as real links and restores container prefixes inside multiline tokens. Finalized paragraph, container, and child Markdown output bypasses general line trimming, so recursive emission cannot remove literal spaces.
 
-The list support check uses multiline spans from the same inline representation instead of searching raw text for link destinations. Heading canonicalization also uses this representation. Heading and table layout retain their existing spacing rules.
+List support checks collect multiline ranges recursively through recognized markup. Continuation eligibility follows the existing grammar independently of emitted prefix width; prefix removal consumes only indentation present in the source. Heading canonicalization shares inline recognition, while heading and table spacing retain their existing rules.
 
-## Normalization ownership
+## Compatibility and boundaries
 
-- Inline classification uses the shared escape predicate: a backslash escapes ASCII punctuation. Whitespace after a backslash remains eligible for gap classification. Gaps use the same ASCII whitespace class as reflow; vertical tabs and non-ASCII whitespace retain their existing preservation behavior.
-- Container formatting owns prefixes and structural separators. Paragraph content keeps its spaces and authored line endings until inline classification, including when a footnote takes the recursive formatting path. A copied separator must receive its ordinary trailing-space cleanup before it joins finalized paragraph output.
-- Continuation eligibility is separate from the emitted prefix width. Definition lists accept their existing four-space continuations. Lists use the same multiline inline spans as the block parser to accept literal continuations with different indentation; their existing lazy-prose restrictions remain. Prefix removal consumes only indentation present in the source, leaving any additional literal spaces intact.
-- Emission normalizes raw Markdown nodes and copies finalized paragraph, container, and child-document output. That distinction prevents both unnormalized container separators and a second cleanup pass over protected literals.
+Main's template policy remains in place, including eligible code templates and simple bare expressions in ordinary paragraphs. Its configured-delimiter, container, and standalone-placement restrictions still apply. Raw angles outside consumed literals or links continue to disable link normalization for that input. This change adds no HTML or template-language grammar.
 
-The public CLI regressions combine escapes with gaps and containers with paragraph separators and multiline literals. They assert expected output independently of idempotence: unchanged output on a second pass cannot detect whitespace that was never normalized on the first pass.
+The existing scanners still determine recognized boundaries, including their backtick closing-run limitations. Once they recognize a protected slice, normalization and canonicalization cannot change its contents. Multiline tokens remain atomic; layout does not optimize packing around their individual physical lines. Unsupported blockquote indentation and multiline brace spans retain their existing preservation behavior.
 
-## Boundaries and follow-up work
+A follow-up such as #4 can reuse protected slices, gaps, parsed container content lines, and retained layout. It can remove independent literal-preservation guards and raw-prefix guesses for template placement. Broader template policy still needs the relevant configuration and must make placement decisions on original content lines before layout consumes those boundaries.
 
-Template preservation still uses main's block-level policy and configured delimiters. This change does not allow new template reflow or decide whether a template occupies its own content line. A follow-up can make that decision on the content lines passed to the inline pipeline, after prefixes have been parsed, and reuse the protected slices and gaps. It must also pass the relevant template configuration to that decision.
-
-The existing block parser and supported inline grammar still determine which content can be formatted, including the restrictions on blockquote continuation indentation. Multiline brace spans and unsupported constructs keep their preservation behavior. The wrapper treats multiline literal tokens as atomic units; it does not optimize column packing around their individual physical lines. This work adds no template-language or HTML parsing rules.
-
-`tests/inline_preservation.rs` exercises the CLI with exact output and second-pass assertions, including spaces, escapes, line endings, wrapping modes, and container prefixes. The matching `.case` transcripts are generated by the CLI case harness. `--verify` checks YAML equivalence and is not evidence that Markdown literal bytes were preserved.
+Public CLI tests check exact literal bytes, real-link compatibility, and repeated formatting. Generate the matching transcripts with `YAMARK_UPDATE_CASES=markdown_inline_preservation cargo test --test cli_cases`, then rerun without the variable. `--verify` checks YAML equivalence; it does not prove Markdown literal preservation.

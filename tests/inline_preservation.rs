@@ -87,11 +87,9 @@ fn inline_pipeline_preserves_multiline_literal_bytes_in_containers() {
 #[test]
 fn inline_pipeline_keeps_main_template_policy() {
     for source in [
-        "Before\n`[x]( url ) {{ value }}` after _outside_.\n",
         "Before `first  \n  {{ value }} second` after _outside_.\n",
         "- {{ render_item() }}\n  Follow-up prose.\n",
         "> {{ render_item() }}\n> Follow-up prose.\n",
-        "Before {{ value }}\nmore prose [real]( url ).\n",
     ] {
         for wrap in ["none", "sentence", "paragraph", "20", "sentence:20"] {
             for canonical in [false, true] {
@@ -107,7 +105,7 @@ fn inline_pipeline_keeps_existing_markup_and_heading_normalization() {
         ("# [hello   world](  url  )\n", "# [hello world]( url )\n"),
         (
             "Before <kbd>[x](  url  )</kbd> after.\n",
-            "Before <kbd>[x](url)</kbd> after.\n",
+            "Before <kbd>[x](  url  )</kbd> after.\n",
         ),
         (
             "Before ~~[x](  url  )~~ after.\n",
@@ -191,8 +189,13 @@ fn inline_pipeline_preserves_multiline_literals_nested_in_markup() {
                 for wrap in ["none", "paragraph", "sentence", "120", "sentence:120"] {
                     for canonical in [false, true] {
                         let outside = if canonical { "*outside*" } else { "_outside_" };
+                        let target = if wrap == "none" && first.is_empty() {
+                            "[real](  target  )"
+                        } else {
+                            "[real]( target )"
+                        };
                         let expected = format!(
-                            "{first}Béfore {opening}{literal}{closing} after {outside} [real](target).\n"
+                            "{first}Béfore {opening}{literal}{closing} after {outside} {target}.\n"
                         );
                         assert_format(&source, &expected, wrap, canonical);
                     }

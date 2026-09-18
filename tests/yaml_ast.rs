@@ -13,7 +13,7 @@ use yamark::plugins::PluginRegistry;
 fn parse_source_rejects_ranges_that_exceed_compact_source_span_limit() {
     let source = SourceBuffer::new(String::new());
     let err = parse_source(
-        &source,
+        source,
         Span::new(0, u32::MAX as usize + 1),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -37,7 +37,7 @@ fn multiline_json_flow_mapping_builds_yaml_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -75,13 +75,14 @@ fn flow_plain_scalars_keep_colons_that_are_not_value_indicators() {
     let input = "[http://example.com, ns:tag, a:b:c]\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::FlowSequence(sequence) = &ast.node(root).kind else {
@@ -106,13 +107,14 @@ fn flow_mapping_plain_keys_can_contain_non_indicator_colons() {
     let input = "{http://example.com: website, ns:tag: value, \"json\":true}\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::FlowMapping(mapping) = &ast.node(root).kind else {
@@ -150,13 +152,14 @@ next: value
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     assert_eq!(ast.roots.len(), 1);
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
@@ -197,13 +200,14 @@ description: first line
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -214,7 +218,7 @@ description: first line
         panic!("expected scalar, got {:?}", ast.node(value).kind);
     };
 
-    assert_eq!(value_text(&source, scalar), "first line\n  second line");
+    assert_eq!(value_text(source, scalar), "first line\n  second line");
 }
 
 #[test]
@@ -222,7 +226,7 @@ fn planned_yaml_flow_block_output_is_deferred_until_emit() {
     let input = "items: [one, two, three]\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions {
@@ -250,12 +254,10 @@ fn planned_yaml_flow_block_output_is_deferred_until_emit() {
     );
 
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions {
+        &document.finalize(FormatOptions {
             line_width: 12,
             ..FormatOptions::default()
-        },
+        }),
         &PluginRegistry::default(),
     )
     .unwrap();
@@ -268,7 +270,7 @@ fn planned_yaml_compact_collection_output_is_deferred_until_emit() {
     let input = "items:\n  - one\n  - two\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions {
@@ -295,12 +297,10 @@ fn planned_yaml_compact_collection_output_is_deferred_until_emit() {
     );
 
     let output = emit_document(
-        &source,
-        &document,
-        FormatOptions {
+        &document.finalize(FormatOptions {
             yaml_compact: true,
             ..FormatOptions::default()
-        },
+        }),
         &PluginRegistry::default(),
     )
     .unwrap();
@@ -316,7 +316,7 @@ body: >
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions {
@@ -353,13 +353,14 @@ fn standard_yaml_directives_are_attached_as_trivia() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     assert_eq!(ast.roots.len(), 1);
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
@@ -390,13 +391,14 @@ fn quoted_and_flow_block_keys_build_mapping_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -416,13 +418,14 @@ typed: !flags [1, 2]
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -458,13 +461,14 @@ use: *defaults
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -491,7 +495,7 @@ fn comments_inside_flow_collections_keep_structural_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -527,13 +531,14 @@ items: !items
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -569,7 +574,7 @@ items:
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -602,13 +607,14 @@ fn explicit_block_keys_build_mapping_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -630,7 +636,7 @@ fn flow_mapping_keys_can_be_flow_nodes() {
     let input = "{[red, blue]: purple, {left: right}: mirror}\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -664,7 +670,7 @@ fn flow_sequence_entries_can_be_mappings() {
     let input = "[a: b, {c: d}]\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -703,13 +709,14 @@ fn compact_nested_block_sequences_build_sequence_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Sequence(sequence) = &ast.node(root).kind else {
@@ -741,13 +748,14 @@ fn nested_flow_node_properties_are_attached_to_nodes() {
     let input = "[!thing &name \"value\", &defaults {enabled: true}, !seq [1]]\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::FlowSequence(sequence) = &ast.node(root).kind else {
@@ -794,7 +802,7 @@ fn flow_comments_are_attached_as_trivia() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -825,7 +833,7 @@ plain: value
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -864,7 +872,7 @@ fn explicit_block_keys_can_be_block_sequences() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -897,13 +905,14 @@ items:
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -942,13 +951,14 @@ body: | # markdown
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Mapping(mapping) = &ast.node(root).kind else {
@@ -973,7 +983,7 @@ body: |4-
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -1006,7 +1016,7 @@ fn blank_lines_inside_flow_collections_are_trivia() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -1043,13 +1053,14 @@ fn flow_mapping_explicit_and_empty_entries_build_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::FlowMapping(mapping) = &ast.node(root).kind else {
@@ -1092,13 +1103,14 @@ fn flow_tag_only_nodes_are_empty_scalars_with_properties() {
     let input = "{foo: !!str, !!str: bar, anchored: &empty}\n";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::FlowMapping(mapping) = &ast.node(root).kind else {
@@ -1138,7 +1150,7 @@ fn flow_sequence_explicit_single_pair_entries_build_mapping_ast() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
@@ -1196,13 +1208,14 @@ value
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     assert_eq!(ast.roots.len(), 1);
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
@@ -1238,13 +1251,14 @@ value
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
 
     assert_eq!(ast.roots.len(), 2);
@@ -1282,13 +1296,14 @@ seq:
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     assert_eq!(ast.roots.len(), 2);
     let root = ast.roots[0].node.unwrap();
@@ -1333,13 +1348,14 @@ fn explicit_block_entries_can_omit_values_and_use_block_values() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     assert_eq!(ast.roots.len(), 1);
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
@@ -1380,13 +1396,14 @@ after: three
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     assert_eq!(ast.roots.len(), 1);
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
@@ -1409,13 +1426,14 @@ fn compact_explicit_mapping_entries_in_sequences_build_nested_mappings() {
 ";
     let source = SourceBuffer::new(input.to_owned());
     let document = parse_source(
-        &source,
+        source,
         Span::new(0, input.len()),
         DocumentKind::Yaml,
         FormatOptions::default(),
         &Config::default(),
     )
     .unwrap();
+    let source = document.source();
     let ast = document.yaml.as_ref().unwrap();
     let root = ast.roots.first().and_then(|root| root.node).unwrap();
     let YamlAstKind::Sequence(sequence) = &ast.node(root).kind else {

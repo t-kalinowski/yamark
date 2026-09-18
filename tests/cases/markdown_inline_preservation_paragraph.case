@@ -54,6 +54,8 @@ Term
 
 1000) Before `first	
     second {{< include file >}}` after _outside_.
+
+Before `[a](  u  )` ~~<kbd>~~ then `[b](  v  )` after [r](  t  ).
 -- stdout
 Before `first  
   second {{< include file >}}` after *outside*.
@@ -64,8 +66,7 @@ Before `first
 > Before `first  
 >   second {{< include file >}}` after *outside*.
 
-Before
-`[x]( url ) {{ value }}` after _outside_.
+Before `[x]( url ) {{ value }}` after *outside*.
 
 Before `first  
   {{ value }} second` after _outside_.
@@ -77,7 +78,7 @@ Before `first
 > Follow-up prose.
 
 - Before <kbd><span>`first	
-    second {{< include file >}}`</span></kbd> after *outside* [real](target).
+    second {{< include file >}}`</span></kbd> after *outside* [real]( target ).
 
 first second `ab` $cd$
 
@@ -106,6 +107,8 @@ Term
 
 1000) Before `first	
       second {{< include file >}}` after *outside*.
+
+Before `[a](  u  )` ~~<kbd>~~ then `[b](  v  )` after [r]( t ).
 -- stderr
 -- status
 0

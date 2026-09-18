@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:16 --canonical
+-- stdin
+- Before [b](  s  ). `[x](  long-link-target  )` after [r](  t  ).
+
+> Before [b](  s  ). $![x](  long-image-target  )$ after [r](  t  ).
+
+_Before_ `[x](  url  )` after [r](  t  ).
+-- stdout
+- Before [b](s).
+  `[x](  long-link-target  )`
+  after [r](t).
+
+> Before [b](s).
+> $![x](  long-image-target  )$
+> after [r](t).
+
+*Before*
+`[x](  url  )`
+after [r](t).
+-- stderr
+-- status
+0

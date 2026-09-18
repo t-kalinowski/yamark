@@ -33,17 +33,18 @@ fn root_flow_recognition_retains_the_parsed_nodes() {
     let input = format!("[{}]\n", vec!["[]"; 512].join(","));
     let source = SourceBuffer::new(input);
     let config = Config::default();
+    let range = Span::new(0, source.as_str().len());
     ALLOCATED_BYTES.store(0, Ordering::Relaxed);
     set_count_thread_allocations(true);
     let document = parse_source(
-        &source,
-        Span::new(0, source.as_str().len()),
+        source,
+        range,
         DocumentKind::Yaml,
         FormatOptions::default(),
         &config,
     );
     set_count_thread_allocations(false);
-    assert_eq!(document.unwrap().yaml.unwrap().nodes.len(), 513);
+    assert_eq!(document.unwrap().yaml.as_ref().unwrap().nodes.len(), 513);
     assert!(
         ALLOCATED_BYTES.load(Ordering::Relaxed) <= 3 * 513 * size_of::<YamlAstNode>(),
         "root flow parsing allocated {} bytes",

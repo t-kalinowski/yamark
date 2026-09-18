@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+Before `[x](  url  )` after [real](  target  ).
+Before $![x](  image  )$ after ![real](  target  ).
+
+Before \`[x](  url  )\` after [real](  target  ).
+Before \$![x](  image  )\$ after ![real](  target  ).
+-- stdout
+Before `[x](  url  )` after [real](target).
+Before $![x](  image  )$ after ![real](target).
+
+Before \`[x](url)\` after [real](target).
+Before \$![x](image)\$ after ![real](target).
+-- stderr
+-- status
+0

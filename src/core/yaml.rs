@@ -23,7 +23,7 @@ use memchr::{memchr, memchr2};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-pub fn parse_yaml(
+pub(crate) fn parse_yaml(
     source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
@@ -835,6 +835,15 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.ast.node_mut(id).must_preserve_source = Some(must_preserve_source);
         let plan = self.yaml_emit_plan_for(id);
         self.ast.node_mut(id).emit = plan;
+        if matches!(
+            self.ast.node(id).emit,
+            YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+        ) {
+            let node = self.ast.node(id);
+            let state = self.doc.state(node.state);
+            let options = state.markdown_options(state.yaml_options(self.options));
+            resolve_inline_markdown_plan(self.source, self.ast.node_mut(id), options);
+        }
     }
 
     fn yaml_node_should_preserve_uncached(&self, node: &YamlAstNode) -> bool {
@@ -4823,16 +4832,7 @@ impl IntoOptionalSpan for Option<SourceSpan> {
     }
 }
 
-pub fn emit_yaml_document(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_yaml_document_with_stats(source, document, options, plugins).map(|(output, _)| output)
-}
-
-pub fn emit_yaml_document_with_stats(
+pub(crate) fn emit_planned_yaml_document_with_stats(
     source: &SourceBuffer,
     document: &Document,
     options: FormatOptions,
@@ -6593,23 +6593,55 @@ fn line_ending_or_default(
     }
 }
 
+/// Keep the decoded fragment, including the existing no-output result when
+/// decoding fails. The node and its source remain in the same owning tree.
+#[derive(Debug, Clone)]
+pub(crate) struct InlineMarkdownPlan {
+    fragment: Option<crate::core::wrap::Fragment>,
+}
+
+pub(crate) fn resolve_inline_markdown_plan(
+    source: &SourceBuffer,
+    node: &mut YamlAstNode,
+    options: FormatOptions,
+) {
+    let YamlAstKind::Scalar(scalar) = &node.kind else {
+        unreachable!("inline Markdown scalar plan")
+    };
+    if let Some(plan) = &mut node.inline_markdown {
+        if let Some(fragment) = &mut plan.fragment {
+            fragment.resolve_options(options);
+        }
+    } else {
+        let metadata = scalar_metadata(source, scalar.value);
+        let fragment = inline_markdown_scalar_content(source, scalar, metadata.content)
+            .map(|content| crate::core::wrap::Fragment::plan(content.into_owned(), options));
+        node.inline_markdown = Some(Box::new(InlineMarkdownPlan { fragment }));
+    }
+}
+
 fn render_inline_markdown_scalar(
     source: &SourceBuffer,
     scalar: &YamlScalar,
     node: &YamlAstNode,
-    state: &crate::core::directives::DirectiveState,
+    _state: &crate::core::directives::DirectiveState,
     options: FormatOptions,
     body_indent: Option<usize>,
 ) -> Option<String> {
     let metadata = scalar_metadata(source, scalar.value);
-    let content = inline_markdown_scalar_content(source, scalar, metadata.content)?;
+    let fragment = node
+        .inline_markdown
+        .as_ref()
+        .expect("retained inline Markdown scalar")
+        .fragment
+        .as_ref()?;
     let prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
         .trim_ascii();
     let newline = line_ending_or_default(source, node.span, options);
 
     let mut out = String::new();
-    if content.is_empty() {
+    if fragment.is_empty() {
         if !prefix.is_empty() {
             out.push_str(prefix);
             out.push(' ');
@@ -6628,8 +6660,7 @@ fn render_inline_markdown_scalar(
     emit_inline_comment(&mut out, source, scalar.trailing_comment);
     out.push_str(newline);
 
-    let mut formatted =
-        crate::core::wrap::format_markdown_fragment(&content, state.markdown_options(options));
+    let mut formatted = fragment.emit();
     if !formatted.ends_with('\n') && !formatted.ends_with('\r') {
         formatted.push_str(newline);
     }
@@ -8734,11 +8765,12 @@ fn emit_yaml_nested_markdown_block_scalar(
     let header_span = scalar.header.expect("block scalars have headers");
     out.push_str(&render_yaml_block_scalar_value_header(source, scalar));
     let state = document.state(node.state);
-    let mut nested_output = crate::core::emit::emit_document(
+    let mut nested_output = crate::core::emit::emit_planned_document(
         source,
         &document.nested[nested],
         state.markdown_options(options),
         plugins,
+        false,
     )?;
     if !nested_output.is_empty() && !nested_output.ends_with('\n') && !nested_output.ends_with('\r')
     {

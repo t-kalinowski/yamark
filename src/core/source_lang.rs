@@ -22,7 +22,7 @@ pub enum SourceLanguage {
     R,
 }
 
-pub fn parse_source_language(
+pub(crate) fn parse_source_language(
     source: &SourceBuffer,
     range: Span,
     language: SourceLanguage,

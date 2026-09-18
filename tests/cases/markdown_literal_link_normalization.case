@@ -1,0 +1,33 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph
+-- stdin
+Before `[x](  url  )` after [real](  target  ).
+
+Before `![x](  image  )` after ![real](  target  ).
+
+Before $[x](  url  )$ after [real](  target  ).
+
+Before $![x](  image  )$ after ![real](  target  ).
+
+[before](  a  ) Before ``[x](  url  ) ` ![y](  image  )`` after [real](  target  ).
+
+- Before *with `[x](  url  )` inside* after [real](  target  ).
+
+> Before **with $![x](  image  )$ inside** after ![real](  target  ).
+-- stdout
+Before `[x](  url  )` after [real](target).
+
+Before `![x](  image  )` after ![real](target).
+
+Before $[x](  url  )$ after [real](target).
+
+Before $![x](  image  )$ after ![real](target).
+
+[before](a) Before ``[x](  url  ) ` ![y](  image  )`` after [real](target).
+
+- Before *with `[x](  url  )` inside* after [real](target).
+
+> Before **with $![x](  image  )$ inside** after ![real](target).
+-- stderr
+-- status
+0

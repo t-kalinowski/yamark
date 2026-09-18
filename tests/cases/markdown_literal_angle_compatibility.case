@@ -1,0 +1,41 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph
+-- stdin
+Before <kbd title="> `">[r](  t  )</kbd> then `tail` after [s](  u  ).
+
+Before `[a](  u  )` < value then `[b](  v  )` after [r](  t  ).
+
+Before < value `[a](  u  )` after [r](  t  ).
+
+Before `[b](  u  )` after [s](  v  ).
+
+Before `<kbd title=">"> [x](  u  )` after [r](  t  ).
+
+Before $<kbd title=">"> [x](  u  )$ after [r](  t  ).
+
+Before \< value `[x](  u  )` after [r](  t  ).
+
+Before `[x](  u  )` [a](  <target>  ) then `[y](  v  )` after [r](  t  ).
+
+Before `[x](  u  )` [a](  target  ){key="<"} then `[y](  v  )` after [r](  t  ).
+-- stdout
+Before <kbd title="> `">[r](  t  )</kbd> then `tail` after [s]( u ).
+
+Before `[a](  u  )` < value then `[b](  v  )` after [r]( t ).
+
+Before < value `[a](  u  )` after [r]( t ).
+
+Before `[b](  u  )` after [s](v).
+
+Before `<kbd title=">"> [x](  u  )` after [r](t).
+
+Before $<kbd title=">"> [x](  u  )$ after [r](t).
+
+Before \< value `[x](  u  )` after [r](t).
+
+Before `[x](  u  )` [a](<target>) then `[y](  v  )` after [r](t).
+
+Before `[x](  u  )` [a](target){key="<"} then `[y](  v  )` after [r](t).
+-- stderr
+-- status
+0

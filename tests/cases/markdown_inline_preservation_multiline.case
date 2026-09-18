@@ -77,11 +77,11 @@ Term
 
 - Béfore <kbd>`first  
     second [x]( url )`</kbd> after *outside*
-  [real](target).
+  [real]( target ).
 
 - Before <kbd><span>$first\
     second [x]( url )$</span></kbd> after *outside*
-  [real](target).
+  [real]( target ).
 
 ::: note
 Before `first  
