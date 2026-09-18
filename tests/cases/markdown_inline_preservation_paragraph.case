@@ -56,6 +56,19 @@ Term
     second {{< include file >}}` after _outside_.
 
 Before `[a](  u  )` ~~<kbd>~~ then `[b](  v  )` after [r](  t  ).
+
+Before <!-- _disabled_ --> after _outside_.
+
+- Before <!DOCTYPE _disabled_> after _outside_.
+
+> Before <?_disabled_?> after _outside_.
+
+Before <kbd>first  
+second </kbd> after _outside_.
+
+- Before <kbd><span>first 	
+  `literal  
+    bytes` second </span></kbd> after _outside_.
 -- stdout
 Before `first  
   second {{< include file >}}` after *outside*.
@@ -109,6 +122,19 @@ Term
       second {{< include file >}}` after *outside*.
 
 Before `[a](  u  )` ~~<kbd>~~ then `[b](  v  )` after [r]( t ).
+
+Before <!-- _disabled_ --> after *outside*.
+
+- Before <!DOCTYPE _disabled_> after *outside*.
+
+> Before <?_disabled_?> after *outside*.
+
+Before <kbd>first \
+second </kbd> after *outside*.
+
+- Before <kbd><span>first
+  `literal  
+    bytes` second </span></kbd> after *outside*.
 -- stderr
 -- status
 0

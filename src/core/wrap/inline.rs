@@ -17,6 +17,7 @@ enum InlinePart<'a> {
     Emphasis {
         source: &'a str,
         span: EmphasisSpan,
+        canonicalize: bool,
         content: InlineContent<'a>,
     },
     Markup {
@@ -93,6 +94,7 @@ impl<'a> InlineContent<'a> {
         let mut parts = Vec::new();
         let mut supported = true;
         let mut normalize_links = true;
+        let mut canonical_angle_end = 0;
         let mut index = 0;
         while index < source.len() {
             let rest = &source[index..];
@@ -118,6 +120,13 @@ impl<'a> InlineContent<'a> {
             // Keep main's raw-angle policy: only angles consumed by a literal
             // or a real link may participate in link normalization.
             normalize_links &= !rest.starts_with('<');
+            // Retain the canonicalizer's existing angle-span boundary without
+            // changing whitespace, wrapping, or HTML recognition inside it.
+            if rest.starts_with('<')
+                && let Some(close) = rest.find('>')
+            {
+                canonical_angle_end = index + close + 1;
+            }
             if let Some(end) = immutable_span_end(&mut scan, index) {
                 let text = &source[index..end];
                 supported &= !multiline_brace_span_at(source, index);
@@ -155,6 +164,7 @@ impl<'a> InlineContent<'a> {
                 parts.push(InlinePart::Emphasis {
                     source: &source[index..span.end],
                     span: relative,
+                    canonicalize: index >= canonical_angle_end,
                     content,
                 });
                 index = span.end;
@@ -200,8 +210,17 @@ impl<'a> InlineContent<'a> {
     pub(super) fn render(&self, links: bool, canonical: bool) -> String {
         self.parts
             .iter()
-            .map(|part| part.render(links && self.normalize_links, canonical, true))
+            .map(|part| part.render(links && self.normalize_links, canonical, true, None))
             .collect()
+    }
+
+    fn render_markup(&self, links: bool, canonical: bool, line_gaps: Option<bool>) -> String {
+        match line_gaps {
+            // A trailing gap before a closing delimiter is inside the same
+            // physical line. Only actual line endings receive line cleanup.
+            Some(hard_breaks) => self.render_lines(links, canonical, hard_breaks, false),
+            None => self.render(links, canonical),
+        }
     }
 
     pub(super) fn supported(&self) -> bool {
@@ -228,10 +247,20 @@ impl<'a> InlineContent<'a> {
     }
 
     pub(super) fn preserve_lines(&self, links: bool, canonical: bool, hard_breaks: bool) -> String {
+        self.render_lines(links, canonical, hard_breaks, true)
+    }
+
+    fn render_lines(
+        &self,
+        links: bool,
+        canonical: bool,
+        hard_breaks: bool,
+        trim_final_gap: bool,
+    ) -> String {
         let mut out = String::new();
         for (index, part) in self.parts.iter().enumerate() {
             if let InlinePart::Gap(text, marker) = part {
-                if text.contains(['\n', '\r']) || index + 1 == self.parts.len() {
+                if text.contains(['\n', '\r']) || trim_final_gap && index + 1 == self.parts.len() {
                     let (body, newline) = strip_final_newline(text);
                     let body = if hard_breaks && marker.is_some() {
                         body.strip_suffix('\\').unwrap_or(body)
@@ -249,7 +278,12 @@ impl<'a> InlineContent<'a> {
                     out.push_str(text);
                 }
             } else {
-                out.push_str(&part.render(links && self.normalize_links, canonical, true));
+                out.push_str(&part.render(
+                    links && self.normalize_links,
+                    canonical,
+                    true,
+                    Some(hard_breaks),
+                ));
             }
         }
         out
@@ -274,7 +308,7 @@ impl<'a> InlineContent<'a> {
                 }
                 continue;
             }
-            let text = part.render(self.normalize_links, canonical, false);
+            let text = part.render(self.normalize_links, canonical, false, Some(true));
             if let Some(token) = &mut current {
                 token.text.to_mut().push_str(&text);
                 token.width = token_width(token.text());
@@ -305,7 +339,13 @@ pub(super) struct InlineSegment<'a> {
 }
 
 impl<'a> InlinePart<'a> {
-    fn render(&self, links: bool, canonical: bool, preserve_lines: bool) -> Cow<'a, str> {
+    fn render(
+        &self,
+        links: bool,
+        canonical: bool,
+        preserve_lines: bool,
+        line_gaps: Option<bool>,
+    ) -> Cow<'a, str> {
         match self {
             Self::Text(text) | Self::Protected(text) | Self::Gap(text, _) => Cow::Borrowed(text),
             Self::Link(source, link) => {
@@ -320,8 +360,10 @@ impl<'a> InlinePart<'a> {
             Self::Emphasis {
                 source,
                 span,
+                canonicalize,
                 content,
             } => {
+                let canonical = canonical && *canonicalize;
                 let marker = if canonical && source.starts_with('_') {
                     "*".repeat(span.run)
                 } else {
@@ -329,7 +371,7 @@ impl<'a> InlinePart<'a> {
                 };
                 Cow::Owned(format!(
                     "{marker}{}{marker}{}",
-                    content.render(links, canonical),
+                    content.render_markup(links, canonical, line_gaps),
                     &source[span.close + span.run..]
                 ))
             }
@@ -339,7 +381,7 @@ impl<'a> InlinePart<'a> {
                 closing,
             } => Cow::Owned(format!(
                 "{opening}{}{closing}",
-                content.render(links, false)
+                content.render_markup(links, false, line_gaps)
             )),
         }
     }

@@ -51,6 +51,19 @@ Term
 
 100. Before $first\
     second [x]( url )$ after _outside_. Next sentence.
+
+Before <!-- _disabled_ --> after _outside_.
+
+- Before <!DOCTYPE _disabled_> after _outside_.
+
+> Before <?_disabled_?> after _outside_.
+
+Before <kbd>first  
+second </kbd> after _outside_.
+
+- Before <kbd><span>first 	
+  `literal  
+    bytes` second </span></kbd> after _outside_.
 -- stdout
 Before `first  
   second [x]( url )` after *outside*.
@@ -111,6 +124,20 @@ Term
 100. Before $first\
      second [x]( url )$ after *outside*.
      Next sentence.
+
+Before <!-- _disabled_ --> after *outside*.
+
+- Before <!DOCTYPE _disabled_> after *outside*.
+
+> Before <?_disabled_?> after *outside*.
+
+Before <kbd>first \
+second </kbd> after *outside*.
+
+- Before <kbd><span>first
+  `literal  
+    bytes` second </span></kbd> after
+  *outside*.
 -- stderr
 -- status
 0

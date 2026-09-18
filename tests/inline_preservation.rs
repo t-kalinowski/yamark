@@ -522,3 +522,58 @@ fn inline_pipeline_accepts_list_literal_continuation_indentation() {
         assert_format(source, source, "sentence", true);
     }
 }
+
+#[test]
+fn inline_pipeline_review_preserves_angle_canonicalization_boundaries() {
+    for angle in [
+        "<!-- _disabled_ -->",
+        "<!DOCTYPE _disabled_>",
+        "<?_disabled_?>",
+        "<42 _disabled_>",
+    ] {
+        for prefix in ["", "- ", "> "] {
+            let source = format!("{prefix}Before {angle} after _outside_.\n");
+            let expected = format!("{prefix}Before {angle} after *outside*.\n");
+            for wrap in ["none", "paragraph", "sentence", "80"] {
+                assert_format(&source, &expected, wrap, true);
+            }
+        }
+    }
+    assert_format(
+        "Before \\<!-- _editable_ --> after _outside_.\n",
+        "Before \\<!-- *editable* --> after *outside*.\n",
+        "paragraph",
+        true,
+    );
+}
+
+#[test]
+fn inline_pipeline_review_normalizes_markup_line_gaps() {
+    for (content, expected) in [
+        ("first  \nsecond ", "first \\\nsecond "),
+        ("first \t\nsecond ", "first\nsecond "),
+        ("first\\\nsecond ", "first\\\nsecond "),
+        (
+            "first  \n`literal  \n  bytes` second ",
+            "first \\\n`literal  \n  bytes` second ",
+        ),
+    ] {
+        for (opening, closing) in [("<kbd>", "</kbd>"), ("<kbd><span>", "</span></kbd>")] {
+            for (prefix, continuation) in [("", ""), ("- ", "  "), ("> ", "> ")] {
+                for newline in ["\n", "\r\n", "\r"] {
+                    let content = content.replace('\n', &format!("{newline}{continuation}"));
+                    let expected = expected.replace('\n', &format!("{newline}{continuation}"));
+                    let source = format!(
+                        "{prefix}Before {opening}{content}{closing} after _outside_.{newline}"
+                    );
+                    let expected = format!(
+                        "{prefix}Before {opening}{expected}{closing} after *outside*.{newline}"
+                    );
+                    for wrap in ["none", "paragraph", "sentence", "160"] {
+                        assert_format(&source, &expected, wrap, true);
+                    }
+                }
+            }
+        }
+    }
+}

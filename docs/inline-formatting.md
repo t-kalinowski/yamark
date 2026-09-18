@@ -4,7 +4,7 @@
 
 ## Planning and emission
 
-1. Containers pass prefix-stripped content with authored line endings into `prepare_prefixed_markdown_lines`. Structural separators receive their own whitespace cleanup.
+1. Containers pass prefix-stripped content with authored line endings into `prepare_prefixed_markdown_lines`. Structural separators receive their own whitespace cleanup. Editable gaps inside markup receive the same line cleanup, while spaces before closing delimiters stay inside their authored line.
 2. Inline recognition precedes whitespace normalization, link normalization, and canonicalization. Code, math, reference links, autolinks, brace spans, and LaTeX commands retain their source slices. Editable gaps supply word and hard-break boundaries.
 3. Main's retained `Draft` stores normalized alternatives, measured token ranges, authored breaks, and link identity. Resolving effective options chooses an alternative and records layout in `Plan`. Emission executes the plan without reinterpreting Markdown.
 4. Wrapping splits only tokens classified as real links and restores container prefixes inside multiline tokens. Finalized paragraph, container, and child Markdown output bypasses general line trimming, so recursive emission cannot remove literal spaces.
@@ -13,7 +13,7 @@ List support checks collect multiline ranges recursively through recognized mark
 
 ## Compatibility and boundaries
 
-Main's template policy remains in place, including eligible code templates and simple bare expressions in ordinary paragraphs. Its configured-delimiter, container, and standalone-placement restrictions still apply. Raw angles outside consumed literals or links continue to disable link normalization for that input. This change adds no HTML or template-language grammar.
+Main's template policy remains in place, including eligible code templates and simple bare expressions in ordinary paragraphs. Its configured-delimiter, container, and standalone-placement restrictions still apply. Raw angles outside consumed literals or links continue to disable link normalization for that input and retain the existing canonicalization boundary through the closing angle. This change adds no HTML or template-language grammar.
 
 The existing scanners still determine recognized boundaries, including their backtick closing-run limitations. Once they recognize a protected slice, normalization and canonicalization cannot change its contents. Multiline tokens remain atomic; layout does not optimize packing around their individual physical lines. Unsupported blockquote indentation and multiline brace spans retain their existing preservation behavior.
 
