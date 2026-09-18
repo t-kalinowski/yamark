@@ -60,9 +60,40 @@ pub(crate) fn emit_planned_document(
 
 // Verbatim ranges refer to bytes in `text`, not source offsets. Nested Markdown
 // fences/divs carry them through parent cleanup; ordinary gaps still normalize.
-struct EmittedText {
-    text: String,
-    verbatim: Vec<Span>,
+#[derive(Default)]
+pub(crate) struct EmittedText {
+    pub(crate) text: String,
+    pub(crate) verbatim: Vec<Span>,
+}
+
+impl EmittedText {
+    pub(crate) fn push_slice(&mut self, text: &str, verbatim: &[Span], slice: Span) {
+        let start = self.text.len();
+        self.text.push_str(&text[slice.start..slice.end]);
+        let first = verbatim.partition_point(|span| span.end <= slice.start);
+        for span in &verbatim[first..] {
+            if span.start >= slice.end {
+                break;
+            }
+            self.verbatim.push(Span::new(
+                start + span.start.max(slice.start) - slice.start,
+                start + span.end.min(slice.end) - slice.start,
+            ));
+        }
+    }
+}
+
+pub(crate) fn emit_fragment(source: &SourceBuffer, tree: &PreparedTree) -> Result<EmittedText> {
+    emit_document_inner(
+        source,
+        tree.document(),
+        tree.options(),
+        &PluginRegistry::default(),
+        EmitContext {
+            blank_between_adjacent_divs: false,
+        },
+        false,
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -194,7 +225,7 @@ fn emit_document_inner(
                     .get(index)
                     .expect("retained Markdown plan");
                 if let Some(plan) = &retained.plan {
-                    out.push_str(&plan.emit(source.slice(node.span)));
+                    out.push_fragment(&plan.emit_protected(source.slice(node.span)));
                 } else {
                     out.push_str(source.slice(node.span));
                 }
