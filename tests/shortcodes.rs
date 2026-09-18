@@ -61,6 +61,8 @@ fn shortcode_transcript_outputs_are_idempotent() {
         include_str!("cases/markdown_shortcode_independent_tokens.case"),
         include_str!("cases/markdown_shortcode_multiline_tokens.case"),
         include_str!("cases/markdown_shortcode_directives.case"),
+        include_str!("cases/markdown_shortcode_disabled_indented_code.case"),
+        include_str!("cases/markdown_shortcode_nested_skip_file_known_bug.case"),
         include_str!("cases/markdown_shortcode_unterminated_token.case"),
         include_str!("cases/markdown_shortcode_unterminated_fragments.case"),
         include_str!("cases/markdown_shortcode_placement_controls.case"),

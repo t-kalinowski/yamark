@@ -1,0 +1,45 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+```markdown
+<!-- fmt: skip file -->
+{{< notice
+message="keep   spacing"  
+>}}
+Keep   this body.  
+```
+
+Format   outside the fence.
+
+::: {.note}
+<!-- fmt: skip file -->
+{{% notice
+message="keep   spacing"  
+%}}
+Keep   this body.  
+:::
+
+Format   outside the div.
+-- stdout
+```markdown
+<!-- fmt: skip file -->
+{{< notice
+message="keep   spacing"
+>}}
+Keep   this body.
+```
+
+Format outside the fence.
+
+::: {.note}
+<!-- fmt: skip file -->
+{{% notice
+message="keep   spacing"
+%}}
+Keep   this body.
+:::
+
+Format outside the div.
+-- stderr
+-- status
+0

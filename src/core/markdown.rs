@@ -2865,7 +2865,9 @@ fn markdown_indented_code_at(text: &str) -> bool {
 fn shortcode_block_at(text: &str) -> bool {
     let trimmed = text.trim_start();
     let indent = text.len() - trimmed.len();
-    indent <= 3 && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%"))
+    indent <= 3
+        && !markdown_indented_code_at(text)
+        && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%"))
 }
 
 fn display_math_block_at(text: &str) -> bool {
