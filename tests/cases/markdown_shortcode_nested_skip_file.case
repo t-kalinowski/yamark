@@ -24,9 +24,9 @@ Format   outside the div.
 ```markdown
 <!-- fmt: skip file -->
 {{< notice
-message="keep   spacing"
+message="keep   spacing"  
 >}}
-Keep   this body.
+Keep   this body.  
 ```
 
 Format outside the fence.
@@ -34,9 +34,9 @@ Format outside the fence.
 ::: {.note}
 <!-- fmt: skip file -->
 {{% notice
-message="keep   spacing"
+message="keep   spacing"  
 %}}
-Keep   this body.
+Keep   this body.  
 :::
 
 Format outside the div.
