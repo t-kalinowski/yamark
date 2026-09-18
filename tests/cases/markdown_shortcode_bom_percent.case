@@ -1,0 +1,18 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+﻿   {{% notice   
+message="quoted %}} keeps   spacing"  	
+%}}
+Format   this paragraph
+as Markdown. Second
+sentence.
+-- stdout
+﻿   {{% notice   
+message="quoted %}} keeps   spacing"  	
+%}}
+Format this paragraph as Markdown.
+Second sentence.
+-- stderr
+-- status
+0

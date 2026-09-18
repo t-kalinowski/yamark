@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Before   the token.
+
+{{< missing
+No   delimiter here.
+
+<!-- fmt: on -->
+Keep   everything
+through the end.   
+-- stdout
+Before the token.
+
+{{< missing
+No   delimiter here.
+
+<!-- fmt: on -->
+Keep   everything
+through the end.   
+-- stderr
+-- status
+0
