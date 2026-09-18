@@ -151,8 +151,10 @@ fn parse_markdown_with_mode(
 
         // Token contents are data even while formatting is disabled; an
         // apparent fmt: on inside an argument must not change directive state.
-        if engine.formatting_disabled() && shortcode_block_at(text) {
-            i = push_shortcode_token(source, &mut doc, &mut engine, i, range);
+        if engine.formatting_disabled()
+            && let Some(token_start) = shortcode_block_start(source, i)
+        {
+            i = push_shortcode_token(source, &mut doc, &mut engine, i, token_start, range);
             continue;
         }
 
@@ -554,8 +556,8 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if shortcode_block_at(text) {
-            i = push_shortcode_token(source, &mut doc, &mut engine, i, range);
+        if let Some(token_start) = shortcode_block_start(source, i) {
+            i = push_shortcode_token(source, &mut doc, &mut engine, i, token_start, range);
             continue;
         }
 
@@ -1689,10 +1691,29 @@ fn markdown_on_directive_line(text: &str) -> bool {
 }
 
 fn markdown_disabled_region_end(source: &SourceBuffer, mut i: usize, end: usize) -> usize {
-    while i < end
-        && !markdown_on_directive_line(source.line_text(i))
-        && !shortcode_block_at(source.line_text(i))
-    {
+    let mut fence: Option<Fence> = None;
+    let mut in_comment = false;
+    while i < end {
+        let text = source.line_text(i);
+        // Retain the existing linewise fmt: on policy, including in raw blocks.
+        if markdown_on_directive_line(text) {
+            break;
+        }
+        // Track only existing fence/comment boundaries, without looking ahead
+        // beyond a directive or interpreting their contents as shortcodes.
+        if let Some(opening) = fence {
+            if opening.closes(text) {
+                fence = None;
+            }
+        } else if in_comment {
+            in_comment = !text.contains("-->");
+        } else if shortcode_block_start(source, i).is_some() {
+            break;
+        } else if let Some(opening) = code_fence_at(text) {
+            fence = Some(opening);
+        } else if !markdown_indented_code_at(text) && html_comment_at(text) {
+            in_comment = !text.contains("-->");
+        }
         i += 1;
     }
     i
@@ -1934,6 +1955,14 @@ impl Fence {
             min_len: self.len,
         }
     }
+
+    fn closes(self, text: &str) -> bool {
+        let Some(candidate) = code_fence_at(text) else {
+            return false;
+        };
+        let rest = &text.trim_start()[candidate.len..];
+        candidate.marker == self.marker && candidate.len >= self.len && rest.trim().is_empty()
+    }
 }
 
 fn code_fence_at(text: &str) -> Option<Fence> {
@@ -1957,14 +1986,8 @@ fn find_code_fence_closing(
     fence: Fence,
 ) -> Option<usize> {
     while i < end {
-        if let Some(candidate) = code_fence_at(source.line_text(i)) {
-            let rest = &source.line_text(i).trim_start()[candidate.len..];
-            if candidate.marker == fence.marker
-                && candidate.len >= fence.len
-                && rest.trim().is_empty()
-            {
-                return Some(i);
-            }
+        if fence.closes(source.line_text(i)) {
+            return Some(i);
         }
         i += 1;
     }
@@ -2862,12 +2885,20 @@ fn markdown_indented_code_at(text: &str) -> bool {
     false
 }
 
-fn shortcode_block_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    let indent = text.len() - trimmed.len();
-    indent <= 3
-        && !markdown_indented_code_at(text)
-        && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%"))
+fn shortcode_block_start(source: &SourceBuffer, line: usize) -> Option<usize> {
+    let text = source.line_text(line);
+    // A file-leading BOM is retained in the node's span, but is not indentation.
+    let content = if line == 0 {
+        text.strip_prefix('\u{feff}').unwrap_or(text)
+    } else {
+        text
+    };
+    let trimmed = content.trim_start();
+    let indent = content.len() - trimmed.len();
+    (indent <= 3
+        && !markdown_indented_code_at(content)
+        && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%")))
+    .then_some(source.lines[line].text.start() + text.len() - trimmed.len())
 }
 
 fn display_math_block_at(text: &str) -> bool {
@@ -3037,10 +3068,9 @@ fn push_shortcode_token(
     doc: &mut Document,
     engine: &mut DirectiveEngine,
     line: usize,
+    token_start: usize,
     range: Span,
 ) -> usize {
-    let text = source.line_text(line);
-    let token_start = source.lines[line].text.start() + text.len() - text.trim_start().len();
     let token_end = shortcode_token_end(source, token_start, range.end);
     let next_line = source.line_at_byte(token_end - 1) + 1;
     let state = engine.state_for_node(doc, true);

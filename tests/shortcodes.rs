@@ -32,11 +32,13 @@ fn shortcode_bytes_survive_line_endings_eof_and_nested_documents() {
                 "{{% call arg=\"unterminated\n%}}\n<!-- fmt: skip file -->\nKeep   this.  ",
             ] {
                 let token = token.replace('\n', newline);
-                for suffix in ["", newline] {
-                    let source = format!("{token}{suffix}");
-                    let output = format(&source, wrap);
-                    assert_eq!(output, source, "wrap={wrap}");
-                    assert_eq!(format(&output, wrap), output, "second pass");
+                for prefix in ["", "\u{feff}"] {
+                    for suffix in ["", newline] {
+                        let source = format!("{prefix}{token}{suffix}");
+                        let output = format(&source, wrap);
+                        assert_eq!(output, source, "wrap={wrap}");
+                        assert_eq!(format(&output, wrap), output, "second pass");
+                    }
                 }
                 for (opening, closing) in [
                     ("::: {.callout-note}", ":::"),
@@ -62,6 +64,9 @@ fn shortcode_transcript_outputs_are_idempotent() {
         include_str!("cases/markdown_shortcode_multiline_tokens.case"),
         include_str!("cases/markdown_shortcode_directives.case"),
         include_str!("cases/markdown_shortcode_disabled_indented_code.case"),
+        include_str!("cases/markdown_shortcode_disabled_raw_blocks.case"),
+        include_str!("cases/markdown_shortcode_bom_angle.case"),
+        include_str!("cases/markdown_shortcode_bom_percent.case"),
         include_str!("cases/markdown_shortcode_nested_skip_file_known_bug.case"),
         include_str!("cases/markdown_shortcode_unterminated_token.case"),
         include_str!("cases/markdown_shortcode_unterminated_fragments.case"),

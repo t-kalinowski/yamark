@@ -1,0 +1,80 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: off -->
+````text
+{{< unfinished
+```
+{{% still inside the longer fence
+````
+Keep   this disabled.
+<!-- fmt: on -->
+Format   after backtick
+fence.
+
+<!-- fmt: off -->
+~~~text
+{{% unfinished message="
+~~~
+<!-- fmt: on -->
+Format   after tilde
+fence.
+
+<!-- fmt: off -->
+<!-- ordinary comment
+```text
+{{< unfinished
+-->
+<!-- fmt: on -->
+Format   after HTML
+comment.
+
+<!-- fmt: off -->
+<!-- ordinary comment
+<!-- fmt: on -->
+Format   after the existing
+linewise directive.
+
+<!-- fmt: off -->
+```text
+<!-- fmt: on -->
+Format   after the existing
+fenced directive.
+-- stdout
+<!-- fmt: off -->
+````text
+{{< unfinished
+```
+{{% still inside the longer fence
+````
+Keep   this disabled.
+<!-- fmt: on -->
+Format after backtick fence.
+
+<!-- fmt: off -->
+~~~text
+{{% unfinished message="
+~~~
+<!-- fmt: on -->
+Format after tilde fence.
+
+<!-- fmt: off -->
+<!-- ordinary comment
+```text
+{{< unfinished
+-->
+<!-- fmt: on -->
+Format after HTML comment.
+
+<!-- fmt: off -->
+<!-- ordinary comment
+<!-- fmt: on -->
+Format after the existing linewise directive.
+
+<!-- fmt: off -->
+```text
+<!-- fmt: on -->
+Format after the existing fenced directive.
+-- stderr
+-- status
+0
