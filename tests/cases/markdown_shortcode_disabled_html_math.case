@@ -1,0 +1,35 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: off -->
+<div>
+{{< unfinished
+</div>
+<!-- fmt: on -->
+Format   after disabled
+HTML.
+
+<!-- fmt: off -->
+$$
+{{% unfinished
+$$
+<!-- fmt: on -->
+Format   after disabled
+display math.
+-- stdout
+<!-- fmt: off -->
+<div>
+{{< unfinished
+</div>
+<!-- fmt: on -->
+Format after disabled HTML.
+
+<!-- fmt: off -->
+$$
+{{% unfinished
+$$
+<!-- fmt: on -->
+Format after disabled display math.
+-- stderr
+-- status
+0

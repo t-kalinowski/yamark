@@ -1014,19 +1014,29 @@ After:
 
 Expected behavior:
 
-Preserve standalone `{{< ... >}}` and `{{% ... %}}` tokens independently,
-including complete multiline tokens. Find the lexical closing delimiter outside
-single, double, or backtick quotes; backslashes escape the next character in
-single and double quotes. Keep each token's source bytes, including whitespace
-and line endings. An unterminated token or quote preserves the remainder of its
-enclosing Markdown document or fragment.
+While formatting is enabled, preserve standalone `{{< ... >}}` and `{{% ... %}}`
+tokens independently, including complete multiline tokens. Find the lexical
+closing delimiter outside single, double, or backtick quotes; backslashes escape
+the next character in single and double quotes. Keep each token's source bytes,
+including whitespace and line endings. An unterminated token or quote preserves
+the remainder of its enclosing Markdown document or fragment.
 
 Opening, closing, and self-closing tokens do not define a body scope. Names such
 as `raw`, `verbatim`, and `something.inline` have no special meaning. Format
-intervening Markdown normally. To preserve an entire body, use existing
+intervening Markdown normally. To disable body formatting, use existing
 `<!-- fmt: off -->` and `<!-- fmt: on -->` directives around that region.
-Directive-looking text inside a token is data; directives after a complete token
-work normally.
+Directive-looking text inside a token recognized while formatting is enabled is
+data; directives after a complete token work normally.
+
+While formatting is disabled, retain the existing linewise directive policy.
+A recognized `fmt: on` line resumes formatting regardless of surrounding
+shortcode, quote, fence, HTML, or math-like text. Disabled-region scanning does
+not interpret those structures.
+
+The pre-existing nested `fmt: skip file` limitation remains: the parent of a
+skipped Markdown fence or div can trim trailing whitespace from its contents,
+including shortcode arguments. The compatibility tests record this bug; skipped
+fragments do not gain token recognition or a byte-preservation guarantee here.
 
 This support does not interpret template expressions or validate arguments, and
 does not extend inline, mixed token/prose line, list, or blockquote support.

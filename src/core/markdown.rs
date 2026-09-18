@@ -149,15 +149,8 @@ fn parse_markdown_with_mode(
         let line = source.lines[i];
         let text = source.line_text(i);
 
-        // Token contents are data even while formatting is disabled; an
-        // apparent fmt: on inside an argument must not change directive state.
-        if engine.formatting_disabled()
-            && let Some(token_start) = shortcode_block_start(source, i)
-        {
-            i = push_shortcode_token(source, &mut doc, &mut engine, i, token_start, range);
-            continue;
-        }
-
+        // Disabled regions use the existing linewise directive policy. Block
+        // structure, including shortcodes, does not hide a fmt: on line.
         if engine.formatting_disabled() {
             if markdown_on_directive_line(text) {
                 let state = engine.state_for_node(&mut doc, false);
@@ -1691,29 +1684,7 @@ fn markdown_on_directive_line(text: &str) -> bool {
 }
 
 fn markdown_disabled_region_end(source: &SourceBuffer, mut i: usize, end: usize) -> usize {
-    let mut fence: Option<Fence> = None;
-    let mut in_comment = false;
-    while i < end {
-        let text = source.line_text(i);
-        // Retain the existing linewise fmt: on policy, including in raw blocks.
-        if markdown_on_directive_line(text) {
-            break;
-        }
-        // Track only existing fence/comment boundaries, without looking ahead
-        // beyond a directive or interpreting their contents as shortcodes.
-        if let Some(opening) = fence {
-            if opening.closes(text) {
-                fence = None;
-            }
-        } else if in_comment {
-            in_comment = !text.contains("-->");
-        } else if shortcode_block_start(source, i).is_some() {
-            break;
-        } else if let Some(opening) = code_fence_at(text) {
-            fence = Some(opening);
-        } else if !markdown_indented_code_at(text) && html_comment_at(text) {
-            in_comment = !text.contains("-->");
-        }
+    while i < end && !markdown_on_directive_line(source.line_text(i)) {
         i += 1;
     }
     i
@@ -1955,14 +1926,6 @@ impl Fence {
             min_len: self.len,
         }
     }
-
-    fn closes(self, text: &str) -> bool {
-        let Some(candidate) = code_fence_at(text) else {
-            return false;
-        };
-        let rest = &text.trim_start()[candidate.len..];
-        candidate.marker == self.marker && candidate.len >= self.len && rest.trim().is_empty()
-    }
 }
 
 fn code_fence_at(text: &str) -> Option<Fence> {
@@ -1986,8 +1949,14 @@ fn find_code_fence_closing(
     fence: Fence,
 ) -> Option<usize> {
     while i < end {
-        if fence.closes(source.line_text(i)) {
-            return Some(i);
+        if let Some(candidate) = code_fence_at(source.line_text(i)) {
+            let rest = &source.line_text(i).trim_start()[candidate.len..];
+            if candidate.marker == fence.marker
+                && candidate.len >= fence.len
+                && rest.trim().is_empty()
+            {
+                return Some(i);
+            }
         }
         i += 1;
     }

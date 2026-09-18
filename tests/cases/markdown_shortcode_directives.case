@@ -58,10 +58,7 @@ Format after the token.
 <!-- fmt: off -->
 {{% notice message="
 <!-- fmt: on -->
-%}} still   quoted"
-%}}
-Keep   this
-body.
+%}} still quoted" %}} Keep this body.
 {{% /notice %}}
 <!-- fmt: on -->
 Format this paragraph.
