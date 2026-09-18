@@ -265,6 +265,7 @@ impl Fragment {
             .unwrap_or_else(|| EmittedText {
                 text: self.source.as_str().to_owned(),
                 verbatim: Vec::new(),
+                preserve_eof_at: 0,
             })
     }
 }
@@ -365,6 +366,7 @@ impl Plan {
         let mut output = EmittedText {
             text: String::with_capacity(source.len()),
             verbatim: Vec::new(),
+            preserve_eof_at: 0,
         };
         self.emit_into(source, &mut output);
         output
@@ -419,6 +421,11 @@ impl Plan {
                             &text.verbatim,
                             Span::new(line.body_start, line.body_start + line.full.len()),
                         );
+                        if text.preserve_eof_at == text.text.len()
+                            && line.body_start + line.full.len() == text.text.len()
+                        {
+                            output.preserve_eof_at = output.text.len();
+                        }
                         if let Prefix::Footnote { newline, .. } = prefix
                             && !line.body.is_empty()
                             && line.newline.is_empty()

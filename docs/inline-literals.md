@@ -30,6 +30,10 @@ Emission copies retained decisions and maps literal ranges into output
 coordinates as it restores prefixes. Nested output carries those ranges through
 the same verbatim-range mechanism used for explicitly preserved Markdown.
 Editable gaps and structural blank lines still receive ordinary output cleanup.
+Literal protection also leaves document-level final-newline insertion active.
+Explicit preservation, including standalone shortcode tokens, retains its
+existing policy for an absent final newline. That policy follows the actual
+output tail after fragment composition.
 
 ## Boundaries
 

@@ -1142,17 +1142,19 @@ pub(crate) fn prepare_markdown_definition_list(source: &str) -> Option<Draft> {
             if continuation.trim().is_empty() || definition_marker_parts(continuation).is_some() {
                 break;
             }
-            let indent = continuation
-                .bytes()
-                .take_while(|byte| *byte == b' ')
-                .count();
+            let indent = continuation.len() - continuation.trim_start().len();
             if indent < 4 {
                 break;
             }
-            pieces.push((
-                &continuation[source_prefix_len.min(indent)..],
-                lines[index].newline,
-            ));
+            // Eligibility follows the parser's byte-based whitespace count.
+            // Tabs can supply the four-byte structural minimum; beyond that,
+            // strip only authored spaces, leaving literal tabs as content.
+            let spaces = continuation
+                .bytes()
+                .take_while(|byte| *byte == b' ')
+                .count();
+            let prefix_len = continuation.floor_char_boundary(source_prefix_len.min(spaces.max(4)));
+            pieces.push((&continuation[prefix_len..], lines[index].newline));
             index += 1;
         }
         out.append(prepare_prefixed_markdown_lines(
@@ -3247,6 +3249,11 @@ fn prepare_prefixed_markdown_lines(
     }
     let (body, _) = strip_final_newline(&content);
     let newline = lines.first().map_or("", |(_, newline)| *newline);
+    if body.trim().is_empty() {
+        let mut draft = Draft::text(source, first_prefix.trim_end());
+        draft.push_join_newline(newline);
+        return draft;
+    }
     Draft::inline(
         source,
         body,

@@ -211,3 +211,69 @@ fn hard_breaks_keep_existing_markup_and_link_normalization_boundaries() {
         .stderr("")
         .stdout("Before <kbd>`first\nsecond`</kbd> after _outside_.\n");
 }
+
+#[test]
+fn marker_only_containers_keep_structural_lines() {
+    let source = "-\n\n>\n\n> -\n\n- >\n\n```markdown\n-\n```\n\n- `  `\n\n> $  $\n";
+    for wrap in ["sentence", "24", "none", "paragraph"] {
+        assert_format(source, source, wrap, false);
+    }
+    for newline in ["\r\n", "\r"] {
+        let source = source.replace('\n', newline);
+        assert_format(&source, &source, "sentence", false);
+    }
+}
+
+#[test]
+fn terminal_literals_keep_document_final_newline_policy() {
+    for (source, wrap) in [
+        ("Before `code`", "sentence"),
+        ("Before $math$", "none"),
+        ("Before prose", "24"),
+        (
+            "<!-- fmt: skip -->\nKeep   this\n\nBefore `code`",
+            "sentence",
+        ),
+        ("{{< call >}}\n\nBefore `code`", "sentence"),
+        ("```markdown\nBefore `code`\n```", "sentence"),
+        ("> ```markdown\n> Before `code`\n> ```", "sentence"),
+    ] {
+        assert_format(source, &format!("{source}\n"), wrap, false);
+    }
+    for newline in ["\n", "\r\n", "\r"] {
+        let source = format!("Before `first  {newline}  second\t[x]( url )`");
+        assert_format(&source, &format!("{source}{newline}"), "paragraph", false);
+    }
+    assert_format("Before `code`  \t", "Before `code`\n", "none", false);
+    for source in [
+        "<!-- fmt: off -->\nBefore `code`",
+        "<!-- fmt: skip -->\nBefore $math$",
+        "Before `code`\n\n{{< call >}}",
+    ] {
+        assert_format(source, source, "sentence", false);
+    }
+}
+
+#[test]
+fn definition_tabs_match_parser_eligibility_without_trimming_literals() {
+    let case = include_str!("cases/markdown_definition_tab_continuations.case");
+    let source = case
+        .split("-- stdin\n")
+        .nth(1)
+        .unwrap()
+        .split("-- stdout\n")
+        .next()
+        .unwrap();
+    let expected = case
+        .split("-- stdout\n")
+        .nth(1)
+        .unwrap()
+        .split("-- stderr\n")
+        .next()
+        .unwrap();
+    assert_format(source, expected, "sentence", true);
+    // Main's unsupported Unicode gap remains a fallback. A byte threshold
+    // must not become an invalid UTF-8 slice while preparing this content.
+    let source = "Term\n   : Before   prose.\n   \u{2003}After   _outside_ [real](  target  ).\n";
+    assert_format(source, source, "sentence", true);
+}
