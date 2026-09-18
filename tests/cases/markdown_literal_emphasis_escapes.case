@@ -1,0 +1,37 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+# _before \` literal_ after `code`
+
+# _before \$ literal_ after $math$
+
+# _before \[ literal_ after ](target)
+
+# \`_word_\` and \$__word__\$
+
+# $a \$ _literal_ *stars* [x](  url  )$ after _outside_
+
+# _Before $a \$ _literal_ [x]( url )$ after_
+
+# _unclosed `_literal_` then ``unmatched
+
+# _before \`` literal_ after ``code``
+-- stdout
+# *before \` literal* after `code`
+
+# *before \$ literal* after $math$
+
+# *before \[ literal* after ](target)
+
+# \`*word*\` and \$**word**\$
+
+# $a \$ _literal_ *stars* [x](  url  )$ after *outside*
+
+# *Before $a \$ _literal_ [x]( url )$ after*
+
+# _unclosed `_literal_` then ``unmatched
+
+# *before \`` literal* after ``code``
+-- stderr
+-- status
+0

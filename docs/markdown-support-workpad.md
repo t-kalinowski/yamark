@@ -1014,16 +1014,57 @@ After:
 
 Expected behavior:
 
-Recognize shortcode and include lines as supported opaque block nodes. Preserve
-the shortcode line exactly. Do not let a shortcode block cause adjacent
-paragraphs, lists, or divs to be copied. Paired shortcodes should preserve their
-body unless a later feature explicitly models the body as Markdown.
+While formatting is enabled, preserve standalone `{{< ... >}}` and `{{% ... %}}`
+tokens independently, including complete multiline tokens. Find the lexical
+closing delimiter outside single, double, or backtick quotes; backslashes escape
+the next character in single and double quotes. Keep each token's source bytes,
+including whitespace and line endings. An unterminated token or quote preserves
+the remainder of its enclosing Markdown document or fragment.
+
+Opening, closing, and self-closing tokens do not define a body scope. Names such
+as `raw`, `verbatim`, and `something.inline` have no special meaning. Format
+intervening Markdown normally. To disable body formatting, use existing
+`<!-- fmt: off -->` and `<!-- fmt: on -->` directives around that region.
+Directive-looking text inside a token recognized while formatting is enabled is
+data; directives after a complete token work normally.
+
+While formatting is disabled, retain the existing linewise directive policy.
+A recognized `fmt: on` line resumes formatting regardless of surrounding
+shortcode, quote, fence, HTML, or math-like text. Disabled-region scanning does
+not interpret those structures.
+
+Explicitly preserved Markdown is opaque to whitespace cleanup: `fmt: skip`
+copies the complete selected node, `fmt: off` copies the disabled region up to
+the existing linewise `fmt: on` boundary, and `fmt: skip file` copies the entire
+enclosing Markdown document or fragment. Trailing spaces, line endings, and an
+absent final newline survive, including through supported nested Markdown
+fences/divs. Contents need not be recognized syntax. Ordinary gaps and automatic
+formatting fallback retain their existing cleanup behavior.
+
+The emitter carries verbatim ranges in its returned text, using output offsets
+rather than source offsets. A skipped document marks its entire nonempty output;
+a skipped container contributes one complete source slice without walking its
+children to recover shortcode boundaries. Explicit directive state and
+`EmitPlan::Preserve` produce these ranges for Markdown; `EmitPlan::Copy`,
+missing format plans, and retained-plan preservation do not. Other document
+kinds, source-language adapters, reindentation, and external formatters are
+unchanged.
+
+Future literal-aware formatting can append already-identified literal bytes at
+this same output boundary and carry the ranges through nested emission. It must
+preserve those bytes before they reach the emitter; this boundary cannot undo
+earlier trimming in actively formatted content. No new inline literal producers
+are introduced here.
+
+This support does not interpret template expressions or validate arguments, and
+does not extend inline, mixed token/prose line, list, or blockquote support.
+It does not imply rendering equivalence for arbitrary Hugo or Jinja templates.
 
 Implementation checklist:
 
-- [x] Parse single-line shortcode blocks.
-- [x] Parse paired shortcode blocks.
-- [x] Preserve shortcode internals byte-for-byte.
+- [x] Parse single-line and complete multiline shortcode tokens.
+- [x] Treat opening, closing, and self-closing tokens independently.
+- [x] Preserve shortcode token bytes.
 - [x] Keep surrounding Markdown format decisions independent.
 
 Example 1:

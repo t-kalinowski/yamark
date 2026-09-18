@@ -2927,10 +2927,10 @@ Term
 }
 
 #[test]
-fn markdown_hugo_shortcode_blocks_are_preserved_as_raw_blocks() {
+fn markdown_hugo_shortcode_tokens_leave_the_body_as_markdown() {
     let input = "\
 {{< notice >}}
-This    Markdown body should stay untouched.
+This    Markdown body formats normally.
 {{< /notice >}}
 ";
     let (status, stdout, stderr) = run_stdin(
@@ -2944,7 +2944,7 @@ This    Markdown body should stay untouched.
         input,
     );
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, input);
+    assert_eq!(stdout, input.replace("This    Markdown", "This Markdown"));
     assert_eq!(stderr, "");
 }
 

@@ -15,6 +15,14 @@ expected stderr
 0
 ```
 
-The test harness intentionally avoids calling library internals. This keeps the public CLI contract readable and prevents implementation details from becoming part of the test API.
+The test harness intentionally avoids calling library internals. This keeps the
+public CLI contract readable and prevents implementation details from becoming
+part of the test API.
 
-Generate expected output from the compiled CLI by setting `YAMARK_UPDATE_CASES` to the filename prefix of the affected cases, for example `YAMARK_UPDATE_CASES=markdown_inline_preservation cargo test --test cli_cases`. Other cases are checked without updating them. Review the resulting diff, then run `cargo test --test cli_cases` without the variable to check the snapshots. Keep byte-exact regression and idempotence assertions alongside snapshots; a generated snapshot alone does not establish correct formatting.
+`markdown_shortcode_nested_skip_file.case` verifies that `fmt: skip file`
+preserves a nested Markdown fence/div body exactly, including trailing spaces in
+shortcode arguments and ordinary prose. The `markdown_preserved_*.case`
+transcripts cover explicit node/region preservation, nested fragments, the
+linewise `fmt: on` boundary, and unchanged automatic fallback cleanup.
+`tests/markdown_preservation.rs` supplements these transcripts with exact LF,
+CRLF, CR, mixed-line-ending, EOF-without-newline, and second-pass checks.

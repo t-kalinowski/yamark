@@ -1,140 +1,0 @@
--- args
-format --stdin-file-path input.md --wrap paragraph --canonical
--- stdin
-Before
-`first  
-  second {{< include file >}}` after _outside_.
-
-- Before
-  `first  
-    second {{< include file >}}` after _outside_.
-
-> Before
-> `first  
->   second {{< include file >}}` after _outside_.
-
-Before
-`[x]( url ) {{ value }}` after _outside_.
-
-Before `first  
-  {{ value }} second` after _outside_.
-
-- {{ render_item() }}
-  Follow-up prose.
-
-> {{ render_item() }}
-> Follow-up prose.
-
-- Before <kbd><span>`first	
-    second {{< include file >}}`</span></kbd> after _outside_ [real](  target  ).
-
-firstsecond `ab` $cd$
-
-- firstsecond `ab` $cd$
-
-> firstsecond `ab` $cd$
-
-- Before `first  
-    second {{< include file >}}` after _outside_.
-  	
-  Next paragraph [real](  target  ).
-
-> - First paragraph `a  b`.
->   
->   Next paragraph [real](  target  ).
-
-[^nested]: Before `first  
-      second {{< include file >}}` after _outside_.
-  	
-    Next paragraph [real](  target  ).
-
-Term
-   ~ Before $first\
-    second [x]( url )$ after _outside_ [real](  target  ).
-
-1000) Before `first	
-    second {{< include file >}}` after _outside_.
-
-Before `[a](  u  )` ~~<kbd>~~ then `[b](  v  )` after [r](  t  ).
-
-Before <!-- _disabled_ --> after _outside_.
-
-- Before <!DOCTYPE _disabled_> after _outside_.
-
-> Before <?_disabled_?> after _outside_.
-
-Before <kbd>first  
-second </kbd> after _outside_.
-
-- Before <kbd><span>first 	
-  `literal  
-    bytes` second </span></kbd> after _outside_.
--- stdout
-Before `first  
-  second {{< include file >}}` after *outside*.
-
-- Before `first  
-    second {{< include file >}}` after *outside*.
-
-> Before `first  
->   second {{< include file >}}` after *outside*.
-
-Before `[x]( url ) {{ value }}` after *outside*.
-
-Before `first  
-  {{ value }} second` after _outside_.
-
-- {{ render_item() }}
-  Follow-up prose.
-
-> {{ render_item() }}
-> Follow-up prose.
-
-- Before <kbd><span>`first	
-    second {{< include file >}}`</span></kbd> after *outside* [real]( target ).
-
-first second `ab` $cd$
-
-- first second `ab` $cd$
-
-> first second `ab` $cd$
-
-- Before `first  
-    second {{< include file >}}` after *outside*.
-
-  Next paragraph [real](target).
-
-> - First paragraph `a  b`.
->
->   Next paragraph [real](target).
-
-[^nested]:
-    Before `first  
-      second {{< include file >}}` after *outside*.
-
-    Next paragraph [real](target).
-
-Term
-   ~ Before $first\
-     second [x]( url )$ after *outside* [real](target).
-
-1000) Before `first	
-      second {{< include file >}}` after *outside*.
-
-Before `[a](  u  )` ~~<kbd>~~ then `[b](  v  )` after [r]( t ).
-
-Before <!-- _disabled_ --> after *outside*.
-
-- Before <!DOCTYPE _disabled_> after *outside*.
-
-> Before <?_disabled_?> after *outside*.
-
-Before <kbd>first \
-second </kbd> after *outside*.
-
-- Before <kbd><span>first
-  `literal  
-    bytes` second </span></kbd> after *outside*.
--- stderr
--- status
-0

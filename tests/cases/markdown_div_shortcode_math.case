@@ -93,7 +93,7 @@ enough to be considered for wrapping
 after an opaque shortcode block.
 
 {{% notice %}}
-Do   not format this body.
+Do not format this body.
 {{% /notice %}}
 
 $$

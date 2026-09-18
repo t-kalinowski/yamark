@@ -149,6 +149,8 @@ fn parse_markdown_with_mode(
         let line = source.lines[i];
         let text = source.line_text(i);
 
+        // Disabled regions use the existing linewise directive policy. Block
+        // structure, including shortcodes, does not hide a fmt: on line.
         if engine.formatting_disabled() {
             if markdown_on_directive_line(text) {
                 let state = engine.state_for_node(&mut doc, false);
@@ -547,21 +549,8 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if shortcode_block_at(text) {
-            let start = i;
-            i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
-            let span = Span::new(
-                source.lines[start].full.start(),
-                source.lines[i - 1].full.end(),
-            );
-            validate_markdown_format_target(source, &doc, state, span, true)?;
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
-                span,
-                state,
-                emit: EmitPlan::MarkdownOpaque,
-            });
+        if let Some(token_start) = shortcode_block_start(source, i) {
+            i = push_shortcode_token(source, &mut doc, &mut engine, i, token_start, range);
             continue;
         }
 
@@ -1045,7 +1034,11 @@ impl MarkdownPlans {
 
     pub(crate) fn take_fragment_block(&mut self, node: usize) -> Option<crate::core::wrap::Plan> {
         let retained = self.get_mut(node)?;
-        retained.plan.take()
+        if retained.preserve {
+            None
+        } else {
+            retained.plan.take()
+        }
     }
 
     fn get_mut(&mut self, node: usize) -> Option<&mut RetainedMarkdown> {
@@ -1218,10 +1211,7 @@ fn plan_markdown_block(
 ) -> RetainedMarkdown {
     let input = source.slice(node.span);
     let options = state.markdown_options(options);
-    let preserve_raw = matches!(
-        kind,
-        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-    ) && crate::core::wrap::markdown_reflow_changes_raw_semantics(input);
+    let preserve_raw = crate::core::wrap::markdown_reflow_changes_raw_semantics(input);
     let mut retained = RetainedMarkdown {
         state: node.state,
         preserve: preserve_raw,
@@ -1335,19 +1325,6 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                         _ => crate::core::wrap::format_markdown_pandoc_table(input, effective),
                     };
                     retained.plan = Some(crate::core::wrap::Plan::normalized_block(input, &text));
-                }
-            }
-            if !matches!(
-                kind,
-                MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-            ) {
-                let retained = doc.markdown.get_mut(index).expect("planned inline content");
-                if retained.preserve || retained.plan.is_none() {
-                    let input = source.slice(node.span);
-                    retained.plan = Some(crate::core::wrap::Plan::normalized_block(
-                        input,
-                        &crate::core::wrap::preserve_inline_lines(input),
-                    ));
                 }
             }
         } else if matches!(
@@ -2620,7 +2597,7 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
-    let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
+    let mut split_link_destinations: Option<Vec<std::ops::Range<usize>>> = None;
     for line in start + 1..end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
@@ -2660,12 +2637,13 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
             // Multiline link destinations are rare. Keep this whole-block
             // scan off the ordinary-list hot path and cache it when needed.
             let block_start = source.lines[start].full.start();
-            let multiline_inlines = multiline_inlines.get_or_insert_with(|| {
+            let split_link_destinations = split_link_destinations.get_or_insert_with(|| {
                 let block = source.slice(Span::new(block_start, source.lines[end - 1].full.end()));
-                crate::core::wrap::markdown_multiline_inline_spans(block)
+                crate::core::wrap::markdown_multiline_link_destination_spans(block)
+                    .collect::<Vec<_>>()
             });
             let line_offset = source.lines[line].text.start() - block_start;
-            if multiline_inlines
+            if split_link_destinations
                 .iter()
                 .any(|span| span.contains(&line_offset))
             {
@@ -2876,10 +2854,20 @@ fn markdown_indented_code_at(text: &str) -> bool {
     false
 }
 
-fn shortcode_block_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    let indent = text.len() - trimmed.len();
-    indent <= 3 && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%"))
+fn shortcode_block_start(source: &SourceBuffer, line: usize) -> Option<usize> {
+    let text = source.line_text(line);
+    // A file-leading BOM is retained in the node's span, but is not indentation.
+    let content = if line == 0 {
+        text.strip_prefix('\u{feff}').unwrap_or(text)
+    } else {
+        text
+    };
+    let trimmed = content.trim_start();
+    let indent = content.len() - trimmed.len();
+    (indent <= 3
+        && !markdown_indented_code_at(content)
+        && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%")))
+    .then_some(source.lines[line].text.start() + text.len() - trimmed.len())
 }
 
 fn display_math_block_at(text: &str) -> bool {
@@ -2968,11 +2956,6 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     if multiline_html_tag_start(source.line_text(line)) {
         return find_until_contains(source, line + 1, end, ">");
     }
-    if let Some(shortcode) = hugo_shortcode_opening(trimmed)
-        && let Some(close) = find_hugo_shortcode_close(source, line + 1, end, shortcode)
-    {
-        return close;
-    }
     if display_math_delimiter(trimmed) {
         if trimmed[2..].contains("$$") {
             return line + 1;
@@ -3049,67 +3032,54 @@ fn raw_continuation(first: &str, candidate: &str) -> bool {
     first_indent >= 4 && candidate_indent >= 4
 }
 
-#[derive(Debug, Clone, Copy)]
-struct HugoShortcodeOpening<'a> {
-    delimiter: char,
-    name: &'a str,
-}
-
-fn hugo_shortcode_opening(trimmed: &str) -> Option<HugoShortcodeOpening<'_>> {
-    let (delimiter, rest) = if let Some(rest) = trimmed.strip_prefix("{{<") {
-        ('>', rest)
-    } else {
-        ('%', trimmed.strip_prefix("{{%")?)
-    };
-    let rest = rest.trim_start();
-    if rest.starts_with('/') {
-        return None;
-    }
-    let name_end = rest
-        .char_indices()
-        .find_map(|(index, ch)| (ch.is_whitespace() || ch == delimiter).then_some(index))
-        .unwrap_or(rest.len());
-    let name = &rest[..name_end];
-    (!name.is_empty()).then_some(HugoShortcodeOpening { delimiter, name })
-}
-
-fn find_hugo_shortcode_close(
+fn push_shortcode_token(
     source: &SourceBuffer,
-    mut line: usize,
-    end: usize,
-    opening: HugoShortcodeOpening<'_>,
-) -> Option<usize> {
-    while line < end {
-        if hugo_shortcode_closes(source.line_text(line).trim_start(), opening) {
-            return Some(line + 1);
-        }
-        line += 1;
-    }
-    None
+    doc: &mut Document,
+    engine: &mut DirectiveEngine,
+    line: usize,
+    token_start: usize,
+    range: Span,
+) -> usize {
+    let token_end = shortcode_token_end(source, token_start, range.end);
+    let next_line = source.line_at_byte(token_end - 1) + 1;
+    let state = engine.state_for_node(doc, true);
+    doc.push_node(Node {
+        kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
+        // The rest of the closing line stays outside the token. Advancing to
+        // the next line retains the existing mixed token/prose boundary.
+        span: Span::new(source.lines[line].full.start(), token_end),
+        state,
+        emit: EmitPlan::MarkdownOpaque,
+    });
+    next_line
 }
 
-fn hugo_shortcode_closes(trimmed: &str, opening: HugoShortcodeOpening<'_>) -> bool {
-    let rest = match opening.delimiter {
-        '>' => trimmed.strip_prefix("{{<"),
-        '%' => trimmed.strip_prefix("{{%"),
-        _ => None,
+/// Find one lexical token, bounded by the enclosing Markdown fragment. Names
+/// and braces in arguments have no structural meaning. An incomplete token
+/// consumes the remaining range so it cannot trigger repeated suffix scans.
+fn shortcode_token_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
+    let text = &source.as_str()[start..end];
+    let closing = if text.starts_with("{{<") {
+        ">}}"
+    } else {
+        "%}}"
     };
-    let Some(rest) = rest else {
-        return false;
-    };
-    let Some(rest) = rest.trim_start().strip_prefix('/') else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(after_name) = rest.strip_prefix(opening.name) else {
-        return false;
-    };
-    let after_name = after_name.trim_start();
-    match opening.delimiter {
-        '>' => after_name.starts_with(">}}"),
-        '%' => after_name.starts_with("%}}"),
-        _ => false,
+    let mut quote = None;
+    let mut chars = text[3..].char_indices();
+    while let Some((offset, ch)) = chars.next() {
+        if let Some(delimiter) = quote {
+            if ch == '\\' && delimiter != '`' {
+                chars.next();
+            } else if ch == delimiter {
+                quote = None;
+            }
+        } else if matches!(ch, '\'' | '"' | '`') {
+            quote = Some(ch);
+        } else if text[3 + offset..].starts_with(closing) {
+            return start + 3 + offset + closing.len();
+        }
     }
+    end
 }
 
 fn link_definition_start(trimmed: &str) -> bool {

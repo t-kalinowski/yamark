@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+Lead _Before `_a_ *b* [x](  url  )` after_ [real](  target  ).
+
+- __Before $x + __a__ **b** [x]( url )$ after__ [real](  target  ).
+
+> _Before ``_a_ ` *b*`` after_ [real](  target  ).
+-- stdout
+Lead *Before `_a_ *b* [x](  url  )` after* [real](target).
+
+- **Before $x + __a__ **b** [x]( url )$ after** [real](target).
+
+> *Before ``_a_ ` *b*`` after* [real](target).
+-- stderr
+-- status
+0

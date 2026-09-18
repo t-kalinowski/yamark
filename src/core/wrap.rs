@@ -1,11 +1,9 @@
-mod inline;
 mod plan;
 use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
 use crate::core::markdown_marker::markdown_list_marker;
 use crate::core::source::{SourceSpan, Span};
-use inline::{InlineContent, InlineLink, InlineSegment};
 use plan::{Condition, FragmentInput, PlannedLine, Prefix, Text};
 pub(crate) use plan::{Draft, Fragment, Plan};
 use std::borrow::Cow;
@@ -28,17 +26,15 @@ pub(crate) fn prepare_markdown_paragraph(source: &str) -> Option<Draft> {
             Some(Draft::text(source, source)),
         ));
     }
-    let mut draft = Draft::inline(source, body, "", "", newline, true, false, false, true);
-    draft.paragraph(single_line_body(body));
-    Some(draft)
-}
-
-pub(crate) fn preserve_inline_lines(source: &str) -> String {
-    InlineContent::parse(source).preserve_lines(false, false, false)
-}
-
-pub(crate) fn markdown_multiline_inline_spans(source: &str) -> Vec<std::ops::Range<usize>> {
-    InlineContent::parse(source).multiline_spans(source)
+    let unwrapped = Some(Draft::unwrapped(source, body, source));
+    let reflow = if has_hard_break(body) {
+        prepare_markdown_hard_break_paragraph(source, body, newline)
+    } else {
+        let mut draft = Draft::inline(source, body, "", "", newline, true, false, "", true);
+        draft.paragraph(single_line_body(body));
+        Some(draft)
+    };
+    Some(Draft::choice(Condition::WrapNone, unwrapped, reflow))
 }
 
 /// Original-source ranges, retained only for paragraph template policy.
@@ -129,7 +125,7 @@ impl ParagraphTemplateSpans {
                     } else if rest.starts_with("~~") {
                         Some(strikethrough_span_end(source, index)?)
                     } else if rest.starts_with(['*', '_']) {
-                        Some(emphasis_span_end(source, index)?)
+                        Some(emphasis_span_end(&mut scan, index)?)
                     } else {
                         latex_command_token_end(source, index)
                     };
@@ -255,6 +251,24 @@ fn simple_bare_template(text: &str) -> bool {
             .next()
             .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
             && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    })
+}
+
+fn contains_existing_split_link_destination(source: &str) -> bool {
+    markdown_multiline_link_destination_spans(source)
+        .next()
+        .is_some()
+}
+
+pub(crate) fn markdown_multiline_link_destination_spans(
+    source: &str,
+) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+    source.match_indices("](").filter_map(|(index, _)| {
+        let destination_start = index + 2;
+        let destination_close = find_simple_destination_close(source, destination_start)?;
+        source[destination_start..destination_close]
+            .contains(['\n', '\r'])
+            .then_some(destination_start..destination_close)
     })
 }
 
@@ -828,28 +842,27 @@ pub(crate) fn prepare_markdown_list(source: &str) -> Option<Draft> {
 
 fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Option<Draft> {
     let mut out = Draft::new();
-    let mut multiline_inlines = None;
     let mut index = 0usize;
     while index < lines.len() {
         let line = lines[index];
         let body = line.body;
         let newline = line.newline;
         if body.trim().is_empty() {
-            out.push_str(source, body.trim_end_matches([' ', '\t']));
+            out.push_str(source, body);
             out.push_str(source, newline);
             index += 1;
             continue;
         }
         let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
         let indent = &body[..indent_len];
-        let trimmed = body[indent_len..].trim_ascii_start();
+        let trimmed = body[indent_len..].trim_start();
         let (marker, rest) = list_marker(trimmed)?;
         let marker = if matches!(marker, "*" | "+") {
             "-"
         } else {
             marker
         };
-        let item_body = rest.trim_ascii_start();
+        let item_body = rest.trim_start();
         let (first_prefix, first_content) =
             if let Some((checkbox, content)) = task_list_checkbox(item_body) {
                 (format!("{indent}{marker} {checkbox} "), content)
@@ -865,7 +878,9 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
             let mut pieces = Vec::new();
             let mut nested_quote_start = None;
             let mut saw_nested_quote = false;
-            pieces.push((paragraph_content, paragraph_newline));
+            if !paragraph_content.trim().is_empty() {
+                pieces.push(paragraph_content);
+            }
             while index < lines.len() {
                 let continuation_body = lines[index].body;
                 if continuation_body.trim().is_empty() {
@@ -875,20 +890,14 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
                     .bytes()
                     .take_while(|byte| *byte == b' ')
                     .count();
-                let continuation_trimmed =
-                    continuation_body[continuation_indent..].trim_ascii_start();
+                let continuation_trimmed = continuation_body[continuation_indent..].trim_start();
                 if list_marker(continuation_trimmed).is_some() {
                     break;
                 }
                 if continuation_indent < continuation_prefix.len()
                     || continuation_indent >= continuation_prefix.len() + 4
                 {
-                    let spans = multiline_inlines
-                        .get_or_insert_with(|| markdown_multiline_inline_spans(source));
-                    let offset = continuation_body.as_ptr() as usize - source.as_ptr() as usize;
-                    if !spans.iter().any(|span| span.contains(&offset)) {
-                        return None;
-                    }
+                    return None;
                 }
                 if continuation_trimmed.starts_with('>') {
                     if continuation_indent != continuation_prefix.len() {
@@ -902,19 +911,22 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
                 if saw_nested_quote {
                     return None;
                 }
-                pieces.push((
-                    &continuation_body[continuation_prefix.len().min(continuation_indent)..],
-                    lines[index].newline,
-                ));
+                pieces.push(continuation_trimmed);
                 index += 1;
             }
-            out.append(prepare_prefixed_markdown_lines(
-                source,
-                &pieces,
-                &paragraph_prefix,
-                &continuation_prefix,
-                false,
-            ));
+            let segments = markdown_hard_break_segments(pieces.iter().copied());
+            if segments.is_empty() {
+                out.push_str(source, paragraph_prefix.trim_end());
+                out.push_str(source, paragraph_newline);
+            } else {
+                out.append(prepare_prefixed_markdown_segments(
+                    source,
+                    &segments,
+                    &paragraph_prefix,
+                    &continuation_prefix,
+                    paragraph_newline,
+                )?);
+            }
             if let Some(start) = nested_quote_start {
                 let first = lines[start].full;
                 let last = lines[index - 1].full;
@@ -937,8 +949,7 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
             }
             if index >= lines.len() {
                 for blank in &lines[blank_start..index] {
-                    out.push_str(source, blank.body.trim_end_matches([' ', '\t']));
-                    out.push_str(source, blank.newline);
+                    out.push_str(source, blank.full);
                 }
                 break;
             }
@@ -948,7 +959,7 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
                 .bytes()
                 .take_while(|byte| *byte == b' ')
                 .count();
-            let continuation_trimmed = continuation_body[continuation_indent..].trim_ascii_start();
+            let continuation_trimmed = continuation_body[continuation_indent..].trim_start();
             if list_marker(continuation_trimmed).is_some()
                 || continuation_indent < continuation_prefix.len()
                 || continuation_indent >= continuation_prefix.len() + 4
@@ -958,8 +969,7 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
             }
 
             for blank in &lines[blank_start..index] {
-                out.push_str(source, blank.body.trim_end_matches([' ', '\t']));
-                out.push_str(source, blank.newline);
+                out.push_str(source, blank.full);
             }
             paragraph_prefix = continuation_prefix.clone();
             paragraph_content = continuation_trimmed;
@@ -1110,32 +1120,35 @@ pub(crate) fn prepare_markdown_definition_list(source: &str) -> Option<Draft> {
             index += 1;
             continue;
         };
-        let continuation_prefix = definition_continuation_indent(&prefix);
-        let mut pieces = vec![(content.trim_ascii_start(), newline)];
+        let mut pieces = vec![content.trim_start()];
         index += 1;
         while index < lines.len() {
             let continuation = lines[index].body;
             if continuation.trim().is_empty() || definition_marker_parts(continuation).is_some() {
                 break;
             }
-            let trimmed = continuation.trim_ascii_start();
+            let trimmed = continuation.trim_start();
             let indent = continuation.len() - trimmed.len();
             if indent < 4 {
                 break;
             }
-            pieces.push((
-                &continuation[continuation_prefix.len().min(indent)..],
-                lines[index].newline,
-            ));
+            pieces.push(trimmed);
             index += 1;
         }
-        out.append(prepare_prefixed_markdown_lines(
+        let segments = markdown_hard_break_segments(pieces.iter().copied());
+        if segments.is_empty() {
+            out.push_str(source, prefix.trim_end());
+            out.push_str(source, newline);
+            continue;
+        }
+        let continuation_prefix = definition_continuation_indent(&prefix);
+        out.append(prepare_prefixed_markdown_segments(
             source,
-            &pieces,
+            &segments,
             &prefix,
             &continuation_prefix,
-            false,
-        ));
+            newline,
+        )?);
     }
     Some(out)
 }
@@ -1162,11 +1175,15 @@ fn prepare_simple_markdown_blockquote(source: &str) -> Option<Draft> {
         return None;
     }
     let mut indent = None::<&str>;
+    let mut newline = "";
     let mut pieces = Vec::new();
     let mut saw_empty_quote_line = false;
     for line in markdown_lines(source) {
         let body = line.body;
         let line_newline = line.newline;
+        if newline.is_empty() {
+            newline = line_newline;
+        }
         let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
         let line_indent = &body[..indent_len];
         if let Some(indent) = indent {
@@ -1178,13 +1195,13 @@ fn prepare_simple_markdown_blockquote(source: &str) -> Option<Draft> {
         }
         let trimmed = body[indent_len..].trim_start();
         let rest = trimmed.strip_prefix('>')?;
-        let rest = rest.strip_prefix(' ').unwrap_or(rest);
+        let rest = rest.trim_start();
         if rest.is_empty() {
             saw_empty_quote_line = true;
         } else if saw_empty_quote_line {
             return None;
         } else {
-            pieces.push((rest, line_newline));
+            pieces.push(rest);
         }
     }
     let indent = indent.unwrap_or("");
@@ -1192,9 +1209,12 @@ fn prepare_simple_markdown_blockquote(source: &str) -> Option<Draft> {
         return None;
     }
     let prefix = format!("{indent}> ");
-    Some(prepare_prefixed_markdown_lines(
-        source, &pieces, &prefix, &prefix, false,
-    ))
+    let segments = markdown_hard_break_segments(pieces.iter().copied());
+    if segments.is_empty() {
+        Some(Draft::text(source, &format!("{indent}>{newline}")))
+    } else {
+        prepare_prefixed_markdown_segments(source, &segments, &prefix, &prefix, newline)
+    }
 }
 
 fn prepare_rich_markdown_blockquote(source: &str) -> Option<Draft> {
@@ -1266,8 +1286,43 @@ fn rich_child_block_start(trimmed: &str) -> bool {
 }
 
 fn prepare_nested_blockquote_markers(source: &str) -> Option<Draft> {
+    Some(Draft::choice(
+        Condition::WrapNone,
+        prepare_nested_blockquote_lines(source),
+        prepare_nested_blockquote_group(source),
+    ))
+}
+
+fn prepare_nested_blockquote_lines(source: &str) -> Option<Draft> {
+    let plans = markdown_lines(source)
+        .map(|line| {
+            let body = line.body;
+            let newline = line.newline;
+            let (indent, depth, rest) = nested_blockquote_parts(body)?;
+            let markers = "> ".repeat(depth);
+            let prefix = format!("{indent}{markers}");
+            let segments = markdown_hard_break_segments([rest.trim_start()]);
+            if segments.is_empty() {
+                Some(Draft::text(
+                    source,
+                    &format!("{indent}{}{newline}", markers.trim_end()),
+                ))
+            } else {
+                prepare_prefixed_markdown_segments(source, &segments, &prefix, &prefix, newline)
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let mut out = Draft::new();
+    for plan in plans {
+        out.append(plan);
+    }
+    Some(out)
+}
+
+fn prepare_nested_blockquote_group(source: &str) -> Option<Draft> {
     let mut indent = None::<&str>;
     let mut depth = None::<usize>;
+    let mut newline = "";
     let mut pieces = Vec::new();
     for line in markdown_lines(source) {
         let (line_indent, line_depth, rest) = nested_blockquote_parts(line.body)?;
@@ -1285,17 +1340,19 @@ fn prepare_nested_blockquote_markers(source: &str) -> Option<Draft> {
         } else {
             depth = Some(line_depth);
         }
+        if newline.is_empty() {
+            newline = line.newline;
+        }
         if rest.trim().is_empty() {
             return None;
         }
-        pieces.push((rest, line.newline));
+        pieces.push(rest.trim());
     }
     let indent = indent.unwrap_or("");
     let depth = depth?;
     let prefix = format!("{indent}{}", "> ".repeat(depth));
-    Some(prepare_prefixed_markdown_lines(
-        source, &pieces, &prefix, &prefix, true,
-    ))
+    let segments = markdown_hard_break_segments(pieces.iter().copied());
+    prepare_prefixed_markdown_segments(source, &segments, &prefix, &prefix, newline)
 }
 
 fn nested_blockquote_parts(body: &str) -> Option<(&str, usize, &str)> {
@@ -1308,10 +1365,7 @@ fn nested_blockquote_parts(body: &str) -> Option<(&str, usize, &str)> {
     let mut depth = 0usize;
     while let Some(after_marker) = rest.strip_prefix('>') {
         depth += 1;
-        rest = after_marker.strip_prefix(' ').unwrap_or(after_marker);
-        if rest.trim_start().starts_with('>') {
-            rest = rest.trim_start();
-        }
+        rest = after_marker.trim_start();
     }
     (depth > 1).then_some((indent, depth, rest))
 }
@@ -1334,6 +1388,51 @@ pub fn format_markdown_fragment(source: &str, options: FormatOptions) -> String 
     Fragment::plan(source.to_owned(), options).emit()
 }
 
+fn normalize_inline_whitespace_preserving_lines(source: &str) -> String {
+    markdown_lines(source)
+        .map(|line| {
+            let body = line.body;
+            let newline = line.newline;
+            let trimmed = body.trim_end_matches([' ', '\t']);
+            let trailing_spaces = body
+                .as_bytes()
+                .iter()
+                .rev()
+                .take_while(|byte| **byte == b' ')
+                .count();
+            if trailing_spaces >= 2 && !trimmed.is_empty() {
+                format!("{trimmed} \\{newline}")
+            } else {
+                format!("{trimmed}{newline}")
+            }
+        })
+        .collect()
+}
+
+fn prepare_markdown_hard_break_paragraph(
+    source: &str,
+    body: &str,
+    final_newline: &str,
+) -> Option<Draft> {
+    let segments = markdown_hard_break_segments(markdown_line_bodies(body));
+    if segments.is_empty() {
+        return Some(Draft::text(source, body));
+    }
+    let mut out = prepare_prefixed_markdown_segments_with_default(
+        source,
+        &segments,
+        "",
+        "",
+        final_newline,
+        true,
+    )?;
+    if final_newline.is_empty() {
+        out.trim_final_newline();
+    }
+    out.paragraph(single_line_body(body));
+    Some(out)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MarkdownHardBreakMarker {
     CompactBackslash,
@@ -1347,6 +1446,44 @@ impl MarkdownHardBreakMarker {
             Self::SpaceBackslash => " \\",
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MarkdownHardBreakSegment {
+    text: String,
+    hard_break: Option<MarkdownHardBreakMarker>,
+}
+
+fn markdown_hard_break_segments<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+) -> Vec<MarkdownHardBreakSegment> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    for line in lines {
+        let (content, hard_break) = markdown_hard_break_line_content(line);
+        let content = normalize_spaces_preserving_protected_spans(content);
+        if !content.is_empty() {
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(&content);
+        }
+        if let Some(marker) = hard_break
+            && !current.is_empty()
+        {
+            segments.push(MarkdownHardBreakSegment {
+                text: std::mem::take(&mut current),
+                hard_break: Some(marker),
+            });
+        }
+    }
+    if !current.is_empty() {
+        segments.push(MarkdownHardBreakSegment {
+            text: current,
+            hard_break: None,
+        });
+    }
+    segments
 }
 
 fn markdown_hard_break_line_content(line: &str) -> (&str, Option<MarkdownHardBreakMarker>) {
@@ -1541,10 +1678,9 @@ fn footnote_definition(source: &str) -> bool {
 }
 
 fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
-    let newline = final_newline(source);
-    let mut lines = markdown_lines(source);
-    let first = lines.next()?;
-    let first_line = first.body;
+    let (body, newline) = strip_final_newline(source);
+    let mut lines = markdown_line_bodies(body);
+    let first_line = lines.next()?;
     let indent = first_line.bytes().take_while(|byte| *byte == b' ').count();
     if indent > 3 {
         return None;
@@ -1561,25 +1697,24 @@ fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
     let continuation_prefix = " ".repeat(indent + 2);
     let block_continuation_prefix = " ".repeat(indent + 4);
     let mut pieces = Vec::new();
-    let first_content = rest[content_start..].trim_ascii_start();
+    let first_content = rest[content_start..].trim_start();
     let mut block_continuation_lines = Vec::new();
     let mut saw_blank_line = false;
-    pieces.push((first_content, first.newline));
-    for source_line in lines {
-        let line = source_line.body;
+    pieces.push(first_content);
+    for line in lines {
         if line.trim().is_empty() {
             saw_blank_line = true;
-            block_continuation_lines.push(Some(("", source_line.newline)));
+            block_continuation_lines.push(Some(""));
             continue;
         }
         if line.bytes().take_while(|byte| *byte == b' ').count() < continuation_prefix.len() {
             return None;
         }
-        let continuation = &line[continuation_prefix.len()..];
-        pieces.push((continuation, source_line.newline));
+        let continuation = line[continuation_prefix.len()..].trim_start();
+        pieces.push(continuation);
         block_continuation_lines.push(
             line.strip_prefix(&block_continuation_prefix)
-                .map(|body| (body, source_line.newline)),
+                .map(str::trim_end),
         );
     }
     let block_continuation_refs = block_continuation_lines
@@ -1596,51 +1731,59 @@ fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
         return Some(prepare_markdown_footnote_block(
             source,
             &label,
-            (first_content, first.newline),
+            first_content.trim_end(),
             &block_continuation_refs,
             &block_continuation_prefix,
             newline,
         ));
     }
-    let mut out =
-        prepare_prefixed_markdown_lines(source, &pieces, &prefix, &continuation_prefix, false);
+    let segments = markdown_hard_break_segments(pieces.iter().copied());
+    let mut out = prepare_prefixed_markdown_segments_with_default(
+        source,
+        &segments,
+        &prefix,
+        &continuation_prefix,
+        newline,
+        true,
+    )?;
     if newline.is_empty() {
         out.trim_final_newline();
     }
     Some(out)
 }
 
-fn footnote_needs_recursive_body(first_content: &str, continuation_lines: &[(&str, &str)]) -> bool {
+fn footnote_needs_recursive_body(first_content: &str, continuation_lines: &[&str]) -> bool {
     first_content.is_empty()
         || continuation_lines
             .iter()
-            .any(|(body, _)| markdown_block_start_line(body))
+            .any(|line| markdown_block_start_line(line))
 }
 
 fn prepare_markdown_footnote_block(
     source: &str,
     label: &str,
-    first_line: (&str, &str),
-    continuation_lines: &[(&str, &str)],
+    first_content: &str,
+    continuation_lines: &[&str],
     continuation_prefix: &str,
     newline: &str,
 ) -> Draft {
-    let mut nested = String::new();
-    if !first_line.0.is_empty() {
-        nested.push_str(first_line.0);
-        nested.push_str(first_line.1);
+    let mut lines = Vec::new();
+    if !first_content.is_empty() {
+        lines.push(Text::retain(source, first_content));
     }
-    for (body, newline) in continuation_lines {
-        nested.push_str(body);
-        nested.push_str(newline);
-    }
+    lines.extend(
+        continuation_lines
+            .iter()
+            .map(|line| Text::retain(source, line)),
+    );
     let mut out = Draft::new();
     out.push_str(source, label);
     out.push_join_newline(newline);
     out.child(
-        FragmentInput::Buffer(std::sync::Arc::new(crate::core::source::SourceBuffer::new(
-            nested,
-        ))),
+        FragmentInput::Lines {
+            lines,
+            newline: newline.into(),
+        },
         Prefix::Footnote {
             indent: continuation_prefix.into(),
             newline: newline.into(),
@@ -1666,22 +1809,15 @@ fn newline_for_join(final_newline: &str, options: FormatOptions) -> &str {
 struct InlineToken<'a> {
     text: Cow<'a, str>,
     width: usize,
-    splittable_link: bool,
 }
 
 impl<'a> InlineToken<'a> {
-    fn new(text: impl Into<Cow<'a, str>>) -> Self {
-        let text = text.into();
+    fn owned(text: String) -> Self {
         let width = token_width(&text);
         Self {
-            text,
+            text: Cow::Owned(text),
             width,
-            splittable_link: false,
         }
-    }
-
-    fn owned(text: String) -> Self {
-        Self::new(text)
     }
 
     fn text(&self) -> &str {
@@ -1694,7 +1830,7 @@ impl<'a> InlineToken<'a> {
 #[derive(Clone, Copy)]
 struct TokenSlice<'a> {
     text: &'a str,
-    measured: &'a [(SourceSpan, usize, bool)],
+    measured: &'a [(SourceSpan, usize)],
 }
 
 impl<'a> TokenSlice<'a> {
@@ -1710,13 +1846,10 @@ impl<'a> TokenSlice<'a> {
     }
 
     fn iter(self) -> impl Iterator<Item = InlineToken<'a>> {
-        self.measured
-            .iter()
-            .map(move |(span, width, splittable_link)| InlineToken {
-                text: Cow::Borrowed(span.span().slice(self.text)),
-                width: *width,
-                splittable_link: *splittable_link,
-            })
+        self.measured.iter().map(move |(span, width)| InlineToken {
+            text: Cow::Borrowed(span.span().slice(self.text)),
+            width: *width,
+        })
     }
 }
 
@@ -1802,7 +1935,61 @@ fn ascii_ends_with_ignore_case(value: &str, suffix: &str) -> bool {
 }
 
 pub fn canonicalize_inline(source: &str) -> String {
-    InlineContent::parse(source).render(false, true)
+    let mut scan = InlineScan::new(source);
+
+    let mut out = String::with_capacity(source.len());
+    let mut index = 0usize;
+    while index < source.len() {
+        let rest = &source[index..];
+        if rest.starts_with("~~") && !escaped_at(source, index) {
+            let Some(close) = rest[2..].find("~~") else {
+                out.push_str(rest);
+                break;
+            };
+            let end = index + 2 + close + 2;
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if let Some(end) = scan.literal_span_end(index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if rest.starts_with('`') && escaped_at(source, index) {
+            // An escaped run cannot start a literal partway through the run.
+            let end = index + delimiter_run_len_at(source, index, b'`');
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if let Some(end) = paired_inline_html_span_end(source, index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if let Some(end) = protected_inline_token_end(&mut scan, index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        let ch = rest.chars().next().expect("index is on a char boundary");
+        if ch == '_'
+            && !escaped_at(source, index)
+            && let Some(span) = emphasis_span_at(&mut scan, index)
+        {
+            let delimiter = "*".repeat(span.run);
+            out.push_str(&delimiter);
+            out.push_str(&canonicalize_inline(&source[index + span.run..span.close]));
+            out.push_str(&delimiter);
+            out.push_str(&source[span.close + span.run..span.end]);
+            index = span.end;
+            continue;
+        }
+        out.push(ch);
+        index += ch.len_utf8();
+    }
+    out
 }
 
 fn paired_inline_html_span_end(source: &str, index: usize) -> Option<usize> {
@@ -1858,6 +2045,37 @@ fn html_closing_tag_end(source: &str, start: usize, tag: &str) -> Option<usize> 
             return Some(candidate_start + name_len + candidate[name_len..].find('>')? + 1);
         }
         search_start = candidate_start + name_len;
+    }
+    None
+}
+
+fn protected_inline_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let source = scan.text;
+    let rest = &source[index..];
+    if escaped_at(source, index) {
+        return None;
+    }
+    if let Some(end) = reference_style_link_span_end(scan, index) {
+        return Some(end);
+    }
+    if rest.starts_with("![") || rest.starts_with('[') {
+        return link_or_bracket_token_end(scan, index);
+    }
+    if rest.starts_with('<') {
+        return rest.find('>').map(|close| index + close + 1);
+    }
+    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
+        && let Some(close) = rest.find("}}")
+    {
+        return Some(index + close + 2);
+    }
+    if rest.starts_with('{')
+        && let Some(end) = balanced_brace_end(rest)
+    {
+        return Some(index + end);
+    }
+    if rest.starts_with('\\') && rest[1..].chars().next().is_some_and(char::is_alphabetic) {
+        return latex_command_token_end(source, index);
     }
     None
 }
@@ -2424,7 +2642,7 @@ fn protected_spacing_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option
         .or_else(|| inline_html_tag_span_end(source, index))
         .or_else(|| inline_code_span_end(source, index))
         .or_else(|| inline_math_span_end(source, index))
-        .or_else(|| emphasis_span_end(source, index))
+        .or_else(|| emphasis_span_end(scan, index))
         .or_else(|| latex_command_token_end(source, index))
 }
 
@@ -2563,7 +2781,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             tokens
                 .measured
                 .iter()
-                .map(|(span, _, _)| span.span().slice(tokens.text)),
+                .map(|(span, _)| span.span().slice(tokens.text)),
             suffix,
         )
     }
@@ -2738,8 +2956,7 @@ fn write_wrapped_tokens_with_first_width(
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width);
     for token in tokens.iter() {
-        if token.splittable_link
-            && token.width > lines.width
+        if token.width > lines.width
             && let Some(split) = split_long_link_token(token.text(), lines.width)
         {
             lines.push_split_token_lines(writer, split)?;
@@ -3100,29 +3317,168 @@ fn is_pandoc_attribute_content(value: &str) -> bool {
     !value.is_empty() && (value.starts_with(['#', '.']) || value.contains('='))
 }
 
-fn prepare_prefixed_markdown_lines(
+fn prepare_prefixed_markdown_segments(
     source: &str,
-    lines: &[(&str, &str)],
+    segments: &[MarkdownHardBreakSegment],
     first_prefix: &str,
     continuation_prefix: &str,
-    preserve_lines: bool,
-) -> Draft {
-    let content: String = lines
-        .iter()
-        .map(|(body, newline)| format!("{body}{newline}"))
-        .collect();
-    let newline = lines.first().map_or("", |(_, newline)| *newline);
-    Draft::inline(
+    newline: &str,
+) -> Option<Draft> {
+    prepare_prefixed_markdown_segments_with_default(
         source,
-        &content,
+        segments,
         first_prefix,
         continuation_prefix,
         newline,
-        true,
-        true,
-        preserve_lines,
         false,
     )
+}
+
+fn prepare_prefixed_markdown_segments_with_default(
+    source: &str,
+    segments: &[MarkdownHardBreakSegment],
+    first_prefix: &str,
+    continuation_prefix: &str,
+    newline: &str,
+    default_newline: bool,
+) -> Option<Draft> {
+    let Some((first, rest)) = segments.split_first() else {
+        let mut draft = Draft::text(source, first_prefix);
+        if default_newline {
+            draft.push_join_newline(newline);
+        } else {
+            draft.push_str(source, newline);
+        }
+        return Some(draft);
+    };
+    let mut draft = prepare_prefixed_markdown_segment(
+        source,
+        first,
+        first_prefix,
+        continuation_prefix,
+        newline,
+        default_newline,
+    );
+    for segment in rest {
+        draft.append(prepare_prefixed_markdown_segment(
+            source,
+            segment,
+            continuation_prefix,
+            continuation_prefix,
+            newline,
+            default_newline,
+        ));
+    }
+    Some(draft)
+}
+
+fn prepare_prefixed_markdown_segment(
+    source: &str,
+    segment: &MarkdownHardBreakSegment,
+    first_prefix: &str,
+    continuation_prefix: &str,
+    newline: &str,
+    default_newline: bool,
+) -> Draft {
+    let text = normalize_supported_links_and_images(&segment.text);
+    let suffix = segment
+        .hard_break
+        .map(MarkdownHardBreakMarker::suffix)
+        .unwrap_or("");
+    Draft::inline(
+        source,
+        &text,
+        first_prefix,
+        continuation_prefix,
+        newline,
+        default_newline,
+        true,
+        suffix,
+        false,
+    )
+}
+
+fn inline_tokens(text: &str) -> Option<Vec<(SourceSpan, usize)>> {
+    let mut scan = InlineScan::new(text);
+
+    if simple_inline_tokens_supported(text) {
+        return Some(simple_inline_tokens(text));
+    }
+    if contains_unsupported_inline_construct(text) {
+        return None;
+    }
+    let mut tokens = Vec::new();
+    let mut index = 0usize;
+    while index < text.len() {
+        while index < text.len() {
+            let ch = text[index..].chars().next()?;
+            if !ch.is_ascii_whitespace() {
+                break;
+            }
+            index += ch.len_utf8();
+        }
+        if index >= text.len() {
+            break;
+        }
+
+        let end = inline_token_end(&mut scan, index)?;
+        tokens.push((
+            SourceSpan::new(Span::new(index, end)),
+            token_width(&text[index..end]),
+        ));
+        index = end;
+    }
+
+    Some(tokens)
+}
+
+fn simple_inline_tokens_supported(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'`' | b'$' | b'~' | b'<' | b'\\' | b'[' | b'{' | b'*' | b'_' => return false,
+            b'!' if bytes.get(index + 1) == Some(&b'[') => return false,
+            _ => index += 1,
+        }
+    }
+    true
+}
+
+fn simple_inline_tokens(text: &str) -> Vec<(SourceSpan, usize)> {
+    text.split_ascii_whitespace()
+        .map(|token| {
+            let start = token.as_ptr() as usize - text.as_ptr() as usize;
+            (
+                SourceSpan::new(Span::new(start, start + token.len())),
+                token_width(token),
+            )
+        })
+        .collect()
+}
+
+fn contains_unsupported_inline_construct(text: &str) -> bool {
+    let mut scan = InlineScan::new(text);
+
+    let mut index = 0usize;
+    while index < text.len() {
+        if multiline_brace_span_at(text, index) {
+            return true;
+        }
+        if let Some(end) = unsupported_scan_protected_token_end(&mut scan, index) {
+            index = end;
+            continue;
+        }
+        if text[index..].starts_with("~~") && !escaped_at(text, index) {
+            return strikethrough_span_end(text, index).is_none();
+        }
+        let ch = text[index..]
+            .chars()
+            .next()
+            .expect("index is on a char boundary");
+        index += ch.len_utf8();
+    }
+    false
 }
 
 fn multiline_brace_span_at(text: &str, index: usize) -> bool {
@@ -3134,6 +3490,56 @@ fn multiline_brace_span_at(text: &str, index: usize) -> bool {
     };
     // Multiline brace spans can be Pandoc or Quarto attributes; leave them raw.
     text[index..index + end].contains(['\n', '\r'])
+}
+
+fn unsupported_scan_protected_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let text = scan.text;
+    if escaped_at(text, index) {
+        return None;
+    }
+    let rest = &text[index..];
+    if rest.starts_with('`') {
+        let tick_count = rest.bytes().take_while(|byte| *byte == b'`').count();
+        let marker = &rest[..tick_count];
+        let close = rest[tick_count..].find(marker)?;
+        return Some(index + tick_count + close + tick_count);
+    }
+    if rest.starts_with('$') {
+        let close = find_unescaped(rest, 1, '$')?;
+        return Some(index + close + 1);
+    }
+    if let Some(end) = strikethrough_span_end(text, index) {
+        return Some(end);
+    }
+    if let Some(end) = commonmark_autolink_span_end(text, index) {
+        return Some(end);
+    }
+    if let Some(end) = paired_inline_html_span_end(text, index) {
+        return Some(end);
+    }
+    if let Some(end) = inline_html_tag_span_end(text, index) {
+        return Some(end);
+    }
+    if rest.starts_with('\\') && rest[1..].chars().next().is_some_and(char::is_alphabetic) {
+        return latex_command_token_end(text, index);
+    }
+    if rest.starts_with("![") || rest.starts_with('[') {
+        return link_or_bracket_token_end(scan, index);
+    }
+    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
+        && let Some(close) = rest.find("}}")
+    {
+        return Some(index + close + 2);
+    }
+    if rest.starts_with('{')
+        && let Some(close) = balanced_brace_end(rest)
+    {
+        return Some(index + close);
+    }
+    if rest.starts_with('<') && !inline_html_tag_at(text, index) {
+        return rest.find('>').map(|close| index + close + 1);
+    }
+    None
 }
 
 fn inline_html_tag_at(text: &str, index: usize) -> bool {
@@ -3185,9 +3591,114 @@ fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
     text[index..].find('>').map(|close| index + close + 1)
 }
 
+fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
+    let mut scan = InlineScan::new(source);
+
+    if !source.as_bytes().contains(&b'[') {
+        return Cow::Borrowed(source);
+    }
+    let mut out = String::with_capacity(source.len());
+    let mut index = 0usize;
+    while index < source.len() {
+        let rest = &source[index..];
+        if rest.starts_with('<') && !escaped_at(source, index) {
+            // Without interpreting angle syntax, literal boundaries may be
+            // ambiguous. Preserve this input instead of rewriting any links,
+            // including ones already visited before the angle marker.
+            return Cow::Borrowed(source);
+        }
+        // Visit literals in prose order. A real link below consumes its label,
+        // destination and attributes before their delimiters can become openers.
+        if rest.starts_with('`') {
+            let end = if !escaped_at(source, index)
+                && let Some(end) = scan.code_span_end(index)
+            {
+                end
+            } else {
+                index
+            };
+            // Neither a failed/escaped opener nor the remainder of a closing
+            // run starts a new literal partway through that backtick run.
+            let end = end
+                + source[end..]
+                    .bytes()
+                    .take_while(|byte| *byte == b'`')
+                    .count();
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if rest.starts_with('$')
+            && let Some(end) = inline_math_span_end(source, index)
+        {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if let Some(end) = balanced_brace_span_end(source, index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if let Some(end) = reference_style_link_span_end(&mut scan, index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
+        if !escaped_at(source, index)
+            && (rest.starts_with("![") || rest.starts_with('['))
+            && let Some((end, normalized)) = normalize_link_or_image_at(&mut scan, index)
+        {
+            out.push_str(&normalized);
+            index = end;
+            continue;
+        }
+        let ch = rest.chars().next().expect("index is on a char boundary");
+        out.push(ch);
+        index += ch.len_utf8();
+    }
+    Cow::Owned(out)
+}
+
 fn normalize_link_or_image_at(scan: &mut InlineScan<'_>, start: usize) -> Option<(usize, String)> {
-    let (end, link) = InlineLink::parse(scan, start)?;
-    Some((end, link.render(true)))
+    let text = scan.text;
+    let image = text[start..].starts_with("![");
+    let label_start = if image { start + 2 } else { start + 1 };
+    let label_close = scan.square_close(label_start)?;
+    let after_label = label_close + 1;
+    if text.as_bytes().get(after_label) != Some(&b'(') {
+        return None;
+    }
+    let destination_close = find_simple_destination_close(text, after_label + 1)?;
+    let label = &text[label_start..label_close];
+    let label = normalize_link_label(label, !image)?;
+    let raw_target = &text[after_label + 1..destination_close];
+    let target = parse_simple_link_target(raw_target)?;
+    let target = if raw_target.contains(['\n', '\r']) {
+        render_existing_split_link_target(raw_target, target)
+    } else {
+        render_link_target(target)
+    };
+    let mut end = destination_close + 1;
+    let mut normalized = String::new();
+    if image {
+        normalized.push('!');
+    }
+    normalized.push('[');
+    normalized.push_str(&label);
+    normalized.push_str("](");
+    normalized.push_str(&target);
+    normalized.push(')');
+    let attribute = if image {
+        normalize_image_attribute_after(text, end)
+    } else {
+        normalize_attribute_after(text, end)
+    };
+    if let Some((attribute_end, attribute)) = attribute {
+        normalized.push_str(&attribute);
+        end = attribute_end;
+    }
+    Some((end, normalized))
 }
 
 fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String> {
@@ -3209,7 +3720,7 @@ fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String>
             index = end;
             continue;
         }
-        if let Some(end) = link_label_protected_span_end(label, index) {
+        if let Some(end) = link_label_protected_span_end(&mut scan, index) {
             out.push_str(&label[index..end]);
             index = end;
             continue;
@@ -3224,13 +3735,14 @@ fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String>
     Some(normalize_spaces_preserving_protected_spans(out.trim()).into_owned())
 }
 
-fn link_label_protected_span_end(label: &str, index: usize) -> Option<usize> {
+fn link_label_protected_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
+    let label = scan.text;
     strikethrough_span_end(label, index)
         .or_else(|| inline_code_span_end(label, index))
         .or_else(|| inline_math_span_end(label, index))
         .or_else(|| paired_inline_html_span_end(label, index))
         .or_else(|| inline_html_tag_span_end(label, index))
-        .or_else(|| emphasis_span_end(label, index))
+        .or_else(|| emphasis_span_end(scan, index))
         .or_else(|| latex_command_token_end(label, index))
 }
 
@@ -3365,6 +3877,99 @@ fn normalize_attribute_token(token: &str) -> String {
     format!("fig-alt=\"{}\"", normalize_spaces(value))
 }
 
+fn inline_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    let text = scan.text;
+    // Inline syntax protects its contents; only surrounding whitespace creates
+    // a prose wrapping boundary.
+    let mut end = start;
+    loop {
+        end = inline_token_fragment_end(scan, end)?;
+        if end == text.len()
+            || text[end..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_whitespace())
+        {
+            return Some(end);
+        }
+    }
+}
+
+fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    let text = scan.text;
+    let rest = &text[start..];
+    if let Some(end) = strikethrough_span_end(text, start) {
+        return Some(end);
+    }
+    if let Some(end) = commonmark_autolink_span_end(text, start) {
+        return Some(inline_span_end_with_trailing_punctuation(text, end));
+    }
+    if let Some(end) = paired_inline_html_span_end(text, start) {
+        return Some(end);
+    }
+    if rest.starts_with('`') {
+        return inline_code_span_end(text, start);
+    }
+    if rest.starts_with('$') && !escaped_at(text, start) {
+        return inline_math_span_end(text, start);
+    }
+    if rest.starts_with('\\') && rest[1..].chars().next().is_some_and(char::is_alphabetic) {
+        return latex_command_token_end(text, start);
+    }
+    if let Some(end) = emphasis_span_end(scan, start) {
+        return Some(end);
+    }
+    if rest.starts_with("![") || rest.starts_with('[') {
+        return link_or_bracket_token_end(scan, start);
+    }
+    if rest.starts_with('<')
+        && let Some(end) = inline_html_tag_span_end(text, start)
+    {
+        return Some(end);
+    }
+    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
+        && let Some(close) = rest.find("}}")
+    {
+        return Some(start + close + 2);
+    }
+    if rest.starts_with('{')
+        && let Some(close) = balanced_brace_end(rest)
+    {
+        return Some(start + close);
+    }
+
+    let mut end = start;
+    while end < text.len() {
+        let slice = &text[end..];
+        let ch = slice.chars().next()?;
+        if ch.is_ascii_whitespace() {
+            break;
+        }
+        if end != start
+            && (slice.starts_with('`')
+                || slice.starts_with('$')
+                || slice.starts_with("![")
+                || slice.starts_with('[')
+                || slice.starts_with('<')
+                || slice.starts_with("{{<")
+                || slice.starts_with("{{%"))
+        {
+            break;
+        }
+        end += ch.len_utf8();
+    }
+    while end < text.len() {
+        if escaped_at(text, end) || !reference_bracket_token_at(scan, end) {
+            break;
+        }
+        let Some(reference_end) = link_or_bracket_token_end(scan, end) else {
+            break;
+        };
+        end = inline_span_end_with_trailing_punctuation(text, reference_end);
+    }
+    (end > start).then_some(end)
+}
+
 fn strikethrough_span_end(text: &str, start: usize) -> Option<usize> {
     if escaped_at(text, start) || !text[start..].starts_with("~~") {
         return None;
@@ -3406,11 +4011,12 @@ struct EmphasisSpan {
     run: usize,
 }
 
-fn emphasis_span_end(text: &str, start: usize) -> Option<usize> {
-    emphasis_span_at(text, start).map(|span| span.end)
+fn emphasis_span_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    emphasis_span_at(scan, start).map(|span| span.end)
 }
 
-fn emphasis_span_at(text: &str, start: usize) -> Option<EmphasisSpan> {
+fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisSpan> {
+    let text = scan.text;
     if escaped_at(text, start) {
         return None;
     }
@@ -3432,21 +4038,33 @@ fn emphasis_span_at(text: &str, start: usize) -> Option<EmphasisSpan> {
     }
     let delimiter = &text[start..start + run];
     let mut search = start + run;
-    let mut scan = InlineScan::new(text);
+    let mut opaque_end = search;
     while search < text.len() {
-        // A delimiter inside code, math, or a link cannot close surrounding
-        // emphasis. Use the same protected fragments as the inline pipeline.
-        if !escaped_at(text, search)
-            && let Some(end) = inline::immutable_span_end(&mut scan, search)
-                .or_else(|| link_or_bracket_token_end(&mut scan, search))
-                .or_else(|| paired_inline_html_span_end(text, search))
-                .or_else(|| inline_html_tag_span_end(text, search))
-        {
-            search = end;
-            continue;
+        let byte = text.as_bytes()[search];
+        if search >= opaque_end && matches!(byte, b'`' | b'$') {
+            if let Some(end) = scan.literal_span_end(search) {
+                search = end;
+                continue;
+            }
+            if byte == b'`' && escaped_at(text, search) {
+                search += delimiter_run_len_at(text, search, b'`');
+                continue;
+            }
         }
-        if !text[search..].starts_with(delimiter) {
-            search += text[search..].chars().next()?.len_utf8();
+        // Existing nonliteral ranges cannot open code/math spans. Retain the
+        // old emphasis delimiter search within them; changing how emphasis
+        // interacts with links, HTML/raw angles or attributes is separate work.
+        if search >= opaque_end
+            && matches!(byte, b'[' | b'!' | b'<' | b'{' | b'\\')
+            && let Some(end) = paired_inline_html_span_end(text, search)
+                .or_else(|| protected_inline_token_end(scan, search))
+        {
+            opaque_end = end;
+        }
+        if byte != marker || !text[search..].starts_with(delimiter) {
+            // Only ASCII candidates above are sliced, so bytewise advancement
+            // also skips ordinary UTF-8 prose without decoding it.
+            search += 1;
             continue;
         }
         let close = search;
@@ -3659,6 +4277,20 @@ fn reference_style_link_end(
     Some(reference_close + 1)
 }
 
+fn reference_bracket_token_at(scan: &mut InlineScan<'_>, start: usize) -> bool {
+    let text = scan.text;
+    if text[start..].starts_with("[^") {
+        return true;
+    }
+    if !text[start..].starts_with('[') || text[start..].starts_with("![") {
+        return false;
+    }
+    let Some(label_close) = scan.square_close(start + 1) else {
+        return false;
+    };
+    pandoc_citation_label(&text[start + 1..label_close])
+}
+
 fn pandoc_citation_label(label: &str) -> bool {
     let mut saw_citation = false;
     for part in label.split(';') {
@@ -3733,6 +4365,14 @@ impl<'a> InlineScan<'a> {
         }
     }
 
+    fn literal_span_end(&mut self, start: usize) -> Option<usize> {
+        match self.text.as_bytes().get(start)? {
+            b'`' if !escaped_at(self.text, start) => self.code_span_end(start),
+            b'$' => inline_math_span_end(self.text, start),
+            _ => None,
+        }
+    }
+
     fn code_span_end(&mut self, start: usize) -> Option<usize> {
         if !self.text[start..].starts_with('`') {
             return None;
@@ -3744,28 +4384,31 @@ impl<'a> InlineScan<'a> {
             return Some(end);
         }
         // A failed opener must not make every later backtick rescan the suffix.
-        // Index the same marker searches as inline_code_span_end at run starts
-        // in work proportional to the remaining source bytes.
+        // Cache the same marker searches as inline_code_span_end, including
+        // suffixes of unmatched runs accepted by canonicalization. Include
+        // earlier runs because a failed emphasis lookahead can return to them.
         // This caches existing recognition; it does not tighten its grammar.
         let mut ends = HashMap::new();
         let mut next = vec![None];
         let bytes = self.text.as_bytes();
         let mut index = bytes.len();
-        while index > start {
+        while index > 0 {
             if bytes[index - 1] != b'`' {
                 index -= 1;
                 continue;
             }
             let end = index;
-            while index > start && bytes[index - 1] == b'`' {
+            while index > 0 && bytes[index - 1] == b'`' {
                 index -= 1;
             }
             let run = end - index;
             if next.len() <= run {
                 next.resize(run + 1, None);
             }
-            if let Some(close) = next[run] {
-                ends.insert(index, close + run);
+            for (length, &close) in next.iter().enumerate().take(run + 1).skip(1) {
+                if let Some(close) = close {
+                    ends.insert(end - length, close + length);
+                }
             }
             next[1..=run].fill(Some(index));
         }
@@ -3999,15 +4642,6 @@ fn split_trailing_attribute(text: &str) -> Option<(&str, &str)> {
 }
 
 fn escaped_at(source: &str, index: usize) -> bool {
-    // Markdown backslash escapes apply only to ASCII punctuation. In particular,
-    // whitespace after a backslash must still reach the inline gap classifier.
-    if !source
-        .as_bytes()
-        .get(index)
-        .is_some_and(u8::is_ascii_punctuation)
-    {
-        return false;
-    }
     let backslashes = source[..index]
         .bytes()
         .rev()

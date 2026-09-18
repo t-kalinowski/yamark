@@ -55,6 +55,14 @@ pub(crate) fn emit_planned_document(
         },
         normalize_markdown_output,
     )
+    .map(|output| output.text)
+}
+
+// Verbatim ranges refer to bytes in `text`, not source offsets. Nested Markdown
+// fences/divs carry them through parent cleanup; ordinary gaps still normalize.
+struct EmittedText {
+    text: String,
+    verbatim: Vec<Span>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,10 +77,16 @@ fn emit_document_inner(
     plugins: &PluginRegistry,
     context: EmitContext,
     normalize_markdown_output: bool,
-) -> Result<String> {
+) -> Result<EmittedText> {
     let source = document.source.as_ref().unwrap_or(source);
     if document.skip_file {
-        return Ok(source.slice(document.range).to_owned());
+        let text = source.slice(document.range).to_owned();
+        let verbatim = if document.kind == DocumentKind::Markdown && !text.is_empty() {
+            vec![Span::new(0, text.len())]
+        } else {
+            Vec::new()
+        };
+        return Ok(EmittedText { text, verbatim });
     }
     let mut options = if document.options == FormatOptions::default() {
         options
@@ -129,7 +143,29 @@ fn emit_document_inner(
             });
         }
         let state = document.state(node.state);
+        if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode)) {
+            out.push_verbatim(source.slice(node.span));
+            cursor = node.span.end;
+            previous_adjacent_div = false;
+            index += 1;
+            continue;
+        }
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
+            if document.kind == DocumentKind::Markdown {
+                out.push_verbatim(source.slice(node.span));
+            } else {
+                out.push_str(source.slice(node.span));
+            }
+            cursor = node.span.end;
+            previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
+            index += 1;
+            continue;
+        }
+        if document
+            .markdown
+            .get(index)
+            .is_some_and(|plan| plan.preserve)
+        {
             out.push_str(source.slice(node.span));
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
@@ -158,7 +194,7 @@ fn emit_document_inner(
                     .get(index)
                     .expect("retained Markdown plan");
                 if let Some(plan) = &retained.plan {
-                    out.push_verbatim_str(&plan.emit(source.slice(node.span)));
+                    out.push_str(&plan.emit(source.slice(node.span)));
                 } else {
                     out.push_str(source.slice(node.span));
                 }
@@ -177,13 +213,15 @@ fn emit_document_inner(
                     context,
                     false,
                 )?;
-                if !nested_output.is_empty()
-                    && !nested_output.ends_with('\n')
-                    && !nested_output.ends_with('\r')
+                if !nested_output.text.is_empty()
+                    && !nested_output.text.ends_with('\n')
+                    && !nested_output.text.ends_with('\r')
                 {
-                    nested_output.push_str(line_ending_for_span(source, *opening));
+                    nested_output
+                        .text
+                        .push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_verbatim_lines(&nested_output);
+                out.push_verbatim_lines(&nested_output.text);
                 emit_front_matter_marker(&mut out, source, *closing, false);
             }
             EmitPlan::MarkdownCodeFence {
@@ -196,27 +234,24 @@ fn emit_document_inner(
             } => {
                 emit_opening(&mut out, source, *opening, normalized_opening.as_deref());
                 if let Some(nested) = nested {
-                    let nested_markdown = document.nested[*nested].kind == DocumentKind::Markdown;
                     let mut nested_output = emit_document_inner(
                         source,
                         &document.nested[*nested],
                         state.markdown_options(options),
                         plugins,
                         context,
-                        normalize_markdown_output && nested_markdown,
+                        false,
                     )?;
-                    if !nested_output.is_empty()
-                        && !nested_output.ends_with('\n')
-                        && !nested_output.ends_with('\r')
+                    if !nested_output.text.is_empty()
+                        && !nested_output.text.ends_with('\n')
+                        && !nested_output.text.ends_with('\r')
                     {
-                        nested_output.push_str(line_ending_for_span(source, *opening));
+                        nested_output
+                            .text
+                            .push_str(line_ending_for_span(source, *opening));
                     }
-                    ensure_code_fence_safe(&nested_output, *safety, source, *opening)?;
-                    if nested_markdown {
-                        out.push_verbatim_str(&nested_output);
-                    } else {
-                        out.push_str(&nested_output);
-                    }
+                    ensure_code_fence_safe(&nested_output.text, *safety, source, *opening)?;
+                    out.push_fragment(&nested_output);
                 } else {
                     out.push_str(source.slice(Span::new(opening.end, closing.start)));
                 }
@@ -236,15 +271,17 @@ fn emit_document_inner(
                     EmitContext {
                         blank_between_adjacent_divs: true,
                     },
-                    normalize_markdown_output,
+                    false,
                 )?;
-                if !nested_output.is_empty()
-                    && !nested_output.ends_with('\n')
-                    && !nested_output.ends_with('\r')
+                if !nested_output.text.is_empty()
+                    && !nested_output.text.ends_with('\n')
+                    && !nested_output.text.ends_with('\r')
                 {
-                    nested_output.push_str(line_ending_for_span(source, *opening));
+                    nested_output
+                        .text
+                        .push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_verbatim_str(&nested_output);
+                out.push_fragment(&nested_output);
                 out.push_str(source.slice(*closing));
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
@@ -278,10 +315,10 @@ fn emit_document_inner(
                     *body,
                     source.slice(*opening),
                     source.slice(*closing),
-                    &nested_output,
+                    &nested_output.text,
                 )?;
                 out.push_str(&crate::core::source_lang::reindent_markdown_body(
-                    &nested_output,
+                    &nested_output.text,
                     source.slice(*indent),
                 ));
                 out.push_str(source.slice(*closing_indent));
@@ -297,7 +334,7 @@ fn emit_document_inner(
                     false,
                 )?;
                 out.push_str(&crate::core::source_lang::restore_comment_prefix(
-                    &nested_output,
+                    &nested_output.text,
                     prefix.as_str(source),
                 ));
             }
@@ -311,7 +348,7 @@ fn emit_document_inner(
                     false,
                 )?;
                 out.push_str(&crate::core::source_lang::restore_comment_prefix(
-                    &nested_output,
+                    &nested_output.text,
                     prefix.as_str(source),
                 ));
             }
@@ -402,6 +439,7 @@ struct EmitOutput {
     normalize_markdown: bool,
     final_line_ending: &'static str,
     line_trim_end: usize,
+    verbatim: Vec<Span>,
 }
 
 impl EmitOutput {
@@ -415,6 +453,7 @@ impl EmitOutput {
             normalize_markdown,
             final_line_ending,
             line_trim_end: 0,
+            verbatim: Vec::new(),
         }
     }
 
@@ -435,9 +474,25 @@ impl EmitOutput {
         self.push_markdown_normalized_str(text);
     }
 
-    fn push_verbatim_str(&mut self, text: &str) {
+    fn push_verbatim(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let start = self.text.len();
         self.text.push_str(text);
+        // Later line/final cleanup may trim gaps, but never this output.
         self.line_trim_end = self.text.len();
+        self.verbatim.push(Span::new(start, self.text.len()));
+    }
+
+    fn push_fragment(&mut self, fragment: &EmittedText) {
+        let mut cursor = 0;
+        for span in &fragment.verbatim {
+            self.push_str(&fragment.text[cursor..span.start]);
+            self.push_verbatim(&fragment.text[span.start..span.end]);
+            cursor = span.end;
+        }
+        self.push_str(&fragment.text[cursor..]);
     }
 
     fn push_verbatim_lines(&mut self, text: &str) {
@@ -449,8 +504,12 @@ impl EmitOutput {
         self.line_trim_end = self.text.len();
     }
 
-    fn finish(mut self) -> String {
+    fn finish(mut self) -> EmittedText {
         if self.normalize_markdown
+            && !self
+                .verbatim
+                .last()
+                .is_some_and(|span| span.end == self.text.len())
             && !self.text.is_empty()
             && !self.text.ends_with('\n')
             && !self.text.ends_with('\r')
@@ -458,7 +517,10 @@ impl EmitOutput {
             self.text.truncate(self.line_trim_end);
             self.text.push_str(self.final_line_ending);
         }
-        self.text
+        EmittedText {
+            text: self.text,
+            verbatim: self.verbatim,
+        }
     }
 
     fn push_markdown_normalized_str(&mut self, text: &str) {

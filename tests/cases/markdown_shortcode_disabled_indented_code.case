@@ -1,0 +1,45 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: off -->
+	{{< unfinished
+<!-- fmt: on -->
+Format   after tab
+indented code.
+
+<!-- fmt: off -->
+  	{{% unfinished
+<!-- fmt: on -->
+Format   after mixed
+indentation.
+
+<!-- fmt: off -->
+    {{< unfinished
+<!-- fmt: on -->
+Format   after four
+spaces.
+
+	{{% unfinished
+Format   after enabled
+indented code.
+-- stdout
+<!-- fmt: off -->
+	{{< unfinished
+<!-- fmt: on -->
+Format after tab indented code.
+
+<!-- fmt: off -->
+  	{{% unfinished
+<!-- fmt: on -->
+Format after mixed indentation.
+
+<!-- fmt: off -->
+    {{< unfinished
+<!-- fmt: on -->
+Format after four spaces.
+
+	{{% unfinished
+Format after enabled indented code.
+-- stderr
+-- status
+0

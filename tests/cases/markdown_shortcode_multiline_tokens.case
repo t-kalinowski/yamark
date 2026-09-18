@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+{{< notice   
+message="quoted >}} and \" escapes keep   spacing"
+other='quoted \' >}} stays' raw=`backslash \`   
+>}}
+Format   this paragraph
+as Markdown.
+
+{{% notice
+message="{{< nested-looking >}} and %}} stay   data"
+%}}
+Format   another
+paragraph.
+-- stdout
+{{< notice   
+message="quoted >}} and \" escapes keep   spacing"
+other='quoted \' >}} stays' raw=`backslash \`   
+>}}
+Format this paragraph as Markdown.
+
+{{% notice
+message="{{< nested-looking >}} and %}} stay   data"
+%}}
+Format another paragraph.
+-- stderr
+-- status
+0

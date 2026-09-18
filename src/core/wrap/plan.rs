@@ -163,13 +163,13 @@ impl FragmentBody {
                 crate::core::emit::paragraph_separator_blank_run_end(&document, index)
             {
                 if cursor < node.span.start {
-                    plan.push_normalized_lines(
+                    plan.push_str(
                         source.as_str(),
                         source.slice(Span::new(cursor, node.span.start)),
                     );
                 }
                 let newline = crate::core::emit::line_ending_for_span(source, node.span);
-                plan.push_normalized_lines(source.as_str(), newline_for_join(newline, options));
+                plan.push_str(source.as_str(), newline_for_join(newline, options));
                 cursor = document.nodes[end - 1].span.end;
                 index = end;
                 continue;
@@ -178,7 +178,7 @@ impl FragmentBody {
                 && let Some(block) = document.markdown.take_fragment_block(index)
             {
                 if cursor < node.span.start {
-                    plan.push_normalized_lines(
+                    plan.push_str(
                         source.as_str(),
                         source.slice(Span::new(cursor, node.span.start)),
                     );
@@ -192,7 +192,7 @@ impl FragmentBody {
             index += 1;
         }
         if cursor < document.range.end {
-            plan.push_normalized_lines(
+            plan.push_str(
                 source.as_str(),
                 source.slice(Span::new(cursor, document.range.end)),
             );
@@ -216,7 +216,7 @@ impl Fragment {
         )
         .ok()
         .map(|document| {
-            let tree = PreparedTree::new(&source, document, options, DocumentEmitMode::Markdown);
+            let tree = PreparedTree::new(&source, document, options, DocumentEmitMode::Document);
             FragmentBody::retain(&source, tree)
         });
         Self {
@@ -240,6 +240,8 @@ impl Fragment {
         self.body
             .as_ref()
             .and_then(|body| match body {
+                // Like the historical fragment emitter, this does not apply
+                // top-level Markdown line cleanup to copied or opaque text.
                 FragmentBody::Plan(plan) => Some(plan.emit(self.source.as_str())),
                 FragmentBody::Document(tree) => crate::core::emit::emit_prepared_tree(
                     &self.source,
@@ -276,19 +278,6 @@ impl Plan {
         let mut plan = Self::new();
         plan.push_str(source, text);
         plan
-    }
-
-    fn push_normalized_lines(&mut self, source: &str, text: &str) {
-        let normalized: String = markdown_lines(text)
-            .map(|line| {
-                format!(
-                    "{}{}",
-                    line.body.trim_end_matches([' ', '\t']),
-                    line.newline
-                )
-            })
-            .collect();
-        self.push_str(source, &normalized);
     }
 
     pub(super) fn push_str(&mut self, source: &str, text: &str) {
@@ -428,12 +417,7 @@ impl InlinePlan {
                 if index > 0 {
                     output.push(' ');
                 }
-                for (index, part) in markdown_lines(token.get(text)).enumerate() {
-                    if index > 0 {
-                        output.push_str(self.continuation_prefix.get(source));
-                    }
-                    output.push_str(part.full);
-                }
+                output.push_str(token.get(text));
             }
             output.push_str(line.suffix.map_or("", MarkdownHardBreakMarker::suffix));
             if self.terminated {
@@ -461,6 +445,12 @@ enum DraftBody {
 
 #[derive(Debug, Clone)]
 enum DraftItem {
+    Unwrapped {
+        validation: Text,
+        spaces: Text,
+        // Unresolved, unsupported, or retained normalization, respectively.
+        normalized: Option<Option<NormalizedText>>,
+    },
     JoinNewline(Box<str>),
     Text(Text),
     Inline(InlineDraft),
@@ -477,26 +467,28 @@ enum DraftItem {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Condition {
+    WrapNone,
     FormatFootnotes,
 }
 
 #[derive(Debug, Clone)]
 pub(super) enum FragmentInput {
     Buffer(std::sync::Arc<SourceBuffer>),
+    Lines { lines: Vec<Text>, newline: Box<str> },
 }
 
 #[derive(Debug, Clone)]
 struct InlineDraft {
-    plain: Option<TokenInput>,
-    canonical: Option<TokenInput>,
-    unwrapped: Option<NormalizedText>,
+    plain: TokenInput,
+    canonical: Option<Box<TokenInput>>,
     first_prefix: Text,
     continuation_prefix: Text,
     newline: &'static str,
     default_newline: bool,
     terminated: bool,
-    preserve_lines: bool,
+    suffix: &'static str,
     paragraph: bool,
+    normalized: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -508,34 +500,15 @@ struct NormalizedText {
 #[derive(Debug, Clone)]
 struct TokenInput {
     text: Text,
-    tokens: Vec<(SourceSpan, usize, bool)>,
-    breaks: Vec<(usize, Option<MarkdownHardBreakMarker>)>,
+    // Unmeasured, unsupported, or retained measurements for the selected policy.
+    tokens: Option<Option<Vec<(SourceSpan, usize)>>>,
 }
 
 impl TokenInput {
-    fn prepare(source: &str, segments: Vec<InlineSegment<'_>>) -> Self {
-        let mut text = String::new();
-        let mut tokens = Vec::new();
-        let mut breaks = Vec::new();
-        for segment in segments {
-            for token in segment.tokens {
-                if !text.is_empty() {
-                    text.push(' ');
-                }
-                let start = text.len();
-                text.push_str(token.text());
-                tokens.push((
-                    SourceSpan::new(Span::new(start, text.len())),
-                    token.width,
-                    token.splittable_link,
-                ));
-            }
-            breaks.push((tokens.len(), segment.hard_break));
-        }
+    fn prepare(source: &str, text: &str) -> Self {
         Self {
-            text: Text::retain(source, &text),
-            tokens,
-            breaks,
+            text: Text::retain(source, text),
+            tokens: None,
         }
     }
 }
@@ -559,6 +532,16 @@ impl Draft {
     pub(super) fn text(source: &str, text: &str) -> Self {
         let mut draft = Self::new();
         draft.push_str(source, text);
+        draft
+    }
+
+    pub(super) fn unwrapped(source: &str, validation: &str, spaces: &str) -> Self {
+        let mut draft = Self::new();
+        draft.items_mut().push(DraftItem::Unwrapped {
+            validation: Text::retain(source, validation),
+            spaces: Text::retain(source, spaces),
+            normalized: None,
+        });
         draft
     }
 
@@ -627,25 +610,13 @@ impl Draft {
         newline: &str,
         default_newline: bool,
         terminated: bool,
-        preserve_lines: bool,
+        suffix: &'static str,
         paragraph: bool,
     ) -> Self {
         let mut draft = Self::new();
-        let content = InlineContent::parse(text);
-        let supported = content.supported();
-        let plain = supported.then(|| TokenInput::prepare(source, content.segments(false, true)));
-        let canonical = (supported && text.contains('_'))
-            .then(|| TokenInput::prepare(source, content.segments(true, true)));
-        let unwrapped = (supported && paragraph).then(|| NormalizedText {
-            plain: Text::retain(source, &content.preserve_lines(true, false, true)),
-            canonical: text
-                .contains('_')
-                .then(|| Text::retain(source, &content.preserve_lines(true, true, true))),
-        });
         draft.items_mut().push(DraftItem::Inline(InlineDraft {
-            plain,
-            canonical,
-            unwrapped,
+            plain: TokenInput::prepare(source, text),
+            canonical: None,
             first_prefix: Text::retain(source, first_prefix),
             continuation_prefix: Text::retain(source, continuation_prefix),
             newline: match newline {
@@ -657,8 +628,9 @@ impl Draft {
             },
             default_newline,
             terminated,
-            preserve_lines,
+            suffix,
             paragraph,
+            normalized: !paragraph,
         }));
         draft
     }
@@ -667,6 +639,7 @@ impl Draft {
         let items = match &mut self.body {
             DraftBody::Choice(condition, branches) => {
                 let chosen = match condition {
+                    Condition::WrapNone => matches!(options.markdown_wrap, MarkdownWrap::None),
                     Condition::FormatFootnotes => options.markdown_format_footnotes,
                 };
                 let [yes, no] = branches.as_mut();
@@ -695,28 +668,86 @@ impl Draft {
         };
         for item in items {
             match item {
+                DraftItem::Unwrapped {
+                    validation,
+                    spaces,
+                    normalized,
+                } => {
+                    if normalized.is_none() {
+                        *normalized = Some(inline_tokens(validation.get(source)).map(|_| {
+                            let raw = spaces.get(source);
+                            let spaces =
+                                if contains_existing_split_link_destination(validation.get(source))
+                                    || markdown_lines(raw)
+                                        .all(|line| !line.body.ends_with([' ', '\t']))
+                                {
+                                    Cow::Borrowed(raw)
+                                } else {
+                                    Cow::Owned(normalize_inline_whitespace_preserving_lines(raw))
+                                };
+                            let text = normalize_supported_links_and_images(&spaces);
+                            NormalizedText {
+                                plain: Text::retain(source, &text),
+                                canonical: None,
+                            }
+                        }));
+                    }
+                    let normalized = normalized.as_mut()?.as_mut()?;
+                    if options.markdown_canonical && normalized.canonical.is_none() {
+                        let text = normalized.plain.get(source);
+                        if text.contains('_') {
+                            let canonical = canonicalize_inline(text);
+                            if canonical != text {
+                                normalized.canonical = Some(Text::retain(source, &canonical));
+                            }
+                        }
+                    }
+                    let text = if options.markdown_canonical {
+                        normalized.canonical.as_ref().unwrap_or(&normalized.plain)
+                    } else {
+                        &normalized.plain
+                    };
+                    plan.items.push(Item::Text(text.clone()));
+                }
                 DraftItem::JoinNewline(newline) => {
                     plan.push_str(source, newline_for_join(newline, options))
                 }
                 DraftItem::Text(text) => plan.items.push(Item::Text(text.clone())),
                 DraftItem::Inline(inline) => {
-                    if inline.paragraph && matches!(options.markdown_wrap, MarkdownWrap::None) {
-                        let unwrapped = inline.unwrapped.as_ref()?;
-                        let text = if options.markdown_canonical {
-                            unwrapped.canonical.as_ref().unwrap_or(&unwrapped.plain)
-                        } else {
-                            &unwrapped.plain
-                        };
-                        plan.items.push(Item::Text(text.clone()));
-                        plan.push_str(source, inline.newline);
-                        continue;
+                    if !inline.normalized {
+                        let spaces = normalize_spaces_preserving_protected_spans(
+                            inline.plain.text.get(source),
+                        );
+                        let text = normalize_supported_links_and_images(&spaces);
+                        inline.plain.text = Text::retain(source, &text);
+                        inline.normalized = true;
+                    }
+                    if inline.paragraph && inline.plain.text.get(source).is_empty() {
+                        return Some(Plan::normalized_block(source, source));
+                    }
+                    if options.markdown_canonical && inline.canonical.is_none() {
+                        let text = inline.plain.text.get(source);
+                        if text.contains('_') {
+                            let canonical = canonicalize_inline(text);
+                            if canonical != text {
+                                inline.canonical =
+                                    Some(Box::new(TokenInput::prepare(source, &canonical)));
+                            }
+                        }
                     }
                     let input = if options.markdown_canonical {
-                        inline.canonical.as_ref().or(inline.plain.as_ref())?
+                        inline.canonical.as_deref_mut().unwrap_or(&mut inline.plain)
                     } else {
-                        inline.plain.as_ref()?
+                        &mut inline.plain
                     };
                     let text = input.text.get(source);
+                    if input.tokens.is_none() {
+                        input.tokens = Some(inline_tokens(text));
+                    }
+                    let tokens = TokenSlice {
+                        text,
+                        measured: input.tokens.as_ref()?.as_ref()?,
+                    };
                     let mut lines = Vec::new();
                     let mut planned_tokens = Vec::new();
                     let mut writer = TokenLineWriter::new(
@@ -726,30 +757,12 @@ impl Draft {
                         inline.first_prefix.get(source),
                         inline.continuation_prefix.get(source),
                     );
-                    let preserve_lines = inline.preserve_lines
-                        && matches!(options.markdown_wrap, MarkdownWrap::None);
-                    let mut start = 0;
-                    for &(end, hard_break) in &input.breaks {
-                        if hard_break.is_none() && !preserve_lines && end != input.tokens.len() {
-                            continue;
-                        }
-                        let tokens = TokenSlice {
-                            text,
-                            measured: &input.tokens[start..end],
-                        };
-                        write_markdown_token_lines(
-                            &mut writer,
-                            tokens,
-                            options.markdown_wrap,
-                            hard_break.map_or("", MarkdownHardBreakMarker::suffix),
-                        )?;
-                        start = end;
-                    }
-                    if lines.is_empty() && inline.terminated {
-                        plan.push_str(source, inline.first_prefix.get(source).trim_end());
-                        plan.push_str(source, newline_for_join(inline.newline, options));
-                        continue;
-                    }
+                    write_markdown_token_lines(
+                        &mut writer,
+                        tokens,
+                        options.markdown_wrap,
+                        inline.suffix,
+                    )?;
                     plan.items.push(Item::Inline(InlinePlan {
                         text: input.text.clone(),
                         lines,
@@ -783,6 +796,15 @@ impl Draft {
                         options.markdown_wrap.with_reduced_column_width(*reduction);
                     let buffer = match input {
                         FragmentInput::Buffer(buffer) => buffer.clone(),
+                        FragmentInput::Lines { lines, newline } => {
+                            let newline = newline_for_join(newline, options);
+                            let mut text = String::new();
+                            for line in lines {
+                                text.push_str(line.get(source));
+                                text.push_str(newline);
+                            }
+                            std::sync::Arc::new(SourceBuffer::new(text))
+                        }
                     };
                     let fragment = Box::new(Fragment::from_buffer(buffer, child_options));
                     let mut prefix = prefix.clone();
