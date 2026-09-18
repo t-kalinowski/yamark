@@ -55,6 +55,15 @@ pub(crate) fn emit_planned_document(
         },
         normalize_markdown_output,
     )
+    .map(|output| output.text)
+}
+
+// Only shortcode spans bypass Markdown whitespace cleanup. Retain their output
+// offsets while nesting divs and Markdown fences so an outer emitter cannot
+// trim them again. All other output keeps the existing normalization path.
+struct EmittedText {
+    text: String,
+    shortcodes: Vec<Span>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,10 +78,13 @@ fn emit_document_inner(
     plugins: &PluginRegistry,
     context: EmitContext,
     normalize_markdown_output: bool,
-) -> Result<String> {
+) -> Result<EmittedText> {
     let source = document.source.as_ref().unwrap_or(source);
     if document.skip_file {
-        return Ok(source.slice(document.range).to_owned());
+        return Ok(EmittedText {
+            text: source.slice(document.range).to_owned(),
+            shortcodes: Vec::new(),
+        });
     }
     let mut options = if document.options == FormatOptions::default() {
         options
@@ -129,8 +141,15 @@ fn emit_document_inner(
             });
         }
         let state = document.state(node.state);
+        if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode)) {
+            out.push_shortcode(source.slice(node.span));
+            cursor = node.span.end;
+            previous_adjacent_div = false;
+            index += 1;
+            continue;
+        }
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
-            out.push_str(source.slice(node.span));
+            out.push_preserved_node(source, document, node);
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
             index += 1;
@@ -188,13 +207,15 @@ fn emit_document_inner(
                     context,
                     false,
                 )?;
-                if !nested_output.is_empty()
-                    && !nested_output.ends_with('\n')
-                    && !nested_output.ends_with('\r')
+                if !nested_output.text.is_empty()
+                    && !nested_output.text.ends_with('\n')
+                    && !nested_output.text.ends_with('\r')
                 {
-                    nested_output.push_str(line_ending_for_span(source, *opening));
+                    nested_output
+                        .text
+                        .push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_verbatim_lines(&nested_output);
+                out.push_verbatim_lines(&nested_output.text);
                 emit_front_matter_marker(&mut out, source, *closing, false);
             }
             EmitPlan::MarkdownCodeFence {
@@ -215,14 +236,16 @@ fn emit_document_inner(
                         context,
                         false,
                     )?;
-                    if !nested_output.is_empty()
-                        && !nested_output.ends_with('\n')
-                        && !nested_output.ends_with('\r')
+                    if !nested_output.text.is_empty()
+                        && !nested_output.text.ends_with('\n')
+                        && !nested_output.text.ends_with('\r')
                     {
-                        nested_output.push_str(line_ending_for_span(source, *opening));
+                        nested_output
+                            .text
+                            .push_str(line_ending_for_span(source, *opening));
                     }
-                    ensure_code_fence_safe(&nested_output, *safety, source, *opening)?;
-                    out.push_str(&nested_output);
+                    ensure_code_fence_safe(&nested_output.text, *safety, source, *opening)?;
+                    out.push_fragment(&nested_output);
                 } else {
                     out.push_str(source.slice(Span::new(opening.end, closing.start)));
                 }
@@ -244,13 +267,15 @@ fn emit_document_inner(
                     },
                     false,
                 )?;
-                if !nested_output.is_empty()
-                    && !nested_output.ends_with('\n')
-                    && !nested_output.ends_with('\r')
+                if !nested_output.text.is_empty()
+                    && !nested_output.text.ends_with('\n')
+                    && !nested_output.text.ends_with('\r')
                 {
-                    nested_output.push_str(line_ending_for_span(source, *opening));
+                    nested_output
+                        .text
+                        .push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_str(&nested_output);
+                out.push_fragment(&nested_output);
                 out.push_str(source.slice(*closing));
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
@@ -284,10 +309,10 @@ fn emit_document_inner(
                     *body,
                     source.slice(*opening),
                     source.slice(*closing),
-                    &nested_output,
+                    &nested_output.text,
                 )?;
                 out.push_str(&crate::core::source_lang::reindent_markdown_body(
-                    &nested_output,
+                    &nested_output.text,
                     source.slice(*indent),
                 ));
                 out.push_str(source.slice(*closing_indent));
@@ -303,7 +328,7 @@ fn emit_document_inner(
                     false,
                 )?;
                 out.push_str(&crate::core::source_lang::restore_comment_prefix(
-                    &nested_output,
+                    &nested_output.text,
                     prefix.as_str(source),
                 ));
             }
@@ -317,7 +342,7 @@ fn emit_document_inner(
                     false,
                 )?;
                 out.push_str(&crate::core::source_lang::restore_comment_prefix(
-                    &nested_output,
+                    &nested_output.text,
                     prefix.as_str(source),
                 ));
             }
@@ -408,6 +433,7 @@ struct EmitOutput {
     normalize_markdown: bool,
     final_line_ending: &'static str,
     line_trim_end: usize,
+    shortcodes: Vec<Span>,
 }
 
 impl EmitOutput {
@@ -421,6 +447,7 @@ impl EmitOutput {
             normalize_markdown,
             final_line_ending,
             line_trim_end: 0,
+            shortcodes: Vec::new(),
         }
     }
 
@@ -441,6 +468,52 @@ impl EmitOutput {
         self.push_markdown_normalized_str(text);
     }
 
+    fn push_preserved_node(&mut self, source: &SourceBuffer, document: &Document, node: &Node) {
+        if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode)) {
+            self.push_shortcode(source.slice(node.span));
+            return;
+        }
+        let nested = match node.emit {
+            EmitPlan::MarkdownDiv { nested, .. }
+            | EmitPlan::MarkdownCodeFence {
+                nested: Some(nested),
+                ..
+            } if document.nested[nested].kind == crate::core::document::DocumentKind::Markdown => {
+                &document.nested[nested]
+            }
+            _ => {
+                self.push_str(source.slice(node.span));
+                return;
+            }
+        };
+        // A preserved container still contains the shortcode spans recognized
+        // during parsing. Copy its body without losing those literal boundaries.
+        let mut cursor = node.span.start;
+        for child in &nested.nodes {
+            self.push_str(source.slice(Span::new(cursor, child.span.start)));
+            self.push_preserved_node(source, nested, child);
+            cursor = child.span.end;
+        }
+        self.push_str(source.slice(Span::new(cursor, node.span.end)));
+    }
+
+    fn push_shortcode(&mut self, text: &str) {
+        let start = self.text.len();
+        self.text.push_str(text);
+        self.line_trim_end = self.text.len();
+        self.shortcodes.push(Span::new(start, self.text.len()));
+    }
+
+    fn push_fragment(&mut self, fragment: &EmittedText) {
+        let mut cursor = 0;
+        for span in &fragment.shortcodes {
+            self.push_str(&fragment.text[cursor..span.start]);
+            self.push_shortcode(&fragment.text[span.start..span.end]);
+            cursor = span.end;
+        }
+        self.push_str(&fragment.text[cursor..]);
+    }
+
     fn push_verbatim_lines(&mut self, text: &str) {
         assert!(
             text.is_empty() || text.ends_with('\n') || text.ends_with('\r'),
@@ -450,8 +523,12 @@ impl EmitOutput {
         self.line_trim_end = self.text.len();
     }
 
-    fn finish(mut self) -> String {
+    fn finish(mut self) -> EmittedText {
         if self.normalize_markdown
+            && !self
+                .shortcodes
+                .last()
+                .is_some_and(|span| span.end == self.text.len())
             && !self.text.is_empty()
             && !self.text.ends_with('\n')
             && !self.text.ends_with('\r')
@@ -459,7 +536,10 @@ impl EmitOutput {
             self.text.truncate(self.line_trim_end);
             self.text.push_str(self.final_line_ending);
         }
-        self.text
+        EmittedText {
+            text: self.text,
+            shortcodes: self.shortcodes,
+        }
     }
 
     fn push_markdown_normalized_str(&mut self, text: &str) {

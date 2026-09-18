@@ -149,6 +149,13 @@ fn parse_markdown_with_mode(
         let line = source.lines[i];
         let text = source.line_text(i);
 
+        // Token contents are data even while formatting is disabled; an
+        // apparent fmt: on inside an argument must not change directive state.
+        if engine.formatting_disabled() && shortcode_block_at(text) {
+            i = push_shortcode_token(source, &mut doc, &mut engine, i, range);
+            continue;
+        }
+
         if engine.formatting_disabled() {
             if markdown_on_directive_line(text) {
                 let state = engine.state_for_node(&mut doc, false);
@@ -548,20 +555,7 @@ fn parse_markdown_with_mode(
         }
 
         if shortcode_block_at(text) {
-            let start = i;
-            i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
-            let span = Span::new(
-                source.lines[start].full.start(),
-                source.lines[i - 1].full.end(),
-            );
-            validate_markdown_format_target(source, &doc, state, span, true)?;
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
-                span,
-                state,
-                emit: EmitPlan::MarkdownOpaque,
-            });
+            i = push_shortcode_token(source, &mut doc, &mut engine, i, range);
             continue;
         }
 
@@ -1695,7 +1689,10 @@ fn markdown_on_directive_line(text: &str) -> bool {
 }
 
 fn markdown_disabled_region_end(source: &SourceBuffer, mut i: usize, end: usize) -> usize {
-    while i < end && !markdown_on_directive_line(source.line_text(i)) {
+    while i < end
+        && !markdown_on_directive_line(source.line_text(i))
+        && !shortcode_block_at(source.line_text(i))
+    {
         i += 1;
     }
     i
@@ -2957,11 +2954,6 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     if multiline_html_tag_start(source.line_text(line)) {
         return find_until_contains(source, line + 1, end, ">");
     }
-    if let Some(shortcode) = hugo_shortcode_opening(trimmed)
-        && let Some(close) = find_hugo_shortcode_close(source, line + 1, end, shortcode)
-    {
-        return close;
-    }
     if display_math_delimiter(trimmed) {
         if trimmed[2..].contains("$$") {
             return line + 1;
@@ -3038,67 +3030,55 @@ fn raw_continuation(first: &str, candidate: &str) -> bool {
     first_indent >= 4 && candidate_indent >= 4
 }
 
-#[derive(Debug, Clone, Copy)]
-struct HugoShortcodeOpening<'a> {
-    delimiter: char,
-    name: &'a str,
-}
-
-fn hugo_shortcode_opening(trimmed: &str) -> Option<HugoShortcodeOpening<'_>> {
-    let (delimiter, rest) = if let Some(rest) = trimmed.strip_prefix("{{<") {
-        ('>', rest)
-    } else {
-        ('%', trimmed.strip_prefix("{{%")?)
-    };
-    let rest = rest.trim_start();
-    if rest.starts_with('/') {
-        return None;
-    }
-    let name_end = rest
-        .char_indices()
-        .find_map(|(index, ch)| (ch.is_whitespace() || ch == delimiter).then_some(index))
-        .unwrap_or(rest.len());
-    let name = &rest[..name_end];
-    (!name.is_empty()).then_some(HugoShortcodeOpening { delimiter, name })
-}
-
-fn find_hugo_shortcode_close(
+fn push_shortcode_token(
     source: &SourceBuffer,
-    mut line: usize,
-    end: usize,
-    opening: HugoShortcodeOpening<'_>,
-) -> Option<usize> {
-    while line < end {
-        if hugo_shortcode_closes(source.line_text(line).trim_start(), opening) {
-            return Some(line + 1);
-        }
-        line += 1;
-    }
-    None
+    doc: &mut Document,
+    engine: &mut DirectiveEngine,
+    line: usize,
+    range: Span,
+) -> usize {
+    let text = source.line_text(line);
+    let token_start = source.lines[line].text.start() + text.len() - text.trim_start().len();
+    let token_end = shortcode_token_end(source, token_start, range.end);
+    let next_line = source.line_at_byte(token_end - 1) + 1;
+    let state = engine.state_for_node(doc, true);
+    doc.push_node(Node {
+        kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
+        // The rest of the closing line stays outside the token. Advancing to
+        // the next line retains the existing mixed token/prose boundary.
+        span: Span::new(source.lines[line].full.start(), token_end),
+        state,
+        emit: EmitPlan::MarkdownOpaque,
+    });
+    next_line
 }
 
-fn hugo_shortcode_closes(trimmed: &str, opening: HugoShortcodeOpening<'_>) -> bool {
-    let rest = match opening.delimiter {
-        '>' => trimmed.strip_prefix("{{<"),
-        '%' => trimmed.strip_prefix("{{%"),
-        _ => None,
+/// Find one lexical token, bounded by the enclosing Markdown fragment. Names
+/// and braces in arguments have no structural meaning. An incomplete token
+/// consumes the remaining range so it cannot trigger repeated suffix scans.
+fn shortcode_token_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
+    let text = &source.as_str()[start..end];
+    let closing = if text.starts_with("{{<") {
+        ">}}"
+    } else {
+        "%}}"
     };
-    let Some(rest) = rest else {
-        return false;
-    };
-    let Some(rest) = rest.trim_start().strip_prefix('/') else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(after_name) = rest.strip_prefix(opening.name) else {
-        return false;
-    };
-    let after_name = after_name.trim_start();
-    match opening.delimiter {
-        '>' => after_name.starts_with(">}}"),
-        '%' => after_name.starts_with("%}}"),
-        _ => false,
+    let mut quote = None;
+    let mut chars = text[3..].char_indices();
+    while let Some((offset, ch)) = chars.next() {
+        if let Some(delimiter) = quote {
+            if ch == '\\' && delimiter != '`' {
+                chars.next();
+            } else if ch == delimiter {
+                quote = None;
+            }
+        } else if matches!(ch, '\'' | '"' | '`') {
+            quote = Some(ch);
+        } else if text[3 + offset..].starts_with(closing) {
+            return start + 3 + offset + closing.len();
+        }
     }
+    end
 }
 
 fn link_definition_start(trimmed: &str) -> bool {

@@ -1014,16 +1014,29 @@ After:
 
 Expected behavior:
 
-Recognize shortcode and include lines as supported opaque block nodes. Preserve
-the shortcode line exactly. Do not let a shortcode block cause adjacent
-paragraphs, lists, or divs to be copied. Paired shortcodes should preserve their
-body unless a later feature explicitly models the body as Markdown.
+Preserve standalone `{{< ... >}}` and `{{% ... %}}` tokens independently,
+including complete multiline tokens. Find the lexical closing delimiter outside
+single, double, or backtick quotes; backslashes escape the next character in
+single and double quotes. Keep each token's source bytes, including whitespace
+and line endings. An unterminated token or quote preserves the remainder of its
+enclosing Markdown document or fragment.
+
+Opening, closing, and self-closing tokens do not define a body scope. Names such
+as `raw`, `verbatim`, and `something.inline` have no special meaning. Format
+intervening Markdown normally. To preserve an entire body, use existing
+`<!-- fmt: off -->` and `<!-- fmt: on -->` directives around that region.
+Directive-looking text inside a token is data; directives after a complete token
+work normally.
+
+This support does not interpret template expressions or validate arguments, and
+does not extend inline, mixed token/prose line, list, or blockquote support.
+It does not imply rendering equivalence for arbitrary Hugo or Jinja templates.
 
 Implementation checklist:
 
-- [x] Parse single-line shortcode blocks.
-- [x] Parse paired shortcode blocks.
-- [x] Preserve shortcode internals byte-for-byte.
+- [x] Parse single-line and complete multiline shortcode tokens.
+- [x] Treat opening, closing, and self-closing tokens independently.
+- [x] Preserve shortcode token bytes.
 - [x] Keep surrounding Markdown format decisions independent.
 
 Example 1:

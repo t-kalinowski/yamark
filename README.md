@@ -76,6 +76,14 @@ Directory traversal skips hidden paths and respects `.gitignore`,
 `.ignore`, and global Git ignore files by default. Pass a hidden path
 explicitly to format it.
 
+Standalone `{{< ... >}}` and `{{% ... %}}` shortcode tokens are preserved,
+including multiline tokens and quoted arguments. Yamark does not match shortcode
+names or interpret their bodies: Markdown between tokens formats normally.
+To keep an entire body unchanged, surround that region with
+`<!-- fmt: off -->` and `<!-- fmt: on -->`. An unterminated token or quote
+preserves the rest of the enclosing Markdown document or fragment. This does
+not guarantee rendering equivalence for arbitrary Hugo or Jinja templates.
+
 ## Editor integrations
 
 The VS Code and Positron formatter extension lives in `editors/vscode/`.
