@@ -512,6 +512,11 @@ pub enum EmitPlan {
         closing: Span,
         nested: usize,
     },
+    MarkdownShortcode {
+        opening: Span,
+        closing: Span,
+        nested: usize,
+    },
     MarkdownOpaque,
     YamlDocument,
     EmbeddedMarkdownString {

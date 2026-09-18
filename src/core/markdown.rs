@@ -21,7 +21,14 @@ pub(crate) fn parse_markdown(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document> {
-    parse_markdown_with_mode(source, range, options, config, MarkdownParseMode::Concrete)
+    parse_markdown_with_mode(
+        source,
+        range,
+        options,
+        config,
+        MarkdownParseMode::Concrete,
+        MarkdownParseContext::Document,
+    )
 }
 
 pub(crate) fn parse_markdown_for_formatting(
@@ -36,6 +43,7 @@ pub(crate) fn parse_markdown_for_formatting(
         options,
         config,
         MarkdownParseMode::SemanticOnly,
+        MarkdownParseContext::Document,
     )
 }
 
@@ -51,6 +59,7 @@ pub(crate) fn parse_markdown_for_validation(
         options,
         config,
         MarkdownParseMode::SemanticOnlyValidation,
+        MarkdownParseContext::Document,
     )
 }
 
@@ -66,6 +75,7 @@ pub(crate) fn parse_markdown_for_concrete_validation(
         options,
         config,
         MarkdownParseMode::ConcreteValidation,
+        MarkdownParseContext::Document,
     )
 }
 
@@ -75,6 +85,12 @@ enum MarkdownParseMode {
     SemanticOnly,
     ConcreteValidation,
     SemanticOnlyValidation,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MarkdownParseContext {
+    Document,
+    Fragment,
 }
 
 impl MarkdownParseMode {
@@ -89,6 +105,7 @@ fn parse_markdown_with_mode(
     options: FormatOptions,
     config: &Config,
     mode: MarkdownParseMode,
+    context: MarkdownParseContext,
 ) -> Result<Document> {
     let mut options = options;
     if !matches!(
@@ -105,7 +122,8 @@ fn parse_markdown_with_mode(
     let mut i = start_line;
     let end_line = end_line_index(source, range);
 
-    if i < end_line
+    if context == MarkdownParseContext::Document
+        && i < end_line
         && front_matter_opening(source.line_text(i))
         && let Some(closing) = find_front_matter_closing(source, i + 1, end_line)
     {
@@ -276,6 +294,7 @@ fn parse_markdown_with_mode(
                 nested_options,
                 &nested_config,
                 mode,
+                MarkdownParseContext::Fragment,
             )?);
             let span = Span::new(opening.start(), closing_span.end());
             validate_markdown_format_target(source, &doc, state, span, true)?;
@@ -556,11 +575,42 @@ fn parse_markdown_with_mode(
                 source.lines[i - 1].full.end(),
             );
             validate_markdown_format_target(source, &doc, state, span, true)?;
+            let emit = if let Some(shortcode) = hugo_shortcode_opening(text.trim_start())
+                && shortcode.delimiter == '%'
+                && !shortcode.name.ends_with(".inline")
+                && !doc.state(state).preserve
+                && hugo_shortcode_closes(source.line_text(i - 1).trim_start(), shortcode)
+                && let opening_end = hugo_shortcode_tag_end(source, start, i, shortcode)
+                && opening_end < i
+            {
+                // Markdown notation has a Markdown body. Inline definitions contain
+                // template code, and standard-notation bodies may contain raw data.
+                let opening = Span::new(span.start, source.lines[opening_end - 1].full.end());
+                let closing = source.lines[i - 1].full;
+                let content = Span::new(opening.end, closing.start());
+                let state_value = doc.state(state).clone();
+                let nested_config = config_for_directive_state(config, &state_value);
+                let nested = doc.push_nested(parse_markdown_with_mode(
+                    source,
+                    content,
+                    state_value.markdown_options(options),
+                    &nested_config,
+                    mode,
+                    MarkdownParseContext::Fragment,
+                )?);
+                EmitPlan::MarkdownShortcode {
+                    opening,
+                    closing: closing.into(),
+                    nested,
+                }
+            } else {
+                EmitPlan::MarkdownOpaque
+            };
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
                 span,
                 state,
-                emit: EmitPlan::MarkdownOpaque,
+                emit,
             });
             continue;
         }
@@ -706,6 +756,7 @@ fn parse_markdown_with_mode(
                         nested_options,
                         &nested_config,
                         mode,
+                        MarkdownParseContext::Document,
                     )?)),
                     _ => None,
                 }
@@ -926,7 +977,7 @@ fn patch_nested_documents_after_file_scope_delta(
                     mode,
                 )?;
             }
-            EmitPlan::MarkdownDiv { nested, .. } => {
+            EmitPlan::MarkdownDiv { nested, .. } | EmitPlan::MarkdownShortcode { nested, .. } => {
                 let nested_config = config_for_directive_state(config, &state);
                 apply_file_scope_delta_to_nested_document(
                     source,
@@ -1833,6 +1884,7 @@ fn setext_heading_at(
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
         || list_item_at(text)
+        || shortcode_block_at(text)
     {
         return None;
     }
@@ -2957,10 +3009,12 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     if multiline_html_tag_start(source.line_text(line)) {
         return find_until_contains(source, line + 1, end, ">");
     }
-    if let Some(shortcode) = hugo_shortcode_opening(trimmed)
-        && let Some(close) = find_hugo_shortcode_close(source, line + 1, end, shortcode)
-    {
-        return close;
+    if let Some(shortcode) = hugo_shortcode_opening(trimmed) {
+        let tag_end = hugo_shortcode_tag_end(source, line, end, shortcode);
+        if hugo_shortcode_self_closing(source.line_text(tag_end - 1), shortcode) {
+            return tag_end;
+        }
+        return find_hugo_shortcode_close(source, tag_end, end, shortcode).unwrap_or(tag_end);
     }
     if display_math_delimiter(trimmed) {
         if trimmed[2..].contains("$$") {
@@ -3062,19 +3116,83 @@ fn hugo_shortcode_opening(trimmed: &str) -> Option<HugoShortcodeOpening<'_>> {
     (!name.is_empty()).then_some(HugoShortcodeOpening { delimiter, name })
 }
 
+fn hugo_shortcode_tag_end(
+    source: &SourceBuffer,
+    start: usize,
+    end: usize,
+    opening: HugoShortcodeOpening<'_>,
+) -> usize {
+    let closing = if opening.delimiter == '%' {
+        "%}}"
+    } else {
+        ">}}"
+    };
+    let mut quote = None;
+    for line in start..end {
+        let text = source.line_text(line);
+        let mut chars = text.char_indices();
+        while let Some((index, ch)) = chars.next() {
+            if let Some(delimiter) = quote {
+                if ch == '\\' && delimiter == '"' {
+                    chars.next();
+                } else if ch == delimiter {
+                    quote = None;
+                }
+            } else if matches!(ch, '"' | '`') {
+                quote = Some(ch);
+            } else if text[index..].starts_with(closing) {
+                return line + 1;
+            }
+        }
+    }
+    // An incomplete tag has no safe boundary: subsequent lines can still be
+    // arguments or a quoted value. Preserve through the end of this fragment
+    // until the tag is complete instead of guessing where Markdown resumes.
+    end
+}
+
 fn find_hugo_shortcode_close(
     source: &SourceBuffer,
     mut line: usize,
     end: usize,
     opening: HugoShortcodeOpening<'_>,
 ) -> Option<usize> {
+    let mut depth = 1;
     while line < end {
-        if hugo_shortcode_closes(source.line_text(line).trim_start(), opening) {
-            return Some(line + 1);
+        let text = source.line_text(line).trim_start();
+        if hugo_shortcode_closes(text, opening) {
+            depth -= 1;
+            if depth == 0 {
+                return Some(line + 1);
+            }
+        } else if let Some(nested) = hugo_shortcode_opening(text) {
+            let tag_end = hugo_shortcode_tag_end(source, line, end, nested);
+            if !hugo_shortcode_self_closing(source.line_text(tag_end - 1), nested) {
+                if nested.delimiter == opening.delimiter && nested.name == opening.name {
+                    depth += 1;
+                } else if (nested.delimiter == '>' || nested.name.ends_with(".inline"))
+                    && let Some(close) = find_hugo_shortcode_close(source, tag_end, end, nested)
+                {
+                    // A raw body can contain literal tags that look like the
+                    // surrounding Markdown shortcode's closing delimiter.
+                    line = close;
+                    continue;
+                }
+            }
+            line = tag_end;
+            continue;
         }
         line += 1;
     }
     None
+}
+
+fn hugo_shortcode_self_closing(text: &str, opening: HugoShortcodeOpening<'_>) -> bool {
+    text.trim_end().ends_with(if opening.delimiter == '%' {
+        "/%}}"
+    } else {
+        "/>}}"
+    })
 }
 
 fn hugo_shortcode_closes(trimmed: &str, opening: HugoShortcodeOpening<'_>) -> bool {
