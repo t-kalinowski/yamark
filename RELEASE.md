@@ -34,13 +34,13 @@ git tag v0.4.0 RELEASE_COMMIT
 git push origin refs/tags/v0.4.0
 ```
 
-The tag-driven release workflow validates all five versions and the release-note version. It builds four native archives, four wheels, and one source distribution; smoke-tests the wheels; creates the GitHub release with `RELEASE_NOTES.md`; and publishes the Python distributions to PyPI through Trusted Publishing.
+The tag-driven release workflow validates all five versions and the release-note version. It builds five native archives, five wheels, and one source distribution; smoke-tests the wheels; creates the GitHub release with `RELEASE_NOTES.md`; and publishes the Python distributions to PyPI through Trusted Publishing.
 
 Stop and wait for the Release workflow to finish. Then:
 
 1. Confirm that the GitHub release is public and is neither a draft nor a prerelease.
-2. Download all four native archives and `SHA256SUMS`, then verify every checksum.
-3. Confirm that PyPI has four wheels and one source distribution, and that each file has provenance for `t-kalinowski/yamark`, `release.yml`, and the `pypi` environment.
+2. Download all five native archives and `SHA256SUMS`, then verify every checksum.
+3. Confirm that PyPI has five wheels and one source distribution, and that each file has provenance for `t-kalinowski/yamark`, `release.yml`, and the `pypi` environment.
 4. Test the public package without using a local checkout or cache:
 
    ```sh
