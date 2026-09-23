@@ -277,3 +277,37 @@ fn definition_tabs_match_parser_eligibility_without_trimming_literals() {
     let source = "Term\n   : Before   prose.\n   \u{2003}After   _outside_ [real](  target  ).\n";
     assert_format(source, source, "sentence", true);
 }
+
+#[test]
+fn list_support_uses_literal_boundaries_with_escapes_and_indented_openers() {
+    for (case, wrap) in [
+        (
+            include_str!("cases/markdown_multiline_literal_list_escapes.case"),
+            "sentence",
+        ),
+        (
+            include_str!("cases/markdown_multiline_literal_list_escapes.case"),
+            "none",
+        ),
+        (
+            include_str!("cases/markdown_multiline_literal_list_openers.case"),
+            "24",
+        ),
+    ] {
+        let source = case
+            .split("-- stdin\n")
+            .nth(1)
+            .unwrap()
+            .split("-- stdout\n")
+            .next()
+            .unwrap();
+        let expected = case
+            .split("-- stdout\n")
+            .nth(1)
+            .unwrap()
+            .split("-- stderr\n")
+            .next()
+            .unwrap();
+        assert_format(source, expected, wrap, true);
+    }
+}

@@ -2643,10 +2643,13 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
                     .chain(crate::core::wrap::markdown_multiline_literal_spans(block))
                     .collect::<Vec<_>>()
             });
+            // Include openers after the source indentation as well as lines
+            // whose indentation is already inside a link or literal.
             let line_offset = source.lines[line].text.start() - block_start;
+            let content_offset = line_offset + indent;
             if multiline_inlines
                 .iter()
-                .any(|span| span.contains(&line_offset))
+                .any(|span| span.contains(&line_offset) || span.contains(&content_offset))
             {
                 continue;
             }

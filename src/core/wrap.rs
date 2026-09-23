@@ -269,12 +269,27 @@ pub(crate) fn markdown_multiline_literal_spans(
     let mut index = 0;
     std::iter::from_fn(move || {
         while index < source.len() {
+            let byte = source.as_bytes()[index];
+            if escaped_at(source, index) {
+                // An escaped run cannot become an opener partway through it.
+                index += if byte == b'`' {
+                    delimiter_run_len_at(source, index, b'`')
+                } else {
+                    source[index..].chars().next().unwrap().len_utf8()
+                };
+                continue;
+            }
             if let Some(end) = scan.literal_span_end(index) {
                 let start = index;
                 index = end;
+                if byte == b'`' {
+                    index += delimiter_run_len_at(source, index, b'`');
+                }
                 if source[start..end].contains(['\n', '\r']) {
                     return Some(start..end);
                 }
+            } else if byte == b'`' {
+                index += delimiter_run_len_at(source, index, b'`');
             } else if let Some(end) = raw_semantics_protected_token_end(&mut scan, index) {
                 index = end;
             } else {
