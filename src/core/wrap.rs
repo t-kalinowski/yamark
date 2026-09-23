@@ -3849,8 +3849,11 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
             continue;
         }
         let close = search;
-        let inner = &text[start + run..close];
         if close <= start + run
+            || text[..close]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace)
             || escaped_at(text, close)
             || text
                 .as_bytes()
@@ -3861,16 +3864,16 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
                 .as_bytes()
                 .get(close + run)
                 .is_some_and(|byte| *byte == marker)
-            || inner.contains(['\n', '\r'])
-            || inner.trim().is_empty()
-            || text[..close]
-                .chars()
-                .next_back()
-                .is_some_and(char::is_whitespace)
             || (marker == b'_' && underscore_is_intraword(text, close, run))
         {
             search = close + run;
             continue;
+        }
+        // Nonempty contents ending in non-whitespace cannot be all whitespace.
+        // Check line breaks only after the boundary tests. If one is present,
+        // every later closing candidate contains it too, so this search is done.
+        if text[start + run..close].contains(['\n', '\r']) {
+            return None;
         }
         return Some(EmphasisSpan {
             close,
