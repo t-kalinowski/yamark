@@ -1,0 +1,50 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+Term
+: Before   prose.
+   	After   _outside_ [real](  target  ).
+
+# Code
+
+Code
+   : Before `first  
+   		second [x]( url )` after _outside_ [real](  target  ).
+
+# Math
+
+Math
+   : Before $first  
+	   second \$ [x]( url )$ after _outside_. Next sentence.
+
+# Ineligible continuation
+
+Short
+: Before   prose.
+  	After   _outside_ [real](  target  ).
+-- stdout
+Term
+: Before prose.
+  After *outside* [real](target).
+
+# Code
+
+Code
+   : Before `first  
+     	second [x]( url )` after *outside* [real](target).
+
+# Math
+
+Math
+   : Before $first  
+     second \$ [x]( url )$ after *outside*.
+     Next sentence.
+
+# Ineligible continuation
+
+Short
+: Before   prose.
+  	After   _outside_ [real](  target  ).
+-- stderr
+-- status
+0

@@ -1,0 +1,22 @@
+-- args
+format --diff --wrap paragraph --canonical tests/fixtures/markdown_literal_crlf.md
+-- stdin
+-- stdout
+--- tests/fixtures/markdown_literal_crlf.md
++++ tests/fixtures/markdown_literal_crlf.md
+@@ -2,8 +2,8 @@
+ ```markdown
+ Before `first  	
+   second\
+-third [x]( url )` after _outside_ [real](  target  ).
+- 	
+-Next   paragraph.	
++third [x]( url )` after *outside* [real](target).
++
++Next paragraph.
+ ```
+ :::
+-- stderr
+1 files scanned, 1 formatted, 0 unchanged, 0 skipped, 0 failed
+-- status
+1

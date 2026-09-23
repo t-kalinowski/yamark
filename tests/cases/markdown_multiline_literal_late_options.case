@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+Before  `first  
+  second [x]( url )` after _outside_ [real](  target  ). Next sentence.
+
+<!-- fmt: wrap=sentence canonical=true scope=file -->
+-- stdout
+Before `first  
+  second [x]( url )` after *outside* [real](target).
+Next sentence.
+
+<!-- fmt: wrap=sentence canonical=true scope=file -->
+-- stderr
+-- status
+0

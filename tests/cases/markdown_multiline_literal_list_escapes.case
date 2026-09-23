@@ -1,0 +1,33 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+- Before \$ escaped then $first  
+    second \$ [x]( url )$ after _outside_ [real](  target  ).
+
+- _Before \` escaped_ then `first  
+    second [x]( url )` after _outside_ [real](  target  ).
+
+- _Before \`` escaped_ then `first
+    second` after _outside_.
+
+# Existing tokenizer fallback
+
+- Before \` escaped then `first
+    second` after _outside_ [real](  target  ).
+-- stdout
+- Before \$ escaped then $first  
+    second \$ [x]( url )$ after *outside* [real](target).
+
+- *Before \` escaped* then `first  
+    second [x]( url )` after *outside* [real](target).
+
+- *Before \`` escaped* then `first
+    second` after *outside*.
+
+# Existing tokenizer fallback
+
+- Before \` escaped then `first
+    second` after _outside_ [real](  target  ).
+-- stderr
+-- status
+0

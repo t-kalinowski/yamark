@@ -2597,7 +2597,7 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
-    let mut split_link_destinations: Option<Vec<std::ops::Range<usize>>> = None;
+    let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
     for line in start + 1..end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
@@ -2634,18 +2634,22 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
             if list_item_at(text.trim_start()) {
                 return false;
             }
-            // Multiline link destinations are rare. Keep this whole-block
+            // Multiline links and literals are rare. Keep this whole-block
             // scan off the ordinary-list hot path and cache it when needed.
             let block_start = source.lines[start].full.start();
-            let split_link_destinations = split_link_destinations.get_or_insert_with(|| {
+            let multiline_inlines = multiline_inlines.get_or_insert_with(|| {
                 let block = source.slice(Span::new(block_start, source.lines[end - 1].full.end()));
                 crate::core::wrap::markdown_multiline_link_destination_spans(block)
+                    .chain(crate::core::wrap::markdown_multiline_literal_spans(block))
                     .collect::<Vec<_>>()
             });
+            // Include openers after the source indentation as well as lines
+            // whose indentation is already inside a link or literal.
             let line_offset = source.lines[line].text.start() - block_start;
-            if split_link_destinations
+            let content_offset = line_offset + indent;
+            if multiline_inlines
                 .iter()
-                .any(|span| span.contains(&line_offset))
+                .any(|span| span.contains(&line_offset) || span.contains(&content_offset))
             {
                 continue;
             }

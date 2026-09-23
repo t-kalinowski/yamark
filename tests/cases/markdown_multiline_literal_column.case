@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --wrap 24
+-- stdin
+Before `first  
+  second [x]( url )` after [real](  target  ).
+
+- Before $first	
+    second \$ [x]( url )$ after [real](  target  ).
+-- stdout
+Before
+`first  
+  second [x]( url )`
+after [real](target).
+
+- Before
+  $first	
+    second \$ [x]( url )$
+  after [real](target).
+-- stderr
+-- status
+0

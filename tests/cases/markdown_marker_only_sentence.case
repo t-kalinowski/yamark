@@ -1,0 +1,37 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+-
+
+>
+
+> -
+
+- >
+
+```markdown
+-
+```
+
+- `  `
+
+> $  $
+-- stdout
+-
+
+>
+
+> -
+
+- >
+
+```markdown
+-
+```
+
+- `  `
+
+> $  $
+-- stderr
+-- status
+0

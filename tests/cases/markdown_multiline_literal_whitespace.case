@@ -10,14 +10,17 @@ Before `first
 > Before $first  
 >   second \$ [x]( url )$ after _outside_. Next sentence.
 -- stdout
-Before `first
-  second [x]( url )` after _outside_. Next sentence.
+Before `first  
+  second [x]( url )` after *outside*.
+Next sentence.
 
-- Before `first
-    second [x]( url )` after _outside_. Next sentence.
+- Before `first  
+    second [x]( url )` after *outside*.
+  Next sentence.
 
-> Before $first
->   second \$ [x]( url )$ after _outside_. Next sentence.
+> Before $first  
+>   second \$ [x]( url )$ after *outside*.
+> Next sentence.
 -- stderr
 -- status
 0
