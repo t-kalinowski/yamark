@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --verify
+-- stdin
+Before
+<span>{{ foo }}</span> after.
+
+Following
+prose.
+-- stdout
+Before
+<span>{{ foo }}</span> after.
+
+Following prose.
+-- stderr
+-- status
+0

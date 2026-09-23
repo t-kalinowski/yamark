@@ -1,44 +1,43 @@
 -- args
-format --stdin-file-path input.md --wrap sentence --canonical --verify
+format --wrap sentence --stdin-file-path input.md
 -- stdin
-Before
-`{{< note text="}}` keep   _this_" >}}
-after.
+First
+sentence with `{{ foo }}` and {{ outside }}. Second
+sentence.
 
-Before
-`{{% note text='}}` keep   _this_' %}}
-after.
+First
+sentence with `{{ foo }}` < value and [real](  target  ). Second
+sentence.
 
-Before
-``{{< note text="}}` keep   _this_" >}}``
-after.
+First
+sentence with `{{ foo` }}. Second
+sentence.
 
-Before <span><script>const x = "keep   this"; {{ foo }}</span>
-
-Before ${{ "keep $   this" }} after.
-
-<span>{ <span> } </span> keep   _this_ {{ foo }}</span>
+First
+sentence with `{{ foo` and `bar }}`. Second
+sentence.
 
 Following
-_prose_.
+paragraph with [real](  target  ). Next
+sentence.
 -- stdout
-Before
-`{{< note text="}}` keep   _this_" >}}
-after.
+First sentence with `{{ foo }}` and {{ outside }}.
+Second sentence.
 
-Before
-`{{% note text='}}` keep   _this_' %}}
-after.
+First
+sentence with `{{ foo }}` < value and [real](  target  ). Second
+sentence.
 
-Before ``{{< note text="}}` keep   _this_" >}}`` after.
+First
+sentence with `{{ foo` }}. Second
+sentence.
 
-Before <span><script>const x = "keep   this"; {{ foo }}</span>
+First
+sentence with `{{ foo` and `bar }}`. Second
+sentence.
 
-Before ${{ "keep $   this" }} after.
-
-<span>{ <span> } </span> keep   _this_ {{ foo }}</span>
-
-Following *prose*.
+Following paragraph with [real](target).
+Next sentence.
 -- stderr
 -- status
 0

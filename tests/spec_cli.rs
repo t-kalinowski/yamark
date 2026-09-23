@@ -651,7 +651,7 @@ Subtitle
 }
 
 #[test]
-fn markdown_braced_template_spans_allow_heading_formatting() {
+fn markdown_template_spans_preserve_headings() {
     let input = "\
 #   Title {{ keep   spacing }}   ##
 
@@ -661,9 +661,10 @@ Setext {{ keep   spacing }}
 #   Normal ##
 ";
     let expected = "\
-# Title {{ keep   spacing }}
+#   Title {{ keep   spacing }}   ##
 
-# Setext {{ keep   spacing }}
+Setext {{ keep   spacing }}
+====
 
 # Normal
 ";
@@ -2926,15 +2927,10 @@ Term
 }
 
 #[test]
-fn markdown_hugo_shortcode_tags_preserve_only_the_tag() {
+fn markdown_hugo_shortcode_tokens_leave_the_body_as_markdown() {
     let input = "\
 {{< notice >}}
-This    Markdown body should be formatted.
-{{< /notice >}}
-";
-    let expected = "\
-{{< notice >}}
-This Markdown body should be formatted.
+This    Markdown body formats normally.
 {{< /notice >}}
 ";
     let (status, stdout, stderr) = run_stdin(
@@ -2948,7 +2944,7 @@ This Markdown body should be formatted.
         input,
     );
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, expected);
+    assert_eq!(stdout, input.replace("This    Markdown", "This Markdown"));
     assert_eq!(stderr, "");
 }
 

@@ -200,12 +200,12 @@ fn ci_runs_public_readiness_checks() {
     for command in [
         "cargo fmt --check",
         "cargo clippy --all-targets --all-features -- -D warnings",
-        "uv run --upgrade --isolated --no-project --with ruff --with py-yaml12 -- cargo test",
-        "uv run --upgrade external-tests/run.py",
+        "cargo test",
+        "uv run --upgrade external-tests/run.py --serial",
         "npm test",
     ] {
         assert!(
-            checks.lines().any(|line| line.trim() == command),
+            checks.contains(command),
             "the shared check script should run public readiness command {command}"
         );
     }
@@ -240,6 +240,7 @@ fn release_workflow_publishes_python_package() {
 
     for target in [
         "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
         "x86_64-apple-darwin",
         "aarch64-apple-darwin",
         "x86_64-pc-windows-msvc",

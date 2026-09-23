@@ -3,6 +3,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tempfile::tempdir;
@@ -1838,6 +1839,20 @@ fn yaml_benchmark_rejects_later_repetition_no_ops() {
     );
 }
 
+#[test]
+fn yamark_flow_heavy_yaml_formatting_scales_near_linearly() {
+    let small = measure_yamark_flow_heavy_yaml(400);
+    let large = measure_yamark_flow_heavy_yaml(1600);
+    let small_nanos = small.as_nanos().max(1);
+    let large_nanos = large.as_nanos();
+
+    assert!(
+        large_nanos <= small_nanos * 6,
+        "flow-heavy YAML formatting should scale near-linearly: \
+         400 items took {small:?}, 1600 items took {large:?}"
+    );
+}
+
 fn write_summary_fixture(
     artifact_dir: &std::path::Path,
     file_name: &str,
@@ -2047,4 +2062,51 @@ touch "$YAMARK_FAKE_DENO_STATE"
 find "$target" -name '*.yaml' -exec perl -0pi -e 's/name:\s+/name: /g' {} +
 "#,
     );
+}
+
+fn measure_yamark_flow_heavy_yaml(items: usize) -> Duration {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("flow-heavy.yaml");
+    fs::write(&path, render_flow_heavy_yaml(items)).unwrap();
+
+    let started = Instant::now();
+    let output = Command::new(assert_cmd::cargo::cargo_bin("yamark"))
+        .arg("format")
+        .arg(&path)
+        .output()
+        .unwrap_or_else(|err| panic!("failed to run yamark: {err}"));
+    let elapsed = started.elapsed();
+
+    assert!(
+        output.status.success(),
+        "yamark failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let formatted = fs::read_to_string(&path).unwrap();
+    assert!(formatted.contains("ports: [8000, 9000]"));
+    elapsed
+}
+
+fn render_flow_heavy_yaml(items: usize) -> String {
+    let mut out = String::from(
+        "name:    flow-heavy\n\
+         enabled: true\n\
+         labels: {team: platform,region: us-0,tier: backend}\n\
+         settings:\n",
+    );
+    for index in 0..items {
+        out.push_str(&format!(
+            "  item_{index:04}: {{name: worker-{index:04},replicas: {},\
+             ports: [8000,9000],env: {{LOG_LEVEL: info,FEATURE_FLAG: false}},\
+             resources: {{cpu: {}m,memory: {}Mi}},\
+             dependencies: [service-{:04},service-{:04}]}}\n",
+            1 + index % 9,
+            100 + index % 20,
+            128 + (index % 12) * 32,
+            (index + 1) % 50,
+            (index + 7) % 50,
+        ));
+    }
+    out
 }

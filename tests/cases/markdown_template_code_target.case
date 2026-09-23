@@ -1,0 +1,14 @@
+-- args
+format --wrap none --stdin-file-path input.md
+-- stdin
+<!-- fmt: wrap=sentence scope=next -->
+First
+sentence with `<% foo %>`. Second
+sentence with [real](  target  ).
+-- stdout
+<!-- fmt: wrap=sentence scope=next -->
+First sentence with `<% foo %>`.
+Second sentence with [real](target).
+-- stderr
+-- status
+0

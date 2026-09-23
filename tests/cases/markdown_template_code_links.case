@@ -1,0 +1,12 @@
+-- args
+format --wrap sentence --stdin-file-path input.md
+-- stdin
+First
+sentence with `{{ foo }} [x](  url  )`. Second
+sentence with [real](  target  ).
+-- stdout
+First sentence with `{{ foo }} [x](  url  )`.
+Second sentence with [real](target).
+-- stderr
+-- status
+0

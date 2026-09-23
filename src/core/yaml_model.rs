@@ -36,7 +36,7 @@ impl YamlDocumentAst {
         &self.nodes[id.index()]
     }
 
-    pub fn node_mut(&mut self, id: YamlNodeId) -> &mut YamlAstNode {
+    pub(crate) fn node_mut(&mut self, id: YamlNodeId) -> &mut YamlAstNode {
         &mut self.nodes[id.index()]
     }
 }
@@ -74,6 +74,7 @@ pub struct YamlAstNode {
     pub state: StateId,
     pub emit: YamlEmitPlan,
     pub must_preserve_source: Option<bool>,
+    pub(crate) inline_markdown: Option<Box<crate::core::yaml::InlineMarkdownPlan>>,
     inline_width: Cell<u32>,
     flow_inline_width: Cell<u32>,
     source_indent: Cell<u32>,
@@ -93,6 +94,7 @@ impl YamlAstNode {
             state,
             emit: YamlEmitPlan::None,
             must_preserve_source: None,
+            inline_markdown: None,
             inline_width: Cell::new(YAML_WIDTH_CACHE_EMPTY),
             flow_inline_width: Cell::new(YAML_WIDTH_CACHE_EMPTY),
             source_indent: Cell::new(YAML_SOURCE_INDENT_CACHE_EMPTY),
@@ -103,11 +105,11 @@ impl YamlAstNode {
         decode_yaml_width_cache(self.inline_width.get())
     }
 
-    pub fn set_inline_width(&self, width: Option<usize>) {
+    pub(crate) fn set_inline_width(&self, width: Option<usize>) {
         self.inline_width.set(encode_yaml_width_cache(width));
     }
 
-    pub fn clear_inline_width(&self) {
+    pub(crate) fn clear_inline_width(&self) {
         self.inline_width.set(YAML_WIDTH_CACHE_EMPTY);
     }
 
@@ -115,11 +117,11 @@ impl YamlAstNode {
         decode_yaml_width_cache(self.flow_inline_width.get())
     }
 
-    pub fn set_flow_inline_width(&self, width: Option<usize>) {
+    pub(crate) fn set_flow_inline_width(&self, width: Option<usize>) {
         self.flow_inline_width.set(encode_yaml_width_cache(width));
     }
 
-    pub fn clear_flow_inline_width(&self) {
+    pub(crate) fn clear_flow_inline_width(&self) {
         self.flow_inline_width.set(YAML_WIDTH_CACHE_EMPTY);
     }
 
@@ -128,7 +130,7 @@ impl YamlAstNode {
         (indent != YAML_SOURCE_INDENT_CACHE_EMPTY).then_some(indent as usize)
     }
 
-    pub fn set_source_indent(&self, indent: usize) {
+    pub(crate) fn set_source_indent(&self, indent: usize) {
         assert!(indent < YAML_SOURCE_INDENT_CACHE_EMPTY as usize);
         self.source_indent.set(indent as u32);
     }

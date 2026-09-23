@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph
+-- stdin
+Before `[a](  u  )` < value then `[b](  v  )` after [r](t).
+
+Before $![a](  u  )$ < value then $[b](  v  )$ after [r](t).
+
+Before < value `[a](  u  )` after [r](t).
+
+Before   [before](  a  ) `[x](  u  )` < value after [r](  t  ).
+
+Before `[b](  u  )` after [s](  v  ).
+-- stdout
+Before `[a](  u  )` < value then `[b](  v  )` after [r](t).
+
+Before $![a](  u  )$ < value then $[b](  v  )$ after [r](t).
+
+Before < value `[a](  u  )` after [r](t).
+
+Before [before]( a ) `[x](  u  )` < value after [r]( t ).
+
+Before `[b](  u  )` after [s](v).
+-- stderr
+-- status
+0

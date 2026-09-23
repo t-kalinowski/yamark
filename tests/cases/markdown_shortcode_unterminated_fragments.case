@@ -1,0 +1,41 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+::: {.callout-note}
+Before   the token.
+
+{{% notice message="unterminated
+%}}
+<!-- fmt: on -->
+Keep   this body.   
+:::
+
+Outside   the fragment.
+
+```markdown
+{{< unfinished
+Keep   this line.   
+```
+
+Format   after the fence.
+-- stdout
+::: {.callout-note}
+Before the token.
+
+{{% notice message="unterminated
+%}}
+<!-- fmt: on -->
+Keep   this body.   
+:::
+
+Outside the fragment.
+
+```markdown
+{{< unfinished
+Keep   this line.   
+```
+
+Format after the fence.
+-- stderr
+-- status
+0

@@ -1,0 +1,42 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:80 --canonical
+-- stdin
+Term
+   : Before `first  
+    second [x]( url )` after _outside_. Next sentence.
+
+100. Before $first\
+    second [x]( url )$ after _outside_. Next sentence.
+
+Term with tabs
+   : Before `first	
+    	second [x]( url )` after _outside_.
+
+-  Before `first  
+    second [x]( url )` after _outside_.
+
+Term with a wider authored gap
+:   Before `first  
+      second [x]( url )` after _outside_.
+-- stdout
+Term
+   : Before `first  
+     second [x]( url )` after *outside*.
+     Next sentence.
+
+100. Before $first\
+    second [x]( url )$ after _outside_. Next sentence.
+
+Term with tabs
+   : Before `first	
+     	second [x]( url )` after *outside*.
+
+- Before `first  
+   second [x]( url )` after *outside*.
+
+Term with a wider authored gap
+: Before `first  
+    second [x]( url )` after *outside*.
+-- stderr
+-- status
+0

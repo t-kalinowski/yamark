@@ -1,0 +1,81 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+::: {.outer}
+Before   child. 
+
+```markdown
+<!-- fmt: skip file -->
+Keep   child prose.  	
+`unclosed   code  
+<div malformed  
+```
+
+After   child. 
+:::
+
+````markdown
+Before   div. 
+
+::: {.inner}
+<!-- fmt: skip file -->
+Keep   child without shortcodes.  
+$$ unclosed   math  	
+:::
+
+After   div. 
+````
+
+::: {.outer}
+```markdown
+Before   skipped node. 
+
+<!-- fmt: skip -->
+Keep   nested paragraph.  	
+
+After   skipped node. 
+```
+:::
+
+Format   outside. 
+-- stdout
+::: {.outer}
+Before child.
+
+```markdown
+<!-- fmt: skip file -->
+Keep   child prose.  	
+`unclosed   code  
+<div malformed  
+```
+
+After child.
+:::
+
+````markdown
+Before div.
+
+::: {.inner}
+<!-- fmt: skip file -->
+Keep   child without shortcodes.  
+$$ unclosed   math  	
+:::
+
+After div.
+````
+
+::: {.outer}
+```markdown
+Before skipped node.
+
+<!-- fmt: skip -->
+Keep   nested paragraph.  	
+
+After skipped node.
+```
+:::
+
+Format outside.
+-- stderr
+-- status
+0

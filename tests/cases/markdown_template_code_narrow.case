@@ -1,0 +1,11 @@
+-- args
+format --wrap 16 --stdin-file-path input.md --canonical
+-- stdin
+Before `{{ foo }} ![x](  long-image-target  ) _literal_` after [real](  t  ).
+-- stdout
+Before
+`{{ foo }} ![x](  long-image-target  ) _literal_`
+after [real](t).
+-- stderr
+-- status
+0

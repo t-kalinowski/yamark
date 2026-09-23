@@ -1,0 +1,41 @@
+-- args
+format --stdin-file-path input.md --wrap 30 --canonical
+-- stdin
+Before <kbd>first   word  
+second  word</kbd> after _outside_.
+
+Before <kbd>`first  
+second`</kbd> after _outside_.
+
+Before <kbd>word</kbd> after.  
+Next [real](  target  ).
+
+Before   `first  
+  second` after.  
+Next   line.	
+
+Before <kbd>first
+second</kbd> after.  
+Next [real](  target  ).
+-- stdout
+Before <kbd>first word \
+second word</kbd> after
+*outside*.
+
+Before <kbd>`first
+second`</kbd> after _outside_.
+
+Before <kbd>word</kbd> after. \
+Next [real](target).
+
+Before `first  
+  second`
+after. \
+Next line.
+
+Before <kbd>first second</kbd>
+after. \
+Next [real](target).
+-- stderr
+-- status
+0

@@ -1,0 +1,85 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: skip -->
+::: {.note}
+{{< call   
+message="keep   spacing"   
+>}}
+Keep   this body.
+:::
+
+<!-- fmt: skip -->
+{{< skipped   token >}}
+Format   after the token.
+
+<!-- fmt: off -->
+{{% notice message="
+<!-- fmt: on -->
+%}} still   quoted"
+%}}
+Keep   this
+body.
+{{% /notice %}}
+<!-- fmt: on -->
+Format   this
+paragraph.
+
+{{< data message="
+<!-- fmt: skip file -->
+<!-- fmt: invalid -->
+" >}}
+<!-- fmt: skip -->
+Keep   this
+paragraph.
+
+Format   this one.
+
+<!-- fmt: off -->
+{{< whole >}}
+Keep   the whole
+body.
+{{< /whole >}}
+<!-- fmt: on -->
+Resume   formatting.
+-- stdout
+<!-- fmt: skip -->
+::: {.note}
+{{< call   
+message="keep   spacing"   
+>}}
+Keep   this body.
+:::
+
+<!-- fmt: skip -->
+{{< skipped   token >}}
+Format after the token.
+
+<!-- fmt: off -->
+{{% notice message="
+<!-- fmt: on -->
+%}} still quoted" %}} Keep this body.
+{{% /notice %}}
+<!-- fmt: on -->
+Format this paragraph.
+
+{{< data message="
+<!-- fmt: skip file -->
+<!-- fmt: invalid -->
+" >}}
+<!-- fmt: skip -->
+Keep   this
+paragraph.
+
+Format this one.
+
+<!-- fmt: off -->
+{{< whole >}}
+Keep   the whole
+body.
+{{< /whole >}}
+<!-- fmt: on -->
+Resume formatting.
+-- stderr
+-- status
+0

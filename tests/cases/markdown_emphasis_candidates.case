@@ -1,0 +1,98 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+Before *x *x *x late* after.
+
+Before **x *x ***x **x late** after.
+
+Before ***x **x *x ***x late*** after.
+
+Before \*escaped* and *x \*x *x late* after.
+
+Before \_escaped_ and _x \_x _x late_ after.
+
+Before word_name and _x a_b _x late_ after.
+
+Before *  *x  * late* after.
+
+Before _  _x  _ late_ after.
+
+Before *x *x
+*x late* after.
+
+Before *x
+late* after.
+
+Before *x `literal *x *x` *x late* after.
+
+Before _x $literal _x \$ _x$ _x late_ after.
+
+Before *x `literal
+*x` *x late* after.
+
+Before _x [raw _word_](target) _x late_ after.
+
+Before _x <kbd>_raw_</kbd> _x late_ after.
+
+Before _x {key="_raw_"} _x late_ after.
+
+Before _x [raw
+_word_](target) _x late_ after.
+
+Before `{{ foo }}` *x *x *x after.
+
+Before `code` *x *x *x after.
+
+Before *x *x *x after.
+
+# _ _ and _outside_
+
+# _ _ and _outside_
+-- stdout
+Before *x *x *x late* after.
+
+Before **x *x ***x **x late** after.
+
+Before ***x **x *x ***x late*** after.
+
+Before \*escaped* and *x \*x *x late* after.
+
+Before \_escaped_ and *x \_x _x late* after.
+
+Before word_name and *x a_b _x late* after.
+
+Before *  *x  * late* after.
+
+Before _  _x  _ late_ after.
+
+Before *x *x *x late* after.
+
+Before *x late* after.
+
+Before *x `literal *x *x` *x late* after.
+
+Before *x $literal _x \$ _x$ _x late* after.
+
+Before *x `literal
+*x` *x late* after.
+
+Before *x [raw _word*](target) *x late* after.
+
+Before *x <kbd>*raw*</kbd> _x late* after.
+
+Before *x {key="*raw*"} _x late* after.
+
+Before *x [raw _word*](target) *x late* after.
+
+Before `{{ foo }}` *x *x *x after.
+
+Before `code` *x *x *x after.
+
+Before *x *x *x after.
+
+# * _ and _outside*
+
+# * _ and _outside*
+-- stderr
+-- status
+0
