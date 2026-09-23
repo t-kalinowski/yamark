@@ -1,5 +1,7 @@
 mod inline;
 mod plan;
+#[cfg(test)]
+mod tests;
 use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
@@ -3849,8 +3851,11 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
             continue;
         }
         let close = search;
-        let inner = &text[start + run..close];
         if close <= start + run
+            || text[..close]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace)
             || escaped_at(text, close)
             || text
                 .as_bytes()
@@ -3861,16 +3866,16 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
                 .as_bytes()
                 .get(close + run)
                 .is_some_and(|byte| *byte == marker)
-            || inner.contains(['\n', '\r'])
-            || inner.trim().is_empty()
-            || text[..close]
-                .chars()
-                .next_back()
-                .is_some_and(char::is_whitespace)
             || (marker == b'_' && underscore_is_intraword(text, close, run))
         {
             search = close + run;
             continue;
+        }
+        // Nonempty contents ending in non-whitespace cannot be all whitespace.
+        // Check line breaks only after the boundary tests. If one is present,
+        // every later closing candidate contains it too, so this search is done.
+        if emphasis_contents_have_line_break(&text[start + run..close]) {
+            return None;
         }
         return Some(EmphasisSpan {
             close,
@@ -3879,6 +3884,12 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
         });
     }
     None
+}
+
+fn emphasis_contents_have_line_break(contents: &str) -> bool {
+    #[cfg(test)]
+    tests::EMPHASIS_CONTENT_BYTES.with(|bytes| bytes.set(bytes.get() + contents.len()));
+    contents.contains(['\n', '\r'])
 }
 
 fn delimiter_run_len_at(text: &str, index: usize, marker: u8) -> usize {

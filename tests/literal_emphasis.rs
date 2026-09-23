@@ -8,6 +8,7 @@ fn literal_emphasis_cases_are_exact_and_idempotent() {
         include_str!("cases/markdown_literal_emphasis_escapes.case"),
         include_str!("cases/markdown_literal_emphasis_boundaries.case"),
         include_str!("cases/markdown_literal_emphasis_wrap.case"),
+        include_str!("cases/markdown_emphasis_candidates.case"),
     ] {
         let (args, rest) = case
             .strip_prefix("-- args\n")
