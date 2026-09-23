@@ -1,4 +1,7 @@
-"""Run via `uv run external-tests/run.py --suite corpus/test_scaling.py`."""
+"""Public CLI scaling controls for template rejection and lexical shortcodes.
+
+Run via `uv run external-tests/run.py --suite corpus/test_scaling.py`.
+"""
 
 from __future__ import annotations
 
@@ -11,25 +14,6 @@ import pytest
 pytestmark = pytest.mark.skipif(
     not hasattr(os, "wait4"), reason="Child CPU accounting requires os.wait4"
 )
-
-
-def test_flow_heavy_yaml_formatting_scales_near_linearly(tmp_path: Path) -> None:
-    small = measure_flow_heavy_yaml(tmp_path, 400)
-    large = measure_flow_heavy_yaml(tmp_path, 1600)
-
-    assert small > 0, "formatter CPU time must be available"
-    assert large <= small * 6, (
-        "flow-heavy YAML formatting should scale near-linearly: "
-        f"400 items used {small:.6f}s CPU, 1600 items used {large:.6f}s CPU"
-    )
-
-
-def measure_flow_heavy_yaml(root: Path, items: int) -> float:
-    source = root / f"flow-heavy-{items}.yaml"
-    source.write_text(render_flow_heavy_yaml(items), encoding="utf-8")
-    cpu, formatted = measure_formatting_cpu(source)
-    assert formatted.count("ports: [8000, 9000]") == items
-    return cpu
 
 
 def test_unmatched_backticks_scale_with_input_size(tmp_path: Path) -> None:
@@ -124,6 +108,54 @@ def test_unmatched_braces_in_inline_html_scale_with_input_size(
     )
 
 
+@pytest.mark.parametrize("opening", ["{", "*"])
+def test_rejected_template_paragraphs_scale_with_input_size(
+    tmp_path: Path, opening: str
+) -> None:
+    durations = []
+    for count in [1000, 4000]:
+        text = (
+            "Before `{{ foo }}` "
+            + " ".join(opening + "x" for _ in range(count))
+            + " after.\n"
+        )
+        source = tmp_path / f"rejected-template-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == text
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "rejected template paragraphs should scale with input size: "
+        f"1000 openers used {small:.6f}s CPU, 4000 openers used {large:.6f}s CPU"
+    )
+
+
+def test_unpaired_shortcode_calls_scale_with_input_size(tmp_path: Path) -> None:
+    durations = []
+    for count in [2000, 8000]:
+        tokens = "{{< meta title >}}\n" * count
+        source = tmp_path / f"shortcodes-{count}.md"
+        source.write_text(
+            "{{% notice %}}\n" + tokens + "Following\nprose.\n{{% /notice %}}\n",
+            encoding="utf-8",
+        )
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == (
+            "{{% notice %}}\n" + tokens + "Following prose.\n{{% /notice %}}\n"
+        )
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "independent shortcode calls should scale with input size: "
+        f"2000 calls used {small:.6f}s CPU, 8000 calls used {large:.6f}s CPU"
+    )
+
+
 def measure_formatting_cpu(source: Path) -> tuple[float, str]:
     log_path = source.with_suffix(".log")
 
@@ -143,20 +175,3 @@ def measure_formatting_cpu(source: Path) -> tuple[float, str]:
         f"{log_path.read_text(encoding='utf-8')}"
     )
     return usage.ru_utime + usage.ru_stime, source.read_text(encoding="utf-8")
-
-
-def render_flow_heavy_yaml(items: int) -> str:
-    lines = [
-        "name:    flow-heavy\n",
-        "enabled: true\n",
-        "labels: {team: platform,region: us-0,tier: backend}\n",
-        "settings:\n",
-    ]
-    for index in range(items):
-        lines.append(
-            f"  item_{index:04}: {{name: worker-{index:04},replicas: {1 + index % 9},"
-            "ports: [8000,9000],env: {LOG_LEVEL: info,FEATURE_FLAG: false},"
-            f"resources: {{cpu: {100 + index % 20}m,memory: {128 + index % 12 * 32}Mi}},"
-            f"dependencies: [service-{(index + 1) % 50:04},service-{(index + 7) % 50:04}]}}\n"
-        )
-    return "".join(lines)
