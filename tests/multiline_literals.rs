@@ -97,6 +97,31 @@ fn literal_line_endings_survive_container_prefixes_and_recursive_output() {
 }
 
 #[test]
+fn literal_line_ending_fixtures_keep_exact_bytes() {
+    // The --diff transcripts use these files because .case sections are LF
+    // text. Check the actual formatted bytes and second passes here as well.
+    for (source, wrap) in [
+        (
+            include_str!("fixtures/markdown_literal_crlf.md"),
+            "paragraph",
+        ),
+        (include_str!("fixtures/markdown_literal_cr.md"), "none"),
+        (
+            include_str!("fixtures/markdown_literal_mixed_endings.md"),
+            "paragraph",
+        ),
+    ] {
+        let expected = source
+            .replace("Before   ", "Before ")
+            .replace("_outside_", "*outside*")
+            .replace("[real](  target  )", "[real](target)")
+            .replace("\r\n \t\r\n", "\r\n\r\n")
+            .replace("Next   paragraph.\t", "Next paragraph.");
+        assert_format(source, &expected, wrap, true);
+    }
+}
+
+#[test]
 fn definition_and_footnote_content_keeps_authored_lines() {
     for (source, expected) in [
         (

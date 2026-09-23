@@ -1,0 +1,8 @@
+-- args
+format --check --wrap paragraph --canonical tests/fixtures/markdown_literal_mixed_endings_formatted.md
+-- stdin
+-- stdout
+-- stderr
+1 files scanned, 0 formatted, 1 unchanged, 0 skipped, 0 failed
+-- status
+0

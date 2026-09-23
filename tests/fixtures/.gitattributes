@@ -1,0 +1,5 @@
+# These fixtures exercise authored line-ending bytes.
+markdown_literal_crlf.md -text
+markdown_literal_cr.md -text
+markdown_literal_mixed_endings.md -text
+markdown_literal_mixed_endings_formatted.md -text
