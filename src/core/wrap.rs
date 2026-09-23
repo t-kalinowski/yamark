@@ -1,5 +1,7 @@
 mod inline;
 mod plan;
+#[cfg(test)]
+mod tests;
 use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
@@ -3872,7 +3874,7 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
         // Nonempty contents ending in non-whitespace cannot be all whitespace.
         // Check line breaks only after the boundary tests. If one is present,
         // every later closing candidate contains it too, so this search is done.
-        if text[start + run..close].contains(['\n', '\r']) {
+        if emphasis_contents_have_line_break(&text[start + run..close]) {
             return None;
         }
         return Some(EmphasisSpan {
@@ -3882,6 +3884,12 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
         });
     }
     None
+}
+
+fn emphasis_contents_have_line_break(contents: &str) -> bool {
+    #[cfg(test)]
+    tests::EMPHASIS_CONTENT_BYTES.with(|bytes| bytes.set(bytes.get() + contents.len()));
+    contents.contains(['\n', '\r'])
 }
 
 fn delimiter_run_len_at(text: &str, index: usize, marker: u8) -> usize {
