@@ -1,0 +1,47 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --canonical
+-- stdin
+Before [first
+second](  target  ) after _outside_.
+
+- Before [first
+  second](  target  ) after _outside_.
+
+> Before [first
+> second](  target  ) after _outside_.
+
+Before ![first
+second](  image.png  ) after _outside_.
+
+# Existing opaque boundaries
+
+- Before <kbd>`first
+    second`</kbd> after _outside_.
+
+- Before <kbd>$first
+    second$</kbd> after _outside_.
+
+Before [label `first
+second`](  target  ) after _outside_.
+-- stdout
+Before [first second](target) after *outside*.
+
+- Before [first second](target) after *outside*.
+
+> Before [first second](target) after *outside*.
+
+Before ![first second](image.png) after *outside*.
+
+# Existing opaque boundaries
+
+- Before <kbd>`first
+    second`</kbd> after _outside_.
+
+- Before <kbd>$first
+    second$</kbd> after _outside_.
+
+Before [label `first
+second`](  target  ) after _outside_.
+-- stderr
+-- status
+0

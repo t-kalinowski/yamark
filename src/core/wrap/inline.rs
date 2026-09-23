@@ -95,7 +95,12 @@ impl InlineSource {
                 normalize_links = false;
                 Some((end, Kind::Protected))
             } else if matches!(byte, b'[' | b'!') && (byte == b'[' || rest.starts_with("![")) {
-                Some((link_or_bracket_token_end(&mut scan, index)?, Kind::Link))
+                // Retain label boundaries before editable soft breaks join.
+                // The existing tokenizer validates the normalized label below.
+                Some((
+                    link_or_bracket_span_end(&mut scan, index, false)?,
+                    Kind::Link,
+                ))
             } else {
                 if byte == b'<' && !escaped_at(source, index) {
                     normalize_links = false;

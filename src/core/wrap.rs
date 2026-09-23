@@ -4001,6 +4001,14 @@ fn raw_semantics_protected_token_end(scan: &mut InlineScan<'_>, index: usize) ->
 }
 
 fn link_or_bracket_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
+    link_or_bracket_span_end(scan, start, true)
+}
+
+fn link_or_bracket_span_end(
+    scan: &mut InlineScan<'_>,
+    start: usize,
+    validate_label: bool,
+) -> Option<usize> {
     let text = scan.text;
     let image = text[start..].starts_with("![");
     if !image && text.as_bytes().get(start) != Some(&b'[') {
@@ -4010,7 +4018,9 @@ fn link_or_bracket_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
     let label_close = scan.square_close(label_start)?;
     let after_label = label_close + 1;
     if text.as_bytes().get(after_label) == Some(&b'(') {
-        normalize_link_label(&text[label_start..label_close], !image)?;
+        if validate_label {
+            normalize_link_label(&text[label_start..label_close], !image)?;
+        }
         let destination_close = find_simple_destination_close(text, after_label + 1)?;
         parse_simple_link_target(&text[after_label + 1..destination_close])?;
         let mut end = destination_close + 1;

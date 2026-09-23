@@ -336,3 +336,27 @@ fn list_support_uses_literal_boundaries_with_escapes_and_indented_openers() {
         assert_format(source, expected, wrap, true);
     }
 }
+
+#[test]
+fn editable_link_label_breaks_normalize_before_validation() {
+    let case = include_str!("cases/markdown_multiline_link_label_preparation.case");
+    let (_, input) = case.split_once("-- stdin\n").unwrap();
+    let (source, output) = input.split_once("-- stdout\n").unwrap();
+    let (expected, _) = output.split_once("-- stderr\n").unwrap();
+    assert_format(source, expected, "sentence", true);
+
+    let source = "Before [first\nsecond](  target  ) after _outside_.\n";
+    assert_format(source, source, "none", true);
+    assert_format(
+        source,
+        "Before [first second](target) after _outside_.\n",
+        "paragraph",
+        false,
+    );
+    assert_format(
+        "- Before [first\n  second](  target  ) after _outside_.\n",
+        "- Before [first second](target) after *outside*.\n",
+        "none",
+        true,
+    );
+}
