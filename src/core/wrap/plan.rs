@@ -71,7 +71,7 @@ pub(super) enum Item {
 pub(super) struct InlinePlan {
     literals: Box<[Span]>,
     pub text: Text,
-    pub lines: Vec<PlannedLine>,
+    pub lines: Box<[PlannedLine]>,
     pub tokens: Vec<Text>,
     pub first_prefix: Text,
     pub continuation_prefix: Text,
@@ -804,7 +804,7 @@ impl Draft {
                     plan.items.push(Item::Inline(InlinePlan {
                         text: Text::retain(source, text),
                         literals: input.literals.into_boxed_slice(),
-                        lines,
+                        lines: lines.into_boxed_slice(),
                         tokens: planned_tokens,
                         first_prefix: inline.first_prefix.clone(),
                         continuation_prefix: inline.continuation_prefix.clone(),

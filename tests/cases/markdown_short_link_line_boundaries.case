@@ -1,0 +1,58 @@
+-- args
+format --stdin-file-path input.md --wrap 48
+-- stdin
+Short [linked words](https://example.org/guide) finish. Another sentence follows.
+
+> - Nested [link](https://example.org/nested) and words that should cross a line boundary.\
+>   Follow-up text keeps its container prefix.
+
+<!-- fmt: wrap=sentence:36 scope=next -->
+Late policy changes this paragraph with [a link](https://example.org/late) and a final sentence.
+-- stdout
+Short [linked words](https://example.org/guide)
+finish. Another sentence follows.
+
+> - Nested [link](https://example.org/nested)
+>   and words that should cross a line boundary.\
+>   Follow-up text keeps its container prefix.
+
+<!-- fmt: wrap=sentence:36 scope=next -->
+Late policy changes this paragraph
+with
+[a link](https://example.org/late)
+and a final sentence.
+-- stderr
+-- status
+0
+
+-- args
+format --stdin-file-path input.md --wrap sentence:36
+-- stdin
+Short [linked words](https://example.org/guide) finish. Another sentence follows.
+
+> - Nested [link](https://example.org/nested) and words that should cross a line boundary.\
+>   Follow-up text keeps its container prefix.
+
+<!-- fmt: wrap=sentence:36 scope=next -->
+Late policy changes this paragraph with [a link](https://example.org/late) and a final sentence.
+-- stdout
+Short [linked words](
+  https://example.org/guide
+) finish.
+Another sentence follows.
+
+> - Nested [link](
+>     https://example.org/nested
+>   ) and words that should cross a
+>   line boundary.\
+>   Follow-up text keeps its
+>   container prefix.
+
+<!-- fmt: wrap=sentence:36 scope=next -->
+Late policy changes this paragraph
+with
+[a link](https://example.org/late)
+and a final sentence.
+-- stderr
+-- status
+0
