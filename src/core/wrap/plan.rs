@@ -761,9 +761,16 @@ impl Draft {
                             !unwrapped,
                         )?;
                     let text = input.text.as_str();
+                    // Both handles use the enclosing source; token and literal
+                    // spans below still use coordinates in the inline text.
+                    let retained_text = if text == inline.source.get(source) {
+                        inline.source.clone()
+                    } else {
+                        Text::retain(source, text)
+                    };
                     if unwrapped {
                         plan.items.push(Item::Unwrapped(UnwrappedPlan {
-                            text: Text::retain(source, text),
+                            text: retained_text,
                             literals: input.literals.into_boxed_slice(),
                             first_prefix: inline.first_prefix.clone(),
                             continuation_prefix: inline.continuation_prefix.clone(),
@@ -802,7 +809,7 @@ impl Draft {
                         start = end;
                     }
                     plan.items.push(Item::Inline(InlinePlan {
-                        text: Text::retain(source, text),
+                        text: retained_text,
                         literals: input.literals.into_boxed_slice(),
                         lines: lines.into_boxed_slice(),
                         tokens: planned_tokens,
