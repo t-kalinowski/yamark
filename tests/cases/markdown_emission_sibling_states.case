@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+First  [link](https://example.org/a) and `literal  spaces`.
+
+Second  [site](https://example.org/b) has more words.
+
+<!-- fmt: skip -->
+Keep   spaces.
+
+Last   `code  span` and [end](https://example.org/c).
+-- stdout
+First [link](https://example.org/a) and `literal  spaces`.
+
+Second [site](https://example.org/b) has more words.
+
+<!-- fmt: skip -->
+Keep   spaces.
+
+Last `code  span` and [end](https://example.org/c).
+-- stderr
+-- status
+0
