@@ -70,6 +70,12 @@ pub(crate) struct EmittedText {
 }
 
 impl EmittedText {
+    fn reset(&mut self) {
+        self.text.clear();
+        self.verbatim.clear();
+        self.preserve_eof_at = 0;
+    }
+
     pub(crate) fn push_slice(&mut self, text: &str, verbatim: &[Span], slice: Span) {
         let start = self.text.len();
         self.text.push_str(&text[slice.start..slice.end]);
@@ -147,6 +153,8 @@ fn emit_document_inner(
         normalize_markdown_output,
         options.default_line_ending,
     );
+    // Each document call owns its sibling-block scratch; recursive calls own theirs.
+    let mut block_output = EmittedText::default();
     let mut cursor = document.range.start;
     let mut previous_adjacent_div = false;
     let mut index = 0usize;
@@ -236,7 +244,11 @@ fn emit_document_inner(
                     .get(index)
                     .expect("retained Markdown plan");
                 if let Some(plan) = &retained.plan {
-                    out.push_fragment(&plan.emit_protected(source.slice(node.span)));
+                    block_output.reset();
+                    let block_source = source.slice(node.span);
+                    block_output.text.reserve(block_source.len());
+                    plan.emit_into(block_source, &mut block_output);
+                    out.push_fragment(&block_output);
                 } else {
                     out.push_str(source.slice(node.span));
                 }

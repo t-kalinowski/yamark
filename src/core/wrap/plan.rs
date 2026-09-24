@@ -373,7 +373,7 @@ impl Plan {
         output
     }
 
-    fn emit_into(&self, source: &str, output: &mut EmittedText) {
+    pub(crate) fn emit_into(&self, source: &str, output: &mut EmittedText) {
         let start = output.text.len();
         for item in &self.items {
             match item {
