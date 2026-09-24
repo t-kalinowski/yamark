@@ -1,0 +1,22 @@
+-- args
+format --stdin-file-path input.md --wrap none
+-- stdin
+---
+title: "Hello"
+body: !markdown "This is __strong__."
+---
+Text __strong__.
+
+<!-- fmt: canonical=true scope=file -->
+-- stdout
+---
+title: Hello
+body: !markdown |
+  This is **strong**.
+---
+Text **strong**.
+
+<!-- fmt: canonical=true scope=file -->
+-- stderr
+-- status
+0

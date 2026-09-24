@@ -1,0 +1,26 @@
+-- args
+format --stdin-file-path input.yaml --wrap none
+-- stdin
+plain: [one,two]
+# fmt: markdown
+inline: "This is __strong__."
+block: !markdown |
+  This is __strong__ too.
+# fmt: skip
+skipped: !markdown |
+  Keep __raw__  here.
+# fmt: markdown canonical=true scope=file
+-- stdout
+plain: [one, two]
+# fmt: markdown
+inline: |
+  This is **strong**.
+block: !markdown |
+  This is **strong** too.
+# fmt: skip
+skipped: !markdown |
+  Keep __raw__  here.
+# fmt: markdown canonical=true scope=file
+-- stderr
+-- status
+0

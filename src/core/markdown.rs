@@ -1467,7 +1467,12 @@ pub(crate) fn finalize_document(
         options
     };
     finalize_markdown_plans(source, document, options);
-    if let Some(ast) = &mut document.yaml {
+    let yaml_may_need_markdown_finalization = document.yaml_may_need_markdown_finalization;
+    if let Some(ast) = document
+        .yaml
+        .as_mut()
+        .filter(|_| yaml_may_need_markdown_finalization)
+    {
         for node in &mut ast.nodes {
             if matches!(
                 node.emit,
@@ -1485,7 +1490,10 @@ pub(crate) fn finalize_document(
     for (id, options) in nested_emit_policies(
         &document.nodes,
         &document.states,
-        document.yaml.as_ref(),
+        document
+            .yaml
+            .as_ref()
+            .filter(|_| yaml_may_need_markdown_finalization),
         options,
     ) {
         finalize_document(source, &mut document.nested[id], options, true);
