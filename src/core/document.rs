@@ -359,7 +359,7 @@ impl PreparedTree {
                 !matches!(mode, DocumentEmitMode::Yaml),
             );
         }
-        crate::core::markdown::release_drafts(&mut document);
+        crate::core::markdown::release_planning(&mut document);
         Self {
             document,
             options,

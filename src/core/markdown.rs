@@ -1015,7 +1015,9 @@ fn plan_markdown_thematic_break() -> EmitPlan {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MarkdownPlans {
     by_node: Vec<Option<std::num::NonZeroUsize>>,
+    // Both vectors share each slot through finalization; emission reads only plans.
     plans: Vec<RetainedMarkdown>,
+    planning: Vec<MarkdownPlanning>,
 }
 
 impl MarkdownPlans {
@@ -1046,14 +1048,33 @@ impl MarkdownPlans {
         Some(&mut self.plans[id.get() - 1])
     }
 
-    fn insert(&mut self, node: usize, plan: RetainedMarkdown) {
+    fn get_pair_mut(
+        &mut self,
+        node: usize,
+    ) -> Option<(&mut RetainedMarkdown, &mut MarkdownPlanning)> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some((
+            &mut self.plans[id.get() - 1],
+            &mut self.planning[id.get() - 1],
+        ))
+    }
+
+    fn planning(&self, node: usize) -> Option<&MarkdownPlanning> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&self.planning[id.get() - 1])
+    }
+
+    fn insert(&mut self, node: usize, plan: (RetainedMarkdown, MarkdownPlanning)) {
         if let Some(id) = self.by_node[node] {
-            self.plans[id.get() - 1] = plan;
+            self.plans[id.get() - 1] = plan.0;
+            self.planning[id.get() - 1] = plan.1;
         } else {
             if self.plans.is_empty() {
                 self.plans.reserve_exact(1);
+                self.planning.reserve_exact(1);
             }
-            self.plans.push(plan);
+            self.plans.push(plan.0);
+            self.planning.push(plan.1);
             self.by_node[node] = std::num::NonZeroUsize::new(self.plans.len());
         }
     }
@@ -1061,11 +1082,16 @@ impl MarkdownPlans {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RetainedMarkdown {
-    state: StateId,
     pub(crate) preserve: bool,
+    pub(crate) plan: Option<crate::core::wrap::Plan>,
+}
+
+/// Recognition and policy facts are needed only until the last node is finalized.
+#[derive(Debug, Clone)]
+struct MarkdownPlanning {
+    state: StateId,
     preserve_raw: bool,
     options: Option<FormatOptions>,
-    pub(crate) plan: Option<crate::core::wrap::Plan>,
     draft: Option<crate::core::wrap::Draft>,
     template_spans: Option<crate::core::wrap::ProseTemplateSpans>,
 }
@@ -1082,7 +1108,7 @@ fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
     })
 }
 
-impl RetainedMarkdown {
+impl MarkdownPlanning {
     fn preserves_templates(
         &mut self,
         input: &str,
@@ -1106,11 +1132,12 @@ impl RetainedMarkdown {
 
     fn resolve_plan(
         &mut self,
+        retained: &mut RetainedMarkdown,
         input: &str,
         options: FormatOptions,
         delimiters: &[TemplateDelimiter],
     ) {
-        self.plan = self
+        retained.plan = self
             .draft
             .as_mut()
             .and_then(|draft| draft.resolve_with_templates(input, options, delimiters));
@@ -1170,7 +1197,7 @@ fn push_structural_markdown_format_node(
         None
     };
     let supported = structurally_supported
-        && planned.as_ref().is_none_or(|plan| {
+        && planned.as_ref().is_none_or(|(plan, _)| {
             !plan.preserve
                 && (plan.plan.is_some()
                     || matches!(
@@ -1196,29 +1223,31 @@ fn plan_markdown_block(
     options: FormatOptions,
     kind: MarkdownBlockFormatKind,
     resolve: bool,
-) -> RetainedMarkdown {
+) -> (RetainedMarkdown, MarkdownPlanning) {
     let input = source.slice(node.span);
     let options = state.markdown_options(options);
     let preserve_raw =
         crate::core::wrap::markdown_reflow_changes_raw_semantics(input, &state.template_delimiters);
     let mut retained = RetainedMarkdown {
-        state: node.state,
         preserve: preserve_raw,
+        plan: None,
+    };
+    let mut planning = MarkdownPlanning {
+        state: node.state,
         preserve_raw,
         options: resolve.then_some(options),
-        plan: None,
         draft: None,
         template_spans: None,
     };
     retained.preserve =
-        preserve_raw || retained.preserves_templates(input, kind, &state.template_delimiters);
-    retained.draft = (!retained.preserve)
+        preserve_raw || planning.preserves_templates(input, kind, &state.template_delimiters);
+    planning.draft = (!retained.preserve)
         .then(|| prepare_markdown_block(input, kind))
         .flatten();
     if resolve {
-        retained.resolve_plan(input, options, &state.template_delimiters);
+        planning.resolve_plan(&mut retained, input, options, &state.template_delimiters);
     }
-    retained
+    (retained, planning)
 }
 
 fn prepare_markdown_block(
@@ -1263,9 +1292,9 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
     for (index, node) in doc.nodes.iter().enumerate() {
         let state = doc.states.get(node.state);
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
-            if let Some(retained) = doc.markdown.get_mut(index) {
-                retained.draft = None;
-                retained.template_spans = None;
+            if let Some((_, planning)) = doc.markdown.get_pair_mut(index) {
+                planning.draft = None;
+                planning.template_spans = None;
             }
             continue;
         }
@@ -1273,38 +1302,39 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
             let effective = state.markdown_options(options);
             let template_changed = doc
                 .markdown
-                .get(index)
-                .is_some_and(|retained| retained.template_policy_changed(node, doc));
-            if let Some(retained) = doc.markdown.get_mut(index) {
+                .planning(index)
+                .is_some_and(|planning| planning.template_policy_changed(node, doc));
+            if let Some((retained, planning)) = doc.markdown.get_pair_mut(index) {
                 let was_preserved = retained.preserve;
                 if template_changed {
-                    retained.template_spans = None;
-                    retained.draft = None;
-                    retained.preserve_raw =
+                    planning.template_spans = None;
+                    planning.draft = None;
+                    planning.preserve_raw =
                         crate::core::wrap::markdown_reflow_changes_raw_semantics(
                             source.slice(node.span),
                             &state.template_delimiters,
                         );
-                    let template = retained.preserves_templates(
+                    let template = planning.preserves_templates(
                         source.slice(node.span),
                         kind,
                         &state.template_delimiters,
                     );
-                    retained.preserve = retained.preserve_raw || template;
+                    retained.preserve = planning.preserve_raw || template;
                 }
-                if !retained.preserve && retained.draft.is_none() {
-                    retained.draft = prepare_markdown_block(source.slice(node.span), kind);
+                if !retained.preserve && planning.draft.is_none() {
+                    planning.draft = prepare_markdown_block(source.slice(node.span), kind);
                 }
                 if !retained.preserve
-                    && (retained.options != Some(effective) || was_preserved || template_changed)
+                    && (planning.options != Some(effective) || was_preserved || template_changed)
                 {
-                    retained.resolve_plan(
+                    planning.resolve_plan(
+                        retained,
                         source.slice(node.span),
                         effective,
                         &state.template_delimiters,
                     );
                 }
-                retained.state = node.state;
+                planning.state = node.state;
             } else {
                 doc.markdown.insert(
                     index,
@@ -1355,33 +1385,31 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
             };
             doc.markdown.insert(
                 index,
-                RetainedMarkdown {
-                    state: node.state,
-                    preserve,
-                    preserve_raw: false,
-                    options: Some(options),
-                    plan,
-                    draft: None,
-                    template_spans: None,
-                },
+                (
+                    RetainedMarkdown { preserve, plan },
+                    MarkdownPlanning {
+                        state: node.state,
+                        preserve_raw: false,
+                        options: Some(options),
+                        draft: None,
+                        template_spans: None,
+                    },
+                ),
             );
         }
         // This node's effective policy and execution plan are now settled.
-        if let Some(retained) = doc.markdown.get_mut(index) {
-            retained.draft = None;
-            retained.template_spans = None;
+        if let Some((_, planning)) = doc.markdown.get_pair_mut(index) {
+            planning.draft = None;
+            planning.template_spans = None;
         }
     }
 }
 
-/// Finalization is consuming: no owner needs these recognition drafts again.
-pub(crate) fn release_drafts(document: &mut Document) {
-    for retained in &mut document.markdown.plans {
-        retained.draft = None;
-        retained.template_spans = None;
-    }
+/// All node and nested policies are settled; execution needs only the plans.
+pub(crate) fn release_planning(document: &mut Document) {
+    document.markdown.planning = Vec::new();
     for nested in &mut document.nested {
-        release_drafts(nested);
+        release_planning(nested);
     }
 }
 
