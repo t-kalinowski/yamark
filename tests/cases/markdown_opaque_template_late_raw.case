@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+::: note
+Before
+%% render("a　b") %%
+after _word_.
+:::
+
+```markdown
+Before
+%% render("a　b") %%
+after _word_.
+```
+
+<!-- fmt: template.delimiters "%%" "%%" scope=file -->
+-- stdout
+::: note
+Before %% render("a　b") %% after *word*.
+:::
+
+```markdown
+Before %% render("a　b") %% after *word*.
+```
+
+<!-- fmt: template.delimiters "%%" "%%" scope=file -->
+-- stderr
+-- status
+0

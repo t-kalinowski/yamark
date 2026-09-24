@@ -64,19 +64,18 @@ impl InlineSource {
         let mut scan = InlineScan::new(source);
         let mut index = 0;
         while index < source.len() {
-            if let Some(delimiter) = template_delimiter_at(source, index, delimiters)
-                && !escaped_at(source, index)
-            {
-                if let Some(end) = inline_template_end(source, index, delimiter) {
-                    atoms.push(Atom {
-                        span: SourceSpan::new(Span::new(index, end)),
-                        kind: Kind::Literal,
-                    });
-                    index = end;
-                    continue;
-                }
-                if !pandoc_id_attribute_at(source, index, delimiter) {
-                    return None;
+            if !delimiters.is_empty() {
+                match inline_template_at(&mut scan, index, delimiters) {
+                    TemplateBoundary::Complete(end) => {
+                        atoms.push(Atom {
+                            span: SourceSpan::new(Span::new(index, end)),
+                            kind: Kind::Literal,
+                        });
+                        index = end;
+                        continue;
+                    }
+                    TemplateBoundary::Incomplete => return None,
+                    TemplateBoundary::Absent => {}
                 }
             }
             let byte = source.as_bytes()[index];

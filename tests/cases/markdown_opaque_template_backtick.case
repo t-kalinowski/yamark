@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+<!-- fmt: template.delimiters "`%" "%>" scope=file -->
+Before
+`% keep   this %>
+after _word_ and `code   stays`.
+
+- Before
+  `% render("a　b", "%>") %>
+  after [link](  url  ).
+-- stdout
+<!-- fmt: template.delimiters "`%" "%>" scope=file -->
+Before `% keep   this %> after *word* and `code   stays`.
+
+- Before `% render("a　b", "%>") %> after [link](url).
+-- stderr
+-- status
+0

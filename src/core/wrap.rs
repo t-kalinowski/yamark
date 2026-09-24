@@ -60,6 +60,18 @@ impl ProseTemplateSpans {
         let mut index = 0;
         while index < source.len() {
             let rest = &source[index..];
+            match inline_template_at(&mut scan, index, delimiters) {
+                TemplateBoundary::Complete(end) => {
+                    contents.push(TemplateSpan {
+                        span: SourceSpan::new(Span::new(index, end)),
+                        expression: true,
+                    });
+                    index = end;
+                    continue;
+                }
+                TemplateBoundary::Incomplete => return None,
+                TemplateBoundary::Absent => {}
+            }
             if rest.starts_with('`') {
                 if escaped_at(source, index) {
                     return None;
@@ -79,15 +91,6 @@ impl ProseTemplateSpans {
                 continue;
             }
             if !escaped_at(source, index) {
-                if let Some(delimiter) = template_delimiter_at(source, index, delimiters) {
-                    let end = inline_template_end(source, index, delimiter)?;
-                    contents.push(TemplateSpan {
-                        span: SourceSpan::new(Span::new(index, end)),
-                        expression: true,
-                    });
-                    index = end;
-                    continue;
-                }
                 // Do not broaden HTML, nested markup, or multiline literals.
                 if rest.starts_with('<') {
                     return None;
@@ -206,66 +209,171 @@ fn list_bullet_at(source: &str, index: usize) -> bool {
             .is_empty()
 }
 
-fn template_delimiter_at<'a>(
-    source: &str,
+enum TemplateBoundary {
+    Absent,
+    Incomplete,
+    Complete(usize),
+}
+
+// All inline passes share delimiter precedence and incomplete-token rejection.
+// Competing pairs advance together so a missing closer cannot repeatedly scan
+// the suffix before another pair completes at each subsequent opener.
+fn inline_template_at(
+    scan: &mut InlineScan<'_>,
     index: usize,
-    delimiters: &'a [TemplateDelimiter],
-) -> Option<&'a TemplateDelimiter> {
-    delimiters.iter().find(|delimiter| {
+    delimiters: &[TemplateDelimiter],
+) -> TemplateBoundary {
+    let source = scan.text;
+    let mut matches = delimiters.iter().filter(|delimiter| {
         source[index..].starts_with(&delimiter.open)
             && !(delimiter.open == "{{"
                 && delimiter.close == "}}"
                 && (source[index..].starts_with("{{<") || source[index..].starts_with("{{%")))
-    })
-}
-
-// Pandoc identifiers share the default comment opener, but close with `}`.
-// Consult this only after the template boundary scan fails at that brace.
-fn pandoc_id_attribute_at(source: &str, index: usize, delimiter: &TemplateDelimiter) -> bool {
-    delimiter.open == "{#"
-        && delimiter.close == "#}"
-        && balanced_brace_span_end(source, index).is_some()
-}
-
-/// Lexical single-line boundary only: quotes escape the following character,
-/// and nested braces hide closing delimiters. No template language is parsed.
-fn inline_template_end(source: &str, start: usize, delimiter: &TemplateDelimiter) -> Option<usize> {
-    if delimiter.open.contains(['\n', '\r']) || delimiter.close.contains(['\n', '\r']) {
-        return None;
+    });
+    let Some(first) = matches.next() else {
+        return TemplateBoundary::Absent;
+    };
+    if escaped_at(source, index) {
+        return TemplateBoundary::Absent;
     }
-    let mut index = start + delimiter.open.len();
-    let mut braces = 0usize;
-    let mut quote = None;
-    while index < source.len() {
-        let rest = &source[index..];
-        let ch = rest.chars().next()?;
-        if matches!(ch, '\n' | '\r') {
+    let end = if let Some(second) = matches.next() {
+        let mut candidates = std::iter::once(first)
+            .chain(std::iter::once(second))
+            .chain(matches)
+            .filter_map(|delimiter| TemplateCandidate::new(scan, index, delimiter))
+            .collect::<Vec<_>>();
+        template_candidates_end(source, &mut candidates)
+    } else if let Some(candidate) = TemplateCandidate::new(scan, index, first) {
+        template_candidates_end(source, &mut [candidate])
+    } else {
+        None
+    };
+    if let Some(end) = end {
+        TemplateBoundary::Complete(end)
+    } else if source[index..].starts_with("{#")
+        && delimiters.iter().any(literal_template_comment)
+        && balanced_brace_span_end(source, index).is_some()
+    {
+        // Pandoc identifiers share the comment opener, but close with `}`.
+        TemplateBoundary::Absent
+    } else {
+        TemplateBoundary::Incomplete
+    }
+}
+
+fn literal_template_comment(delimiter: &TemplateDelimiter) -> bool {
+    delimiter.open == "{#" && delimiter.close == "#}"
+}
+
+struct TemplateCandidate<'a> {
+    delimiter: &'a TemplateDelimiter,
+    start: usize,
+    braces: usize,
+    quote: Option<char>,
+    escaped: bool,
+    active: bool,
+    literal: bool,
+}
+
+impl<'a> TemplateCandidate<'a> {
+    fn new(
+        scan: &mut InlineScan<'_>,
+        start: usize,
+        delimiter: &'a TemplateDelimiter,
+    ) -> Option<Self> {
+        if delimiter.open.contains(['\n', '\r']) || delimiter.close.contains(['\n', '\r']) {
             return None;
         }
-        if let Some(marker) = quote {
-            if ch == '\\' {
-                index += 1;
-                let escaped = source[index..].chars().next()?;
-                if matches!(escaped, '\n' | '\r') {
-                    return None;
-                }
-                index += escaped.len_utf8();
-                continue;
+        let start = start + delimiter.open.len();
+        let literal = literal_template_comment(delimiter);
+        if literal {
+            // Failed comment searches can fall back to Pandoc attributes. Index
+            // closers once so successive attributes do not rescan the suffix.
+            let closes = scan.template_comment_closes.get_or_insert_with(|| {
+                let mut previous = 0;
+                let mut line_start = 0;
+                scan.text
+                    .match_indices("#}")
+                    .map(|(index, _)| {
+                        if let Some(newline) = scan.text[previous..index].rfind(['\n', '\r']) {
+                            line_start = previous + newline + 1;
+                        }
+                        previous = index + 2;
+                        (line_start, index)
+                    })
+                    .collect()
+            });
+            let (line_start, _) =
+                closes.get(closes.partition_point(|(_, close)| *close < start))?;
+            if *line_start > start {
+                return None;
             }
-            if ch == marker {
-                quote = None;
+        }
+        Some(Self {
+            delimiter,
+            start,
+            braces: 0,
+            quote: None,
+            escaped: false,
+            active: true,
+            literal,
+        })
+    }
+
+    // This transition runs for every template character.
+    #[inline]
+    fn advance(&mut self, source: &str, index: usize, ch: char) -> Option<usize> {
+        if !self.active || index < self.start {
+            return None;
+        }
+        if self.literal || (self.quote.is_none() && self.braces == 0) {
+            if source[index..].starts_with(&self.delimiter.close) {
+                return Some(index + self.delimiter.close.len());
             }
-        } else if braces == 0 && rest.starts_with(&delimiter.close) {
-            return Some(index + delimiter.close.len());
+            if self.literal {
+                return None;
+            }
+        }
+        if let Some(marker) = self.quote {
+            if self.escaped {
+                self.escaped = false;
+            } else if ch == '\\' {
+                self.escaped = true;
+            } else if ch == marker {
+                self.quote = None;
+            }
         } else {
             match ch {
-                '\'' | '"' => quote = Some(ch),
-                '{' => braces += 1,
-                '}' => braces = braces.checked_sub(1)?,
+                '\'' | '"' => self.quote = Some(ch),
+                '{' => self.braces += 1,
+                '}' if self.braces == 0 => self.active = false,
+                '}' => self.braces -= 1,
                 _ => {}
             }
         }
-        index += ch.len_utf8();
+        None
+    }
+}
+
+fn template_candidates_end(
+    source: &str,
+    candidates: &mut [TemplateCandidate<'_>],
+) -> Option<usize> {
+    let start = candidates.iter().map(|candidate| candidate.start).min()?;
+    for (offset, ch) in source[start..].char_indices() {
+        if matches!(ch, '\n' | '\r') {
+            return None;
+        }
+        let mut active = false;
+        for candidate in &mut *candidates {
+            if let Some(end) = candidate.advance(source, start + offset, ch) {
+                return Some(end);
+            }
+            active |= candidate.active;
+        }
+        if !active {
+            return None;
+        }
     }
     None
 }
@@ -3699,10 +3807,13 @@ fn inline_token_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
 }
 
 fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
-    if !scan.literals.is_empty()
-        && let Some(end) = scan.literal_span_end(start)
+    let position = start + scan.literal_offset;
+    let next_literal = scan.literals.partition_point(|span| span.start < position);
+    let next_literal = scan.literals.get(next_literal);
+    if let Some(span) = next_literal
+        && span.start == position
     {
-        return Some(end);
+        return Some(span.end - scan.literal_offset);
     }
     let text = scan.text;
     let rest = &text[start..];
@@ -3746,13 +3857,7 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
         return Some(start + close);
     }
 
-    let next_literal = scan
-        .literals
-        .partition_point(|span| span.start <= start + scan.literal_offset);
-    let next_literal = scan
-        .literals
-        .get(next_literal)
-        .map_or(text.len(), |span| span.start - scan.literal_offset);
+    let next_literal = next_literal.map_or(text.len(), |span| span.start - scan.literal_offset);
     let mut end = start;
     while end < text.len() {
         let slice = &text[end..];
@@ -3983,16 +4088,13 @@ pub(crate) fn markdown_reflow_changes_raw_semantics(
     let bytes = source.as_bytes();
     let mut index = 0usize;
     while index < bytes.len() {
-        if let Some(delimiter) = template_delimiter_at(source, index, delimiters)
-            && !escaped_at(source, index)
-        {
-            if let Some(end) = inline_template_end(source, index, delimiter) {
+        match inline_template_at(&mut scan, index, delimiters) {
+            TemplateBoundary::Complete(end) => {
                 index = end;
                 continue;
             }
-            if !pandoc_id_attribute_at(source, index, delimiter) {
-                return true;
-            }
+            TemplateBoundary::Incomplete => return true,
+            TemplateBoundary::Absent => {}
         }
         let byte = bytes[index];
         if byte.is_ascii()
@@ -4204,6 +4306,7 @@ struct InlineScan<'a> {
     code_ends: Option<HashMap<usize, usize>>,
     literals: &'a [Span],
     literal_offset: usize,
+    template_comment_closes: Option<Vec<(usize, usize)>>,
 }
 
 impl<'a> InlineScan<'a> {
@@ -4215,6 +4318,7 @@ impl<'a> InlineScan<'a> {
             code_ends: None,
             literals: &[],
             literal_offset: 0,
+            template_comment_closes: None,
         }
     }
 

@@ -1276,6 +1276,11 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                 if template_changed {
                     retained.template_spans = None;
                     retained.draft = None;
+                    retained.preserve_raw =
+                        crate::core::wrap::markdown_reflow_changes_raw_semantics(
+                            source.slice(node.span),
+                            &state.template_delimiters,
+                        );
                     let template = retained.preserves_templates(
                         source.slice(node.span),
                         kind,

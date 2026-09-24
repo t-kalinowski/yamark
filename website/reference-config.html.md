@@ -67,8 +67,14 @@ preserves every byte inside it and wraps the surrounding prose normally. For
 example, `{{ render("keep   this") }}` can occupy its own line or exceed the
 requested width, just like a long word. Function calls, quoted arguments,
 escaped quotes, and nested braces are supported. A closing delimiter inside a
-single- or double-quoted argument does not end the expression. Yamark only
-recognizes boundaries; it does not interpret or evaluate template languages.
+single- or double-quoted argument does not end the expression. For `{#` / `#}`
+comments, the first literal `#}` ends the token; quotes, apostrophes, and braces
+inside have no special meaning. Yamark only recognizes boundaries; it does not
+interpret or evaluate template languages.
+
+Configured openers take precedence over Markdown inline syntax. When several
+pairs match an opener, the first complete closing boundary ends the token. File
+directives apply to earlier content too, including nested Markdown blocks.
 
 A template-only source line does not preserve placement. With `--wrap sentence`:
 

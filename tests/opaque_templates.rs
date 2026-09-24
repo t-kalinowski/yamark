@@ -25,6 +25,10 @@ fn assert_format(source: &str, expected: &str, path: &str, wrap: &str, canonical
 fn transcripts_are_exact_and_idempotent() {
     for case in [
         include_str!("cases/markdown_opaque_template_placement.case"),
+        include_str!("cases/markdown_opaque_template_overlapping.case"),
+        include_str!("cases/markdown_opaque_template_backtick.case"),
+        include_str!("cases/markdown_opaque_template_comments.case"),
+        include_str!("cases/markdown_opaque_template_late_raw.case"),
         include_str!("cases/markdown_opaque_template_none.case"),
         include_str!("cases/markdown_opaque_template_preservation.case"),
         include_str!("cases/markdown_opaque_template_boundaries.case"),
@@ -63,6 +67,8 @@ fn transcripts_are_exact_and_idempotent() {
 #[test]
 fn tokens_are_opaque_under_every_wrapping_mode() {
     for token in [
+        r#"{# don't   change [x](  url  ) _this_ { #}"#,
+        r#"{# "quoted-looking closer #}"#,
         r#"{{ render("keep   this") }}"#,
         r#"{{ render("}}", "say \"hello\"", {outer: {inner: 'a  b'}}) }}"#,
         r#"{{ render("[x](  url  ) _keep_ `code` $math$") }}"#,
@@ -135,6 +141,7 @@ fn delimiters_and_directive_scopes_protect_tokens() {
         ("%%", "%%"),
         ("«", "»"),
         ("~~", "~~"),
+        ("`%", "%>"),
     ] {
         for action in ["add_delimiters", "replace_delimiters"] {
             std::fs::write(

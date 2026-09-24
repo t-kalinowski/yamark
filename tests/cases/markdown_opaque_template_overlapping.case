@@ -1,0 +1,27 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+<!-- fmt: template.delimiters "{{" "END" scope=file -->
+<!-- fmt: template.delimiters "{{!" "FIN" scope=file -->
+Before
+{{ value END
+after _word_ and {{ ordinary.name }}.
+
+> Before
+> {{ render("a　b") END
+> after _word_.
+
+Before
+{{! keep   this FIN
+after _word_.
+-- stdout
+<!-- fmt: template.delimiters "{{" "END" scope=file -->
+<!-- fmt: template.delimiters "{{!" "FIN" scope=file -->
+Before {{ value END after *word* and {{ ordinary.name }}.
+
+> Before {{ render("a　b") END after *word*.
+
+Before {{! keep   this FIN after *word*.
+-- stderr
+-- status
+0
