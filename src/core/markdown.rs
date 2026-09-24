@@ -1263,6 +1263,10 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
     for (index, node) in doc.nodes.iter().enumerate() {
         let state = doc.states.get(node.state);
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
+            if let Some(retained) = doc.markdown.get_mut(index) {
+                retained.draft = None;
+                retained.template_spans = None;
+            }
             continue;
         }
         if let Some(kind) = markdown_block_kind(&node.emit) {
@@ -1361,6 +1365,11 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     template_spans: None,
                 },
             );
+        }
+        // This node's effective policy and execution plan are now settled.
+        if let Some(retained) = doc.markdown.get_mut(index) {
+            retained.draft = None;
+            retained.template_spans = None;
         }
     }
 }
