@@ -35,34 +35,26 @@ pub(crate) fn prepare_markdown_paragraph(source: &str) -> Option<Draft> {
     Some(draft)
 }
 
-/// Original-source ranges, retained only for paragraph template policy.
-/// None records an ambiguous boundary; policy changes must not rescan inlines.
+/// Original-source ranges used to reject unsupported template contexts before
+/// preparing inline drafts. Expressions and code contents are opaque to policy.
 #[derive(Debug, Clone)]
-pub(crate) struct ParagraphTemplateSpans(Option<Vec<ParagraphTemplateSpan>>);
+pub(crate) struct ProseTemplateSpans(Option<Vec<TemplateSpan>>);
 
 #[derive(Debug, Clone, Copy)]
-enum ParagraphTemplateSpan {
-    CodeContent(SourceSpan),
-    BareExpression(SourceSpan),
+struct TemplateSpan {
+    span: SourceSpan,
+    expression: bool,
 }
 
-impl ParagraphTemplateSpan {
-    fn span(self) -> SourceSpan {
-        match self {
-            Self::CodeContent(span) | Self::BareExpression(span) => span,
-        }
-    }
-}
-
-impl ParagraphTemplateSpans {
-    pub(crate) fn recognize(source: &str) -> Self {
-        Self(Self::recognize_contents(source))
+impl ProseTemplateSpans {
+    pub(crate) fn recognize(source: &str, delimiters: &[TemplateDelimiter]) -> Self {
+        Self(Self::recognize_contents(source, delimiters))
     }
 
-    fn recognize_contents(source: &str) -> Option<Vec<ParagraphTemplateSpan>> {
-        if footnote_definition(source) || has_hard_break(source) {
-            return None;
-        }
+    fn recognize_contents(
+        source: &str,
+        delimiters: &[TemplateDelimiter],
+    ) -> Option<Vec<TemplateSpan>> {
         let mut scan = InlineScan::new(source);
         let mut contents = Vec::new();
         let mut index = 0;
@@ -79,15 +71,24 @@ impl ParagraphTemplateSpans {
                 if source[end..].starts_with('`') || source[index..end].contains(['\n', '\r']) {
                     return None;
                 }
-                contents.push(ParagraphTemplateSpan::CodeContent(SourceSpan::new(
-                    Span::new(index + run, end - run),
-                )));
+                contents.push(TemplateSpan {
+                    span: SourceSpan::new(Span::new(index + run, end - run)),
+                    expression: false,
+                });
                 index = end;
                 continue;
             }
             if !escaped_at(source, index) {
-                // Match the link normalizer's raw-angle stop, before any HTML
-                // recognition. Angles inside already-consumed code are literal.
+                if let Some(delimiter) = template_delimiter_at(source, index, delimiters) {
+                    let end = inline_template_end(source, index, delimiter)?;
+                    contents.push(TemplateSpan {
+                        span: SourceSpan::new(Span::new(index, end)),
+                        expression: true,
+                    });
+                    index = end;
+                    continue;
+                }
+                // Do not broaden HTML, nested markup, or multiline literals.
                 if rest.starts_with('<') {
                     return None;
                 }
@@ -102,33 +103,17 @@ impl ParagraphTemplateSpans {
                     }
                     Some(end)
                 } else {
-                    // Stop at an unmatched construct instead of repeatedly
-                    // searching its suffix at each later candidate opener.
+                    // Stop at an unmatched construct rather than rescanning its
+                    // suffix at each later candidate opener.
                     let end = if rest.starts_with('{') {
-                        let end = balanced_brace_span_end(source, index)?;
-                        if simple_bare_template(&source[index..end])
-                            && (index == 0 || source.as_bytes()[index - 1].is_ascii_whitespace())
-                            && (end == source.len()
-                                || source.as_bytes()[end].is_ascii_whitespace()
-                                || matches!(
-                                    source.as_bytes()[end],
-                                    b'.' | b',' | b';' | b':' | b'!' | b'?'
-                                ))
-                        {
-                            contents.push(ParagraphTemplateSpan::BareExpression(SourceSpan::new(
-                                Span::new(index, end),
-                            )));
-                        }
-                        Some(end)
+                        Some(balanced_brace_span_end(source, index)?)
                     } else if rest.starts_with("~~") {
                         Some(strikethrough_span_end(source, index)?)
-                    } else if rest.starts_with(['*', '_']) {
+                    } else if rest.starts_with(['*', '_']) && !list_bullet_at(source, index) {
                         Some(emphasis_span_end(&mut scan, index)?)
                     } else {
                         latex_command_token_end(source, index)
                     };
-                    // Do not descend into nested markup to establish literal or
-                    // raw-angle safety. Links and math above are consumed atoms.
                     if end.is_some_and(|end| source[index..end].contains(['`', '<'])) {
                         return None;
                     }
@@ -144,40 +129,7 @@ impl ParagraphTemplateSpans {
             }
             index += rest.chars().next().expect("source character").len_utf8();
         }
-        // Sweep physical lines and the retained bare ranges together. A line
-        // consisting only of one or more expressions keeps the old policy.
-        let mut bare = contents
-            .iter()
-            .filter_map(|span| match span {
-                ParagraphTemplateSpan::BareExpression(span) => Some(*span),
-                ParagraphTemplateSpan::CodeContent(_) => None,
-            })
-            .peekable();
-        let standalone = markdown_lines(source).any(|line| {
-            let end = line.body_start + line.body.len();
-            let mut cursor = line.body_start;
-            let mut has_bare = false;
-            let mut only_bare = true;
-            while let Some(span) = bare.next_if(|span| span.start() < end) {
-                has_bare = true;
-                only_bare &= source[cursor..span.start()].trim_ascii().is_empty();
-                cursor = span.end();
-            }
-            has_bare && only_bare && source[cursor..end].trim_ascii().is_empty()
-        });
-        if standalone {
-            contents.retain(|span| matches!(span, ParagraphTemplateSpan::CodeContent(_)));
-        }
         Some(contents)
-    }
-
-    pub(crate) fn has_bare_templates(&self, delimiters: &[TemplateDelimiter]) -> bool {
-        delimiters.iter().any(double_brace_delimiter)
-            && self.0.as_ref().is_some_and(|spans| {
-                spans
-                    .iter()
-                    .any(|span| matches!(span, ParagraphTemplateSpan::BareExpression(_)))
-            })
     }
 
     pub(crate) fn contains_all_templates(
@@ -189,17 +141,12 @@ impl ParagraphTemplateSpans {
             return false;
         };
         delimiters.iter().all(|delimiter| {
-            if delimiter.open.is_empty() || delimiter.close.is_empty() {
-                return true;
-            }
-            let mut opens = source.match_indices(&delimiter.open);
-            let mut closes = source.match_indices(&delimiter.close);
-            let mut spans = contents.iter().copied().filter_map(|span| match span {
-                ParagraphTemplateSpan::BareExpression(_) if !double_brace_delimiter(delimiter) => {
-                    None
-                }
-                _ => Some(span.span()),
-            });
+            // Template expressions may quote either marker any number of times.
+            // Code keeps its existing requirement that both markers occur within
+            // the same code span; fragments in separate literals cannot pair.
+            let mut opens = markers_outside_expressions(source, &delimiter.open, contents);
+            let mut closes = markers_outside_expressions(source, &delimiter.close, contents);
+            let mut spans = contents.iter().filter(|span| !span.expression);
             let mut span = spans.next();
             loop {
                 let open = opens.next();
@@ -208,48 +155,119 @@ impl ParagraphTemplateSpans {
                 } else {
                     closes.next()
                 };
-                let (start, end) = match (open, close) {
+                let (open, close) = match (open, close) {
                     (None, None) => return true,
-                    (Some((open, _)), Some((close, _))) if open + delimiter.open.len() <= close => {
-                        (open, close + delimiter.close.len())
+                    (Some(open), Some(close)) if open + delimiter.open.len() <= close => {
+                        (open, close)
                     }
                     _ => return false,
                 };
-                while span.is_some_and(|span| span.end() <= start) {
+                while span.is_some_and(|span| span.span.end() <= open) {
                     span = spans.next();
                 }
-                if !span.is_some_and(|span| span.start() <= start && end <= span.end()) {
+                if !span.is_some_and(|span| {
+                    span.span.start() <= open && close + delimiter.close.len() <= span.span.end()
+                }) {
                     return false;
                 }
-                // Inspect every opener AND closer on the original source. A
-                // quoted early closer cannot hide later delimiters outside code;
-                // separate retained ranges cannot jointly contain a template pair.
             }
         })
     }
 }
 
-fn double_brace_delimiter(delimiter: &TemplateDelimiter) -> bool {
-    delimiter.open == "{{" && delimiter.close == "}}"
+fn markers_outside_expressions<'a>(
+    source: &'a str,
+    marker: &'a str,
+    contents: &'a [TemplateSpan],
+) -> impl Iterator<Item = usize> + 'a {
+    let mut expressions = contents.iter().filter(|span| span.expression);
+    let mut expression = expressions.next();
+    source
+        .match_indices(marker)
+        .filter(move |(start, _)| {
+            while expression.is_some_and(|span| span.span.end() <= *start) {
+                expression = expressions.next();
+            }
+            !expression.is_some_and(|span| {
+                span.span.start() <= *start && *start + marker.len() <= span.span.end()
+            })
+        })
+        .map(|(start, _)| start)
 }
 
-// A lexical whitelist only. Existing balanced-brace recognition supplies the
-// complete unit; all normalization passes already protect that same unit.
-fn simple_bare_template(text: &str) -> bool {
-    let Some(inner) = text
-        .strip_prefix("{{")
-        .and_then(|text| text.strip_suffix("}}"))
-    else {
-        return false;
-    };
-    let name = inner.trim_matches([' ', '\t']);
-    name.split('.').all(|component| {
-        let mut bytes = component.bytes();
-        bytes
+fn list_bullet_at(source: &str, index: usize) -> bool {
+    source.as_bytes().get(index) == Some(&b'*')
+        && matches!(source.as_bytes().get(index + 1), Some(b' ' | b'\t'))
+        && source[..index]
+            .rsplit(['\n', '\r'])
             .next()
-            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-            && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            .unwrap()
+            .trim_matches([' ', '\t', '>'])
+            .is_empty()
+}
+
+fn template_delimiter_at<'a>(
+    source: &str,
+    index: usize,
+    delimiters: &'a [TemplateDelimiter],
+) -> Option<&'a TemplateDelimiter> {
+    delimiters.iter().find(|delimiter| {
+        source[index..].starts_with(&delimiter.open)
+            && !(delimiter.open == "{{"
+                && delimiter.close == "}}"
+                && (source[index..].starts_with("{{<") || source[index..].starts_with("{{%")))
     })
+}
+
+// Pandoc identifiers share the default comment opener, but close with `}`.
+// Consult this only after the template boundary scan fails at that brace.
+fn pandoc_id_attribute_at(source: &str, index: usize, delimiter: &TemplateDelimiter) -> bool {
+    delimiter.open == "{#"
+        && delimiter.close == "#}"
+        && balanced_brace_span_end(source, index).is_some()
+}
+
+/// Lexical single-line boundary only: quotes escape the following character,
+/// and nested braces hide closing delimiters. No template language is parsed.
+fn inline_template_end(source: &str, start: usize, delimiter: &TemplateDelimiter) -> Option<usize> {
+    if delimiter.open.contains(['\n', '\r']) || delimiter.close.contains(['\n', '\r']) {
+        return None;
+    }
+    let mut index = start + delimiter.open.len();
+    let mut braces = 0usize;
+    let mut quote = None;
+    while index < source.len() {
+        let rest = &source[index..];
+        let ch = rest.chars().next()?;
+        if matches!(ch, '\n' | '\r') {
+            return None;
+        }
+        if let Some(marker) = quote {
+            if ch == '\\' {
+                index += 1;
+                let escaped = source[index..].chars().next()?;
+                if matches!(escaped, '\n' | '\r') {
+                    return None;
+                }
+                index += escaped.len_utf8();
+                continue;
+            }
+            if ch == marker {
+                quote = None;
+            }
+        } else if braces == 0 && rest.starts_with(&delimiter.close) {
+            return Some(index + delimiter.close.len());
+        } else {
+            match ch {
+                '\'' | '"' => quote = Some(ch),
+                '{' => braces += 1,
+                '}' => braces = braces.checked_sub(1)?,
+                _ => {}
+            }
+        }
+        index += ch.len_utf8();
+    }
+    None
 }
 
 pub(crate) fn markdown_multiline_link_destination_spans(
@@ -1867,17 +1885,17 @@ fn canonicalize_recognized_inline(source: &str, literals: &[Span], offset: usize
     let mut index = 0usize;
     while index < source.len() {
         let rest = &source[index..];
+        if let Some(end) = scan.literal_span_end(index) {
+            out.push_str(&source[index..end]);
+            index = end;
+            continue;
+        }
         if rest.starts_with("~~") && !escaped_at(source, index) {
             let Some(close) = rest[2..].find("~~") else {
                 out.push_str(rest);
                 break;
             };
             let end = index + 2 + close + 2;
-            out.push_str(&source[index..end]);
-            index = end;
-            continue;
-        }
-        if let Some(end) = scan.literal_span_end(index) {
             out.push_str(&source[index..end]);
             index = end;
             continue;
@@ -2656,6 +2674,7 @@ struct TokenLineWriter<'out, 'prefix> {
     out: &'out mut Vec<PlannedLine>,
     tokens: &'out mut Vec<Text>,
     text: &'prefix str,
+    literals: &'prefix [Span],
     first_prefix: &'prefix str,
     continuation_prefix: &'prefix str,
     check_block_starts: bool,
@@ -2668,6 +2687,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         out: &'out mut Vec<PlannedLine>,
         tokens: &'out mut Vec<Text>,
         text: &'prefix str,
+        literals: &'prefix [Span],
         first_prefix: &'prefix str,
         continuation_prefix: &'prefix str,
     ) -> Self {
@@ -2675,12 +2695,22 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             out,
             tokens,
             text,
+            literals,
             first_prefix,
             continuation_prefix,
             check_block_starts: false,
             safety_line: String::new(),
             line_count: 0,
         }
+    }
+
+    fn overlaps_literal(&self, token: &str) -> bool {
+        let start = token.as_ptr() as usize - self.text.as_ptr() as usize;
+        let end = start + token.len();
+        let index = self.literals.partition_point(|span| span.end <= start);
+        self.literals
+            .get(index)
+            .is_some_and(|span| span.start < end)
     }
 
     fn enable_block_start_check(&mut self) {
@@ -2722,12 +2752,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         suffix: &'static str,
     ) -> Option<()> {
         let start = self.tokens.len();
-        let mut bare_templates_only = true;
         for token in tokens {
-            // This is a layout property, not eligibility recognition. It is
-            // consulted only after the original-source whitelist admits every
-            // bare occurrence. Code spans and punctuation count as other text.
-            bare_templates_only &= token.starts_with("{{") && token.ends_with("}}");
             let piece = Text::retain(self.text, token);
             // A laid-out line usually occupies one contiguous normalized span.
             // Keep separate pieces only where joining or a rewrite requires it.
@@ -2752,7 +2777,6 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             tokens: start..self.tokens.len(),
             suffix,
             block_start_checked: self.check_block_starts && self.line_count > 0 && suffix.is_none(),
-            bare_templates_only: bare_templates_only && self.tokens.len() > start,
         });
         self.line_count += 1;
         Some(())
@@ -2887,6 +2911,7 @@ fn write_wrapped_tokens_with_first_width(
     let mut lines = WrapLineBuffer::new(first_width, continuation_width);
     for token in tokens.iter() {
         if token.width > lines.width
+            && !writer.overlaps_literal(token.text())
             && let Some(split) = split_long_link_token(token.text(), lines.width)
         {
             lines.push_split_token_lines(writer, split)?;
@@ -3721,6 +3746,13 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
         return Some(start + close);
     }
 
+    let next_literal = scan
+        .literals
+        .partition_point(|span| span.start <= start + scan.literal_offset);
+    let next_literal = scan
+        .literals
+        .get(next_literal)
+        .map_or(text.len(), |span| span.start - scan.literal_offset);
     let mut end = start;
     while end < text.len() {
         let slice = &text[end..];
@@ -3729,7 +3761,8 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
             break;
         }
         if end != start
-            && (slice.starts_with('`')
+            && (end == next_literal
+                || slice.starts_with('`')
                 || slice.starts_with('$')
                 || slice.starts_with("![")
                 || slice.starts_with('[')
@@ -3937,7 +3970,10 @@ fn latex_command_token_end(text: &str, start: usize) -> Option<usize> {
     Some(end)
 }
 
-pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
+pub(crate) fn markdown_reflow_changes_raw_semantics(
+    source: &str,
+    delimiters: &[TemplateDelimiter],
+) -> bool {
     let mut scan = InlineScan::new(source);
 
     if memchr::memchr(b'\\', source.as_bytes()).is_none() && source.is_ascii() {
@@ -3947,6 +3983,17 @@ pub(crate) fn markdown_reflow_changes_raw_semantics(source: &str) -> bool {
     let bytes = source.as_bytes();
     let mut index = 0usize;
     while index < bytes.len() {
+        if let Some(delimiter) = template_delimiter_at(source, index, delimiters)
+            && !escaped_at(source, index)
+        {
+            if let Some(end) = inline_template_end(source, index, delimiter) {
+                index = end;
+                continue;
+            }
+            if !pandoc_id_attribute_at(source, index, delimiter) {
+                return true;
+            }
+        }
         let byte = bytes[index];
         if byte.is_ascii()
             && !matches!(byte, b'\\' | b'`' | b'$' | b'~' | b'<' | b'[' | b'!' | b'{')
@@ -4172,8 +4219,7 @@ impl<'a> InlineScan<'a> {
     }
 
     fn literal_span_end(&mut self, start: usize) -> Option<usize> {
-        if !self.literals.is_empty() && matches!(self.text.as_bytes().get(start), Some(b'`' | b'$'))
-        {
+        if !self.literals.is_empty() {
             let position = start + self.literal_offset;
             let index = self.literals.partition_point(|span| span.start < position);
             if let Some(span) = self

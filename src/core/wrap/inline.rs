@@ -38,10 +38,23 @@ pub(super) struct NormalizedInline {
 }
 
 impl InlineSource {
-    pub(super) fn recognize(source: &str) -> Option<Self> {
+    pub(super) fn recognize_with_templates(
+        source: &str,
+        delimiters: &[TemplateDelimiter],
+    ) -> Option<Self> {
         let mut atoms = Vec::new();
         let mut normalize_links = true;
-        if simple_inline_tokens_supported(source) {
+        // Most inline buffers contain no configured opener. Keep their existing
+        // scanner path free of per-character template matching.
+        let delimiters = if delimiters
+            .iter()
+            .any(|delimiter| source.contains(&delimiter.open))
+        {
+            delimiters
+        } else {
+            &[]
+        };
+        if delimiters.is_empty() && simple_inline_tokens_supported(source) {
             return Some(Self {
                 atoms: atoms.into_boxed_slice(),
                 normalize_links,
@@ -51,13 +64,33 @@ impl InlineSource {
         let mut scan = InlineScan::new(source);
         let mut index = 0;
         while index < source.len() {
+            if let Some(delimiter) = template_delimiter_at(source, index, delimiters)
+                && !escaped_at(source, index)
+            {
+                if let Some(end) = inline_template_end(source, index, delimiter) {
+                    atoms.push(Atom {
+                        span: SourceSpan::new(Span::new(index, end)),
+                        kind: Kind::Literal,
+                    });
+                    index = end;
+                    continue;
+                }
+                if !pandoc_id_attribute_at(source, index, delimiter) {
+                    return None;
+                }
+            }
             let byte = source.as_bytes()[index];
-            // Bytewise prose traversal keeps the common path inexpensive.
+            // Keep bytewise traversal unless a configured delimiter may start
+            // with a Unicode character.
             if !matches!(
                 byte,
                 b'`' | b'$' | b'[' | b'!' | b'{' | b'~' | b'<' | b'\\' | b'*' | b'_'
             ) {
-                index += 1;
+                index += if delimiters.is_empty() {
+                    1
+                } else {
+                    source[index..].chars().next()?.len_utf8()
+                };
                 continue;
             }
             let rest = &source[index..];
@@ -239,7 +272,7 @@ impl InlineSource {
             } else {
                 // Only a nonliteral atom can cross a hard break. Reuse the
                 // existing recognizers on its cut source edges, before edits.
-                let partial = Self::recognize(&source[start..end])?;
+                let partial = Self::recognize_with_templates(&source[start..end], &[])?;
                 atoms.extend(partial.atoms.into_iter().map(|atom| Atom {
                     span: SourceSpan::new(Span::new(
                         start - span.start + atom.span.start(),

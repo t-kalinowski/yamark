@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+<!-- fmt: template.delimiters "<<" ">>" scope=file -->
+Before
+<< render(">>", "_keep_ [x](  url  )") >>
+after _outside_.
+
+> - Before
+>   << render("_raw_ [x](  url  )") >>
+>   after _word_.
+-- stdout
+<!-- fmt: template.delimiters "<<" ">>" scope=file -->
+Before << render(">>", "_keep_ [x](  url  )") >> after *outside*.
+
+> - Before << render("_raw_ [x](  url  )") >> after *word*.
+-- stderr
+-- status
+0

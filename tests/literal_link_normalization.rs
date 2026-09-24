@@ -158,7 +158,7 @@ fn link_targets_and_attributes_do_not_open_literals() {
 }
 
 #[test]
-fn template_pairs_preserve_except_in_ordinary_paragraph_code() {
+fn template_contents_stay_exact_while_surrounding_links_reflow() {
     for source in [
         "Before `[x](  url  ) {{ value }}` after [r](  t  ) _outside_.\n",
         "- Before $![x](  url  )$ {{ value }} after [r](  t  ).\n",
@@ -178,8 +178,16 @@ fn template_pairs_preserve_except_in_ordinary_paragraph_code() {
                     } else {
                         format!("Before `[x](  url  ) {{{{ value }}}}` after [r](t) {outside}.\n")
                     }
+                } else if matches!(wrap, "16" | "sentence:16") {
+                    if source.starts_with("- ") {
+                        "- Before\n  $![x](  url  )$\n  {{ value }}\n  after [r](t).\n".to_owned()
+                    } else if source.starts_with("> ") {
+                        "> Before\n> `[x](  url  )`\n> {{ value }}\n> after [r](t).\n".to_owned()
+                    } else {
+                        "<!-- fmt: template.delimiters \"<<\" \">>\" scope=file -->\nBefore\n`[x](  url  )`\n<< value >>\nafter [r](t).\n".to_owned()
+                    }
                 } else {
-                    source.to_owned()
+                    source.replace("[r](  t  )", "[r](t)")
                 };
                 assert_format(source, &expected, wrap, canonical);
             }

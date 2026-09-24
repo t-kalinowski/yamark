@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap none
+-- stdin
+Before   _word_
+{{ render("_keep_ [x](  url  )") }}
+after [real](  target  ).
+-- stdout
+Before   *word*
+{{ render("_keep_ [x](  url  )") }}
+after [real](target).
+-- stderr
+-- status
+0

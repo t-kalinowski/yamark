@@ -56,7 +56,14 @@ def test_nested_brackets_scale_with_input_size(
         source = tmp_path / f"brackets-{depth}.md"
         source.write_text(text, encoding="utf-8")
         cpu, formatted = measure_formatting_cpu(source)
-        assert formatted == text
+        # The trailing expression now wraps as an opaque word after the
+        # overwide bracket token. Templates inside labels remain unsupported.
+        expected = (
+            opening * depth + label + "]" * depth + "\n" + suffix.lstrip() + "\n"
+            if suffix
+            else text
+        )
+        assert formatted == expected
         durations.append(cpu)
 
     small, large = durations

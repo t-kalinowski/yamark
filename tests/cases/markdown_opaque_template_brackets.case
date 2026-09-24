@@ -1,0 +1,10 @@
+-- args
+format --stdin-file-path input.md --wrap 20
+-- stdin
+[outer [outer [label]]] <% keep   this %>
+-- stdout
+[outer [outer [label]]]
+<% keep   this %>
+-- stderr
+-- status
+0

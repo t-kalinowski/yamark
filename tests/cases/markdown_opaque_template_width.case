@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap 20
+-- stdin
+Before {{ customer.name }} after.
+
+Before supercalifragilisticexpialidocious after.
+-- stdout
+Before
+{{ customer.name }}
+after.
+
+Before
+supercalifragilisticexpialidocious
+after.
+-- stderr
+-- status
+0

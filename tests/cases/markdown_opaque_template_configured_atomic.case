@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap 8
+-- stdin
+<!-- fmt: template.delimiters "[" ")" scope=next -->
+Before [a long title](target) after.
+-- stdout
+<!-- fmt: template.delimiters "[" ")" scope=next -->
+Before
+[a long title](target)
+after.
+-- stderr
+-- status
+0
