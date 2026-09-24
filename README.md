@@ -102,7 +102,6 @@ See the [editor guide][editor-docs] for installation and configuration.
 
 ## Development
 
-Development and release builds use Rust 1.98.1, pinned in `rust-toolchain.toml`.
 Building from source requires Rust 1.98.1 or newer.
 
 Build or install the binary from a checkout:
