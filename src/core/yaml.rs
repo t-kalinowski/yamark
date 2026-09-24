@@ -834,7 +834,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             };
         self.ast.node_mut(id).must_preserve_source = Some(must_preserve_source);
         let plan = self.yaml_emit_plan_for(id);
-        self.ast.node_mut(id).emit = plan;
+        self.set_yaml_emit_plan(id, plan);
         if matches!(
             self.ast.node(id).emit,
             YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
@@ -844,6 +844,15 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             let options = state.markdown_options(state.yaml_options(self.options));
             resolve_inline_markdown_plan(self.source, self.ast.node_mut(id), options);
         }
+    }
+
+    fn set_yaml_emit_plan(&mut self, id: YamlNodeId, plan: YamlEmitPlan) {
+        self.doc.yaml_may_need_markdown_finalization |= matches!(
+            plan,
+            YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+                | YamlEmitPlan::NestedMarkdownBlockScalar { .. }
+        );
+        self.ast.node_mut(id).emit = plan;
     }
 
     fn yaml_node_should_preserve_uncached(&self, node: &YamlAstNode) -> bool {
@@ -909,7 +918,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         indent,
                         options,
                     ) {
-                        self.ast.node_mut(value).emit = plan;
+                        self.set_yaml_emit_plan(value, plan);
                     }
                 }
             }
@@ -931,7 +940,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         indent,
                         options,
                     ) {
-                        self.ast.node_mut(value).emit = plan;
+                        self.set_yaml_emit_plan(value, plan);
                     }
                 }
             }
@@ -961,7 +970,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         indent,
                         options,
                     ) {
-                        self.ast.node_mut(value).emit = plan;
+                        self.set_yaml_emit_plan(value, plan);
                     }
                     if let Some(value) = value {
                         let child_forced_indent = self.yaml_mapping_child_forced_indent(
@@ -992,7 +1001,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         indent,
                         options,
                     ) {
-                        self.ast.node_mut(value).emit = plan;
+                        self.set_yaml_emit_plan(value, plan);
                     }
                     if let Some(value) = value {
                         let child_forced_indent = self.yaml_sequence_child_forced_indent(

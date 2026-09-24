@@ -191,6 +191,8 @@ pub struct Document {
     pub nested: Vec<Document>,
     pub states: DirectiveStateTable,
     pub yaml: Option<YamlDocumentAst>,
+    // Set by YAML emit planning; stale true values are safe after replanning.
+    pub(crate) yaml_may_need_markdown_finalization: bool,
     // Indexed by `nodes`; public EmitPlan variants keep their existing shape.
     pub(crate) markdown: crate::core::markdown::MarkdownPlans,
     pub trace: DocumentTrace,
@@ -208,6 +210,7 @@ impl Document {
             nested: Vec::new(),
             states: DirectiveStateTable::new(),
             yaml: None,
+            yaml_may_need_markdown_finalization: false,
             markdown: crate::core::markdown::MarkdownPlans::default(),
             trace: DocumentTrace::default(),
             options: FormatOptions::default(),

@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.yaml --wrap none
+-- stdin
+plain: [one,two]
+body: !markdown "This is __strong__."
+-- stdout
+plain: [one, two]
+body: !markdown |
+  This is __strong__.
+-- stderr
+-- status
+0
