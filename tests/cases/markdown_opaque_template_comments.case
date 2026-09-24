@@ -1,0 +1,39 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+Before
+{# don't   alter this #}
+after _word_ and [link](  url  ).
+
+> Before
+> {# " _literal_ [x](  url  ) { }} ` $ < a　b #}
+> after _word_.
+
+- Before
+  {# 'first #}{# second { #}
+  after _word_.
+
+Before
+{# missing closer
+after _word_.
+
+Before {#identifier}
+{# next line #}
+after _word_.
+-- stdout
+Before {# don't   alter this #} after *word* and [link](url).
+
+> Before {# " _literal_ [x](  url  ) { }} ` $ < a　b #} after *word*.
+
+- Before {# 'first #}{# second { #} after *word*.
+
+Before
+{# missing closer
+after _word_.
+
+Before {#identifier}
+{# next line #}
+after _word_.
+-- stderr
+-- status
+0

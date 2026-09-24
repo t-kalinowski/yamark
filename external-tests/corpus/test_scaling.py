@@ -56,7 +56,14 @@ def test_nested_brackets_scale_with_input_size(
         source = tmp_path / f"brackets-{depth}.md"
         source.write_text(text, encoding="utf-8")
         cpu, formatted = measure_formatting_cpu(source)
-        assert formatted == text
+        # The trailing expression now wraps as an opaque word after the
+        # overwide bracket token. Templates inside labels remain unsupported.
+        expected = (
+            opening * depth + label + "]" * depth + "\n" + suffix.lstrip() + "\n"
+            if suffix
+            else text
+        )
+        assert formatted == expected
         durations.append(cpu)
 
     small, large = durations
@@ -153,6 +160,42 @@ def test_unpaired_shortcode_calls_scale_with_input_size(tmp_path: Path) -> None:
     assert large <= small * 6, (
         "independent shortcode calls should scale with input size: "
         f"2000 calls used {small:.6f}s CPU, 8000 calls used {large:.6f}s CPU"
+    )
+
+
+@pytest.mark.parametrize("token", ["{{ keep   this END", "{#identifier}"])
+@pytest.mark.parametrize("suffix", ["", "\n{# next line #}"])
+def test_overlapping_delimiters_and_attributes_scale_with_input_size(
+    tmp_path: Path, token: str, suffix: str
+) -> None:
+    durations = []
+    for count in [2000, 8000]:
+        text = (
+            '<!-- fmt: template.delimiters "{{" "END" scope=file -->\n'
+            '<!-- fmt: wrap=paragraph scope=file -->\n'
+            + (token + " ") * count
+            + "{{ last }}"
+            + suffix
+            + "\n"
+        )
+        source = tmp_path / f"template-boundaries-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        # Attribute openers remain ambiguous to the existing template guard
+        # when a comment closer occurs on a later physical line.
+        expected = (
+            text
+            if token == "{#identifier}"
+            else text.replace("\n{# next line #}", " {# next line #}")
+        )
+        assert formatted == expected
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "template boundaries should not repeatedly scan the remaining suffix: "
+        f"2000 tokens used {small:.6f}s CPU, 8000 used {large:.6f}s CPU"
     )
 
 

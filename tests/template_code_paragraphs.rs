@@ -116,17 +116,20 @@ fn ambiguous_or_non_code_templates_keep_the_original_paragraph() {
         "`{{ foo }}` *<kbd>text</kbd>*",
         "`{{ foo\nbar }}`",
         "`{{ foo }}` and `multiline\ncode`",
-        "`{{ foo }}`\\\nhard break",
         "`{{ foo }}` and \\LaTeX",
     ] {
         for wrap in ["none", "paragraph", "sentence", "16", "sentence:16"] {
             for canonical in [false, true] {
                 let source = format!("Before\n{body} after [real](  target  ) _outside_.\n");
-                // Only this mixed case gains the bare-expression exception.
-                // Narrow layouts would isolate it, so they still preserve.
-                let expected = if body == "`{{ foo }}` and {{ outside }}"
-                    && !matches!(wrap, "16" | "sentence:16")
-                {
+                let expected = if body == "`{{ foo }}` and {{ outside }}" {
+                    if matches!(wrap, "16" | "sentence:16") {
+                        let outside = if canonical { "*outside*" } else { "_outside_" };
+                        let expected = format!(
+                            "Before\n`{{{{ foo }}}}` and\n{{{{ outside }}}}\nafter\n[real](target)\n{outside}.\n"
+                        );
+                        assert_format(&source, &expected, wrap, canonical);
+                        continue;
+                    }
                     let outside = if canonical { "*outside*" } else { "_outside_" };
                     let separator = if wrap == "none" { "\n" } else { " " };
                     format!("Before{separator}{body} after [real](target) {outside}.\n")
@@ -146,7 +149,7 @@ fn late_delimiters_recheck_original_code_ranges_and_explicit_targets() {
         for (body, eligible) in [
             ("`[[ foo ]]`", true),
             ("`{{ foo }}` and `[[ bar ]]`", true),
-            ("`{{ foo }}` and [[ outside ]]", false),
+            ("`{{ foo }}` and [[ outside ]]", true),
             ("`[[ foo` and `bar ]]`", false),
         ] {
             let source = format!("{target}Before\n{body}. After\nsentence.\n{late}");
@@ -175,7 +178,7 @@ Following paragraph.\nNext sentence.\n";
 }
 
 #[test]
-fn container_and_heading_guards_do_not_change() {
+fn containers_reflow_while_heading_guards_remain() {
     for prefix in ["# ", "- ", "> ", "[^note]: "] {
         let source = format!(
             "{prefix}Before `{{{{ foo }}}}` after [real](  target  ).\n\nFollowing\nparagraph. Next\nsentence.\n"
@@ -183,6 +186,11 @@ fn container_and_heading_guards_do_not_change() {
         let expected = format!(
             "{prefix}Before `{{{{ foo }}}}` after [real](  target  ).\n\nFollowing paragraph.\nNext sentence.\n"
         );
+        let expected = if matches!(prefix, "- " | "> " | "[^note]: ") {
+            expected.replace("[real](  target  )", "[real](target)")
+        } else {
+            expected
+        };
         assert_format(&source, &expected, "sentence", true);
     }
 }
@@ -295,19 +303,13 @@ fn explicit_targets_keep_other_rejections_and_skip_precedence() {
 }
 
 #[test]
-fn apparent_hard_breaks_keep_existing_cleanup_before_becoming_eligible() {
+fn code_templates_respect_explicit_hard_breaks() {
     let source = "Before\n`{{ foo }}`  \nafter [real](  target  ).\n";
-    // Main already strips these spaces even when its template guard preserves
-    // the paragraph. The resulting source has no hard break on the next pass.
-    let cleaned = "Before\n`{{ foo }}`\nafter [real](  target  ).\n";
-    for wrap in ["none", "sentence"] {
-        assert_eq!(format(source, wrap, false), cleaned);
-        let second = if wrap == "none" {
-            "Before\n`{{ foo }}`\nafter [real](target).\n"
-        } else {
-            "Before `{{ foo }}` after [real](target).\n"
-        };
-        assert_format(cleaned, second, wrap, false);
+    for (wrap, expected) in [
+        ("none", "Before\n`{{ foo }}` \\\nafter [real](target).\n"),
+        ("sentence", "Before `{{ foo }}` \\\nafter [real](target).\n"),
+    ] {
+        assert_format(source, expected, wrap, false);
     }
 }
 
@@ -340,7 +342,7 @@ fn configured_delimiters_and_replacements_keep_their_meaning() {
         (
             "[template]\nadd_delimiters = [{open='[[', close=']]'}]\n",
             "`{{ foo }}` [[ outside ]]",
-            false,
+            true,
         ),
         (
             "[template]\nreplace_delimiters = [{open='[[', close=']]'}]\n",

@@ -96,7 +96,6 @@ pub(super) struct PlannedLine {
     pub tokens: std::ops::Range<usize>,
     pub suffix: Option<MarkdownHardBreakMarker>,
     pub block_start_checked: bool,
-    pub bare_templates_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -107,12 +106,14 @@ pub(super) enum Prefix {
 }
 
 /// Logical container text and its execution plan have the same explicit owner.
-/// Fragment parsing intentionally uses the historical default configuration.
+/// Fragment parsing inherits template delimiters; other configuration keeps
+/// the historical defaults.
 #[derive(Debug, Clone)]
 pub(crate) struct Fragment {
     source: std::sync::Arc<SourceBuffer>,
     body: Option<FragmentBody>,
     options: FormatOptions,
+    template_delimiters: Vec<TemplateDelimiter>,
 }
 
 #[derive(Debug, Clone)]
@@ -216,32 +217,41 @@ impl FragmentBody {
 
 impl Fragment {
     pub(crate) fn plan(source: String, options: FormatOptions) -> Self {
-        Self::from_buffer(std::sync::Arc::new(SourceBuffer::new(source)), options)
+        Self::from_buffer(
+            std::sync::Arc::new(SourceBuffer::new(source)),
+            options,
+            &crate::config::Config::default().template_delimiters,
+        )
     }
 
-    fn from_buffer(source: std::sync::Arc<SourceBuffer>, options: FormatOptions) -> Self {
+    fn from_buffer(
+        source: std::sync::Arc<SourceBuffer>,
+        options: FormatOptions,
+        delimiters: &[TemplateDelimiter],
+    ) -> Self {
+        let config = crate::config::Config {
+            template_delimiters: delimiters.to_vec(),
+            ..crate::config::Config::default()
+        };
         let range = Span::new(0, source.as_str().len());
-        let body = crate::core::markdown::parse_markdown(
-            &source,
-            range,
-            options,
-            &crate::config::Config::default(),
-        )
-        .ok()
-        .map(|document| {
-            let tree = PreparedTree::new(&source, document, options, DocumentEmitMode::Document);
-            FragmentBody::retain(&source, tree)
-        });
+        let body = crate::core::markdown::parse_markdown(&source, range, options, &config)
+            .ok()
+            .map(|document| {
+                let tree =
+                    PreparedTree::new(&source, document, options, DocumentEmitMode::Document);
+                FragmentBody::retain(&source, tree)
+            });
         Self {
             source,
             body,
             options,
+            template_delimiters: delimiters.to_vec(),
         }
     }
 
     pub(crate) fn resolve_options(&mut self, options: FormatOptions) {
         if self.options != options {
-            *self = Self::from_buffer(self.source.clone(), options);
+            *self = Self::from_buffer(self.source.clone(), options, &self.template_delimiters);
         }
     }
 
@@ -271,15 +281,6 @@ impl Fragment {
 }
 
 impl Plan {
-    pub(crate) fn has_standalone_bare_templates(&self) -> bool {
-        self.items.iter().any(|item| match item {
-            Item::Inline(inline) => inline.lines.iter().any(|line| line.bare_templates_only),
-            // Unwrapped paragraphs retain their physical lines, checked on the
-            // original source. Ordinary reflow has one direct Inline item.
-            _ => false,
-        })
-    }
-
     pub(super) fn new() -> Self {
         Self {
             items: Vec::with_capacity(1),
@@ -556,7 +557,8 @@ pub(super) enum FragmentInput {
 #[derive(Debug, Clone)]
 struct InlineDraft {
     source: Text,
-    recognition: Option<InlineSource>,
+    // Unprepared, recognized, or rejected; only the selected layout is prepared.
+    recognition: Option<Option<InlineSource>>,
     first_prefix: Text,
     continuation_prefix: Text,
     newline: &'static str,
@@ -659,7 +661,7 @@ impl Draft {
         let mut draft = Self::new();
         draft.items_mut().push(DraftItem::Inline(InlineDraft {
             source: Text::retain(source, text),
-            recognition: InlineSource::recognize(text),
+            recognition: None,
             first_prefix: Text::retain(source, first_prefix),
             continuation_prefix: Text::retain(source, continuation_prefix),
             newline: match newline {
@@ -678,6 +680,19 @@ impl Draft {
     }
 
     pub(crate) fn resolve(&mut self, source: &str, options: FormatOptions) -> Option<Plan> {
+        self.resolve_with_templates(
+            source,
+            options,
+            &crate::config::Config::default().template_delimiters,
+        )
+    }
+
+    pub(crate) fn resolve_with_templates(
+        &mut self,
+        source: &str,
+        options: FormatOptions,
+        delimiters: &[TemplateDelimiter],
+    ) -> Option<Plan> {
         let items = match &mut self.body {
             DraftBody::Choice(condition, branches) => {
                 let chosen = match condition {
@@ -687,17 +702,17 @@ impl Draft {
                 let [yes, no] = branches.as_mut();
                 return if chosen { yes } else { no }
                     .as_mut()?
-                    .resolve(source, options);
+                    .resolve_with_templates(source, options, delimiters);
             }
             DraftBody::Fallback(branches) => {
                 let [first, second] = branches.as_mut();
                 return first
                     .as_mut()
-                    .and_then(|draft| draft.resolve(source, options))
+                    .and_then(|draft| draft.resolve_with_templates(source, options, delimiters))
                     .or_else(|| {
-                        second
-                            .as_mut()
-                            .and_then(|draft| draft.resolve(source, options))
+                        second.as_mut().and_then(|draft| {
+                            draft.resolve_with_templates(source, options, delimiters)
+                        })
                     });
             }
             DraftBody::Items(items) => items,
@@ -730,12 +745,21 @@ impl Draft {
                     } else {
                         Gaps::Reflow
                     };
-                    let input = inline.recognition.as_ref()?.normalize(
-                        inline.source.get(source),
-                        gaps,
-                        options.markdown_canonical,
-                        !unwrapped,
-                    )?;
+                    let input = inline
+                        .recognition
+                        .get_or_insert_with(|| {
+                            InlineSource::recognize_with_templates(
+                                inline.source.get(source),
+                                delimiters,
+                            )
+                        })
+                        .as_ref()?
+                        .normalize(
+                            inline.source.get(source),
+                            gaps,
+                            options.markdown_canonical,
+                            !unwrapped,
+                        )?;
                     let text = input.text.as_str();
                     if unwrapped {
                         plan.items.push(Item::Unwrapped(UnwrappedPlan {
@@ -760,6 +784,7 @@ impl Draft {
                         &mut lines,
                         &mut planned_tokens,
                         text,
+                        &input.literals,
                         inline.first_prefix.get(source),
                         inline.continuation_prefix.get(source),
                     );
@@ -794,7 +819,8 @@ impl Draft {
                     }));
                 }
                 DraftItem::Scoped { text, draft } => {
-                    let nested = draft.resolve(text.get(source), options)?;
+                    let nested =
+                        draft.resolve_with_templates(text.get(source), options, delimiters)?;
                     plan.items.push(Item::Scoped {
                         text: text.clone(),
                         plan: Box::new(nested),
@@ -811,7 +837,8 @@ impl Draft {
                     let buffer = match input {
                         FragmentInput::Buffer(buffer) => buffer.clone(),
                     };
-                    let fragment = Box::new(Fragment::from_buffer(buffer, child_options));
+                    let fragment =
+                        Box::new(Fragment::from_buffer(buffer, child_options, delimiters));
                     let mut prefix = prefix.clone();
                     if let Prefix::Footnote { newline, .. } = &mut prefix {
                         *newline = newline_for_join(newline, options).into();

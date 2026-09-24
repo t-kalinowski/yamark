@@ -102,7 +102,7 @@ projection.
 | Definition lists | Formats when supported | Normalizes marker spacing and wraps definitions. |
 | Display math | Preserves | Keeps own-line `$$` display math blocks byte-for-byte. |
 | Raw HTML, TeX, Hugo shortcodes, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
-| Template spans | Preserves | Recognizes default and configured template delimiters. |
+| Template spans | Preserves contents; reflows prose | Complete single-line expressions using default or configured delimiters are opaque words in paragraphs and supported prose containers. See [template configuration](reference-config.qmd#template). |
 
 For Quarto header promotion, a supported fence is a YAML or Markdown fence, a
 language with a built-in or configured formatter, or one of the opaque

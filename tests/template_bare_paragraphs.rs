@@ -26,8 +26,33 @@ fn assert_format(source: &str, expected: &str, wrap: &str, canonical: bool) {
 }
 
 #[test]
-fn simple_expressions_keep_exact_bytes_under_paragraph_options() {
+fn complete_expressions_keep_exact_bytes_under_paragraph_options() {
     for expression in [
+        "{{ 'foo' }}",
+        "{{ \"foo\" }}",
+        "{{ }}",
+        "{{ 1foo }}",
+        "{{ foo. }}",
+        "{{ .foo }}",
+        "{{ foo..bar }}",
+        "{{ foo . bar }}",
+        "{{ foo() }}",
+        "{{ foo[0] }}",
+        "{{ foo | filter }}",
+        "{{ foo + bar }}",
+        "{{- foo -}}",
+        "{{{ foo }}}",
+        "{{ foo {{ bar }} }}",
+        "{{ foo { bar } }}",
+        "{{ foo }} {% other %}",
+        "{{ foo }} {# other #}",
+        "{{ foo }} <% other %>",
+        "prefix{{ foo }}",
+        "{{ foo }}suffix",
+        "({{ foo }})",
+        "{{ foo }}/tail",
+        r"{{ foo \}}",
+        "{{ foo }} and {{ '{{' }}",
         "{{foo}}",
         "{{ foo }}",
         "{{   user.name   }}",
@@ -64,39 +89,14 @@ fn simple_expressions_keep_exact_bytes_under_paragraph_options() {
 #[test]
 fn unsupported_expressions_and_contexts_keep_baseline_preservation() {
     for body in [
-        "{{ 'foo' }}",
-        "{{ \"foo\" }}",
-        "{{ }}",
-        "{{ 1foo }}",
-        "{{ foo. }}",
-        "{{ .foo }}",
-        "{{ foo..bar }}",
-        "{{ foo . bar }}",
-        "{{ foo() }}",
-        "{{ foo[0] }}",
-        "{{ foo | filter }}",
-        "{{ foo + bar }}",
-        "{{- foo -}}",
-        "{{{ foo }}}",
-        "{{ foo {{ bar }} }}",
-        "{{ foo { bar } }}",
-        "{{ foo }} {% other %}",
-        "{{ foo }} {# other #}",
-        "{{ foo }} <% other %>",
         "{{ foo }} {{< ref target >}}",
         "{{ foo }} {{% ref target %}}",
-        "prefix{{ foo }}",
-        "{{ foo }}suffix",
-        "({{ foo }})",
-        "{{ foo }}/tail",
         r"\{{ foo }}",
-        r"{{ foo \}}",
         "{{ foo }} stray }}",
         "{{ foo }} and {{ unmatched",
         "`{{ foo` }}",
         "{{ foo `bar }}`",
         "{{ foo }} and `{{ other` outside }}",
-        "{{ foo }} and {{ '{{' }}",
         "*{{ foo }}*",
         "_{{ foo }}_",
         "~~{{ foo }}~~",
@@ -118,7 +118,6 @@ fn unsupported_expressions_and_contexts_keep_baseline_preservation() {
         "{{ foo }} and `code``",
         "{{ foo }} and $a \\$ b$",
         "{{ foo }} and $$a$$",
-        "{{ foo }}\\\nhard break",
     ] {
         let source = format!("Before\nwith {body} after [real](  target  ) _outside_.\n");
         for wrap in ["none", "paragraph", "sentence", "16", "sentence:16"] {
@@ -130,18 +129,23 @@ fn unsupported_expressions_and_contexts_keep_baseline_preservation() {
 }
 
 #[test]
-fn source_and_planned_template_only_lines_keep_baseline_placement() {
-    for body in ["{{ foo }}", "{{ foo }} {{ bar }}", "{{ foo }}\t{{ bar }}"] {
-        let source = format!("Before\n{body}\nafter [real](  target  ).\n");
-        for wrap in ["none", "paragraph", "sentence", "12", "sentence:12"] {
-            assert_format(&source, &source, wrap, false);
-        }
-    }
-    for wrap in ["12", "sentence:12"] {
-        let source = "Before\nwith {{   user.name   }} after [real](  target  ) _outside_.\n";
-        assert_format(source, source, wrap, true);
-        let source = "Longbefore {{a}} {{b}} longafter [real](  target  ).\n";
-        assert_format(source, source, wrap, false);
+fn source_and_planned_template_only_lines_follow_wrapping_mode() {
+    for (wrap, expected) in [
+        ("none", "Before\n{{ foo }}\nafter [real](target).\n"),
+        ("paragraph", "Before {{ foo }} after [real](target).\n"),
+        ("sentence", "Before {{ foo }} after [real](target).\n"),
+        ("12", "Before\n{{ foo }}\nafter\n[real](\n  target\n).\n"),
+        (
+            "sentence:12",
+            "Before\n{{ foo }}\nafter\n[real](\n  target\n).\n",
+        ),
+    ] {
+        assert_format(
+            "Before\n{{ foo }}\nafter [real](  target  ).\n",
+            expected,
+            wrap,
+            false,
+        );
     }
     for wrap in ["36", "sentence:36"] {
         assert_format(
@@ -173,43 +177,23 @@ fn delimiter_configuration_and_late_policy_use_original_source() {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
     let input = dir.path().join("input.md");
-    for (configuration, braces_active, brackets_active) in [
-        (
-            "[template]\nadd_delimiters = [{open='[[', close=']]'}]\n",
-            true,
-            true,
-        ),
-        (
-            "[template]\nreplace_delimiters = [{open='[[', close=']]'}]\n",
-            false,
-            true,
-        ),
-        ("[template]\nreplace_delimiters = []\n", false, false),
-        (
-            "[template]\nreplace_delimiters = [{open='{{', close='}}'}]\n",
-            true,
-            false,
-        ),
+    for configuration in [
+        "[template]\nadd_delimiters = [{open='[[', close=']]'}]\n",
+        "[template]\nreplace_delimiters = [{open='[[', close=']]'}]\n",
+        "[template]\nreplace_delimiters = []\n",
+        "[template]\nreplace_delimiters = [{open='{{', close='}}'}]\n",
     ] {
         std::fs::write(&config, configuration).unwrap();
-        for (body, eligible) in [
-            ("{{   foo   }}", true),
-            ("{{ foo }} `[[ other ]]`", true),
-            ("{{ foo }} [[ other ]]", false),
+        for body in [
+            "{{   foo   }}",
+            "{{ foo }} `[[ other ]]`",
+            "{{ foo }} [[ other ]]",
         ] {
             // A late file directive activates [[ even for an initially explicit target.
             let late = "\n<!-- fmt: template.delimiters \"[[\" \"]]\" scope=file -->\n";
-            let target = if brackets_active && !eligible {
-                ""
-            } else {
-                "<!-- fmt: wrap=sentence scope=next -->\n"
-            };
+            let target = "<!-- fmt: wrap=sentence scope=next -->\n";
             let source = format!("{target}First\nwith {body}. Second\nsentence.\n{late}");
-            let expected = if eligible {
-                format!("{target}First with {body}.\nSecond sentence.\n{late}")
-            } else {
-                source.clone()
-            };
+            let expected = format!("{target}First with {body}.\nSecond sentence.\n{late}");
             let first = format(&source, "sentence", false, input.to_str().unwrap());
             assert_eq!(first, expected, "{configuration}");
             assert_eq!(
@@ -227,13 +211,10 @@ fn delimiter_configuration_and_late_policy_use_original_source() {
             expected
         );
 
-        // Disabled/replaced braces keep the old ordinary-text behavior, including narrow layout.
+        // Balanced braces remain opaque ordinary text when their template
+        // delimiter is disabled; narrow layouts now agree in both cases.
         let source = "Before {{   foo   }} after.\n";
-        let expected = if !braces_active {
-            "Before\n{{   foo   }}\nafter.\n"
-        } else {
-            source
-        };
+        let expected = "Before\n{{   foo   }}\nafter.\n";
         let first = format(source, "8", false, input.to_str().unwrap());
         assert_eq!(first, expected);
         assert_eq!(
@@ -270,11 +251,8 @@ fn target_skip_frontmatter_and_child_documents_keep_their_policies() {
         assert_format(&source, &source, "sentence", true);
     }
     for body in [
-        "Before {{ foo() }}.\n",
-        "Before\n{{ foo }}\nafter.\n",
         "Before {{ foo }} < value.\n",
-        "Before {{ foo }}suffix.\n",
-        "Before {{ foo }} after.\n",
+        "Before {{ render(\"unclosed) }} after.\n",
     ] {
         let source = format!("<!-- fmt: wrap=8 scope=next -->\n{body}");
         let output = Command::cargo_bin("yamark")
@@ -295,15 +273,20 @@ fn target_skip_frontmatter_and_child_documents_keep_their_policies() {
 }
 
 #[test]
-fn parent_guards_and_apparent_hard_breaks_keep_baseline_behavior() {
-    for prefix in ["# ", "- ", "> ", "[^note]: "] {
+fn heading_guards_and_explicit_hard_breaks_keep_their_boundaries() {
+    let source = "# Before {{ foo }} after [real](  target  ) _outside_.\n";
+    assert_format(source, source, "sentence", true);
+    for prefix in ["- ", "> "] {
         let source = format!("{prefix}Before {{{{ foo }}}} after [real](  target  ) _outside_.\n");
-        assert_format(&source, &source, "sentence", true);
+        let expected = format!("{prefix}Before {{{{ foo }}}} after [real](target) *outside*.\n");
+        assert_format(&source, &expected, "sentence", true);
     }
-    let source = "Before\n{{ foo }}  \nafter [real](  target  ).\n";
-    let cleaned = "Before\n{{ foo }}\nafter [real](  target  ).\n";
-    assert_eq!(format(source, "sentence", false, "input.md"), cleaned);
-    assert_format(cleaned, cleaned, "sentence", false);
+    assert_format(
+        "Before\n{{ foo }}  \nafter [real](  target  ).\n",
+        "Before {{ foo }} \\\nafter [real](target).\n",
+        "sentence",
+        false,
+    );
 }
 
 #[test]
@@ -317,8 +300,9 @@ fn late_policy_changes_reconsider_placement_without_changing_target_precedence()
     let path = dir.path().join("input.md");
     let source = "<!-- fmt: wrap=8 scope=next -->\nBefore {{ foo }} after.\n\n<!-- fmt: template.delimiters \"{{\" \"}}\" scope=file -->\n";
     let first = format(source, "8", false, path.to_str().unwrap());
-    assert_eq!(first, source);
-    assert_eq!(format(&first, "8", false, path.to_str().unwrap()), source);
+    let expected = "<!-- fmt: wrap=8 scope=next -->\nBefore\n{{ foo }}\nafter.\n\n<!-- fmt: template.delimiters \"{{\" \"}}\" scope=file -->\n";
+    assert_eq!(first, expected);
+    assert_eq!(format(&first, "8", false, path.to_str().unwrap()), expected);
 
     let source = "Before\nwith {{ foo }} after [real](  target  ).\n\n<!-- fmt: wrap=sentence scope=file -->\n";
     let expected =

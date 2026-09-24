@@ -39,7 +39,7 @@ Before <42 `_raw_`> after *outside* [real]( target ).
 
 Before _with `{{ value }} _raw_` inside_ after [real](  target  ).
 
-- Before {{ value }} _raw_ [real](  target  ).
+- Before {{ value }} *raw* [real](target).
 
 Before *```` unmatched `[x](  url  )`* after [r](t).
 

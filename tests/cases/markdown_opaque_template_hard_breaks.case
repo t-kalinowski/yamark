@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Before
+{{ render("keep   this") }}  
+after.
+
+Before\
+{{ render("keep   this") }}
+after.
+-- stdout
+Before {{ render("keep   this") }} \
+after.
+
+Before\
+{{ render("keep   this") }} after.
+-- stderr
+-- status
+0
