@@ -28,13 +28,11 @@ First
 sentence with `{{ foo }}` < value and [real](  target  ). Second
 sentence.
 
-First
-sentence with `{{ foo` }}. Second
-sentence.
+First sentence with `{{ foo` }}.
+Second sentence.
 
-First
-sentence with `{{ foo` and `bar }}`. Second
-sentence.
+First sentence with `{{ foo` and `bar }}`.
+Second sentence.
 
 Following paragraph with [real](target).
 Next sentence.

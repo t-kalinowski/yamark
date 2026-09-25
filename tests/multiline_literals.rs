@@ -260,6 +260,7 @@ fn terminal_literals_keep_document_final_newline_policy() {
             "sentence",
         ),
         ("{{< call >}}\n\nBefore `code`", "sentence"),
+        ("Before `code`\n\n{{< call >}}", "sentence"),
         ("```markdown\nBefore `code`\n```", "sentence"),
         ("> ```markdown\n> Before `code`\n> ```", "sentence"),
     ] {
@@ -273,7 +274,6 @@ fn terminal_literals_keep_document_final_newline_policy() {
     for source in [
         "<!-- fmt: off -->\nBefore `code`",
         "<!-- fmt: skip -->\nBefore $math$",
-        "Before `code`\n\n{{< call >}}",
     ] {
         assert_format(source, source, "sentence", false);
     }

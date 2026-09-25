@@ -15,15 +15,12 @@ Format   another
 paragraph.
 -- stdout
 {{< notice   
-message="quoted >}} and \" escapes keep   spacing"
-other='quoted \' >}} stays' raw=`backslash \`   
->}}
+message="quoted >}} and \" escapes keep spacing" other='quoted \' >}} stays' raw=`backslash \` \
+> }}
 Format this paragraph as Markdown.
 
 {{% notice
-message="{{< nested-looking >}} and %}} stay   data"
-%}}
-Format another paragraph.
+message="{{< nested-looking >}} and %}} stay data" %}} Format another paragraph.
 -- stderr
 -- status
 0

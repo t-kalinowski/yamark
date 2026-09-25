@@ -43,6 +43,15 @@ fn transcripts_are_exact_and_idempotent() {
         include_str!("cases/markdown_template_bare_narrow.case"),
         include_str!("cases/markdown_template_bare_standalone.case"),
         include_str!("cases/markdown_template_container_continuations.case"),
+        include_str!("cases/markdown_template_literal_closer.case"),
+        include_str!("cases/markdown_template_multiline_word.case"),
+        include_str!("cases/markdown_template_multiline_boundaries.case"),
+        include_str!("cases/markdown_template_shortcode_overwide.case"),
+        include_str!("cases/markdown_template_shortcode_standalone.case"),
+        include_str!("cases/markdown_template_shortcode_words.case"),
+        include_str!("cases/markdown_template_stray_closers.case"),
+        include_str!("cases/markdown_template_autolink.case"),
+        include_str!("cases/markdown_template_html_boundary.case"),
     ] {
         let (args, rest) = case
             .strip_prefix("-- args\n")
@@ -70,7 +79,10 @@ fn tokens_are_opaque_under_every_wrapping_mode() {
         r#"{# don't   change [x](  url  ) _this_ { #}"#,
         r#"{# "quoted-looking closer #}"#,
         r#"{{ render("keep   this") }}"#,
-        r#"{{ render("}}", "say \"hello\"", {outer: {inner: 'a  b'}}) }}"#,
+        r#"{{< raw caption="keep   _this_" >}}"#,
+        r#"{{% /greeting.inline %}}"#,
+        r#"{{ render("unterminated }}"#,
+        r#"{{ render({nested: 1) }}"#,
         r#"{{ render("[x](  url  ) _keep_ `code` $math$") }}"#,
         r#"{{ render("<b>  </b>", "x\ty", "café　東京") }}"#,
         r#"{{ render([x](  url  ), _keep_, **this**) }}"#,
@@ -114,12 +126,7 @@ fn explicit_preservation_and_malformed_boundaries_remain_exact() {
     }
     for token in [
         "{{ missing",
-        "{{ render(\"unterminated }}",
-        "{{ render({nested: 1) }}",
-        "{{ render(\"multi\nline\") }}",
         "{{ good }} and {{ missing",
-        "{{ good }} and stray }}",
-        "`{{ split` and `closer }}`",
         "{{ good }} and $$ambiguous$$",
         "{{ good }} and < unsupported",
     ] {

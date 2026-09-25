@@ -9,8 +9,8 @@ as Markdown. Second
 sentence.
 -- stdout
 ﻿{{< notice   
-message="quoted >}} keeps   spacing"  	
->}}
+message="quoted >}} keeps spacing"
+> }}
 Format this paragraph as Markdown.
 Second sentence.
 -- stderr

@@ -1,8 +1,7 @@
 use crate::config::Config;
 use crate::core::directives::{
     Directive, DirectiveDelta, DirectiveEngine, DirectiveState, Scope, TemplateDelimiter,
-    contains_markdown_template_span, file_scope_delta, parse_hash_directive,
-    parse_hash_directive_checked,
+    contains_template_span, file_scope_delta, parse_hash_directive, parse_hash_directive_checked,
 };
 use crate::core::document::{
     Document, DocumentKind, EmitPlan, FormatOptions, Node, NodeKind, SourceNodeKind, SourceText,
@@ -444,7 +443,7 @@ fn plan_source_template_preservation(source: &SourceBuffer, doc: &mut Document) 
         .map(|node| {
             matches!(node.kind, NodeKind::Source(_))
                 && !source_node_uses_known_template_delimiters(source, node)
-                && contains_markdown_template_span(
+                && contains_template_span(
                     source.slice(node.span),
                     &doc.state(node.state).template_delimiters,
                 )

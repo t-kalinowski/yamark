@@ -24,6 +24,10 @@ fn assert_format(source: &str, expected: &str, wrap: &str, canonical: bool) {
 #[test]
 fn complete_code_templates_use_normal_paragraph_options() {
     for (directive, literal) in [
+        ("", "`{{ foo` }}"),
+        ("", "`{{ foo` and `bar }}`"),
+        ("", "`{{ \"}}\"` outside }}"),
+        ("", "`{{ foo }}` and a stray }}"),
         ("", "`${{ foo }} [x](  url  ) _literal_`"),
         ("", "`{% foo %} [x](  url  ) _literal_`"),
         ("", "`{# foo #} [x](  url  ) _literal_`"),
@@ -90,12 +94,8 @@ fn overwide_code_templates_remain_atomic() {
 fn ambiguous_or_non_code_templates_keep_the_original_paragraph() {
     for body in [
         "`{{ foo }}` and {{ outside }}",
-        "`{{ foo` }}",
         "{{ foo `bar }}`",
-        "`{{ foo` and `bar }}`",
-        "`{{ \"}}\"` outside }}",
         "`{{ foo }}` and {{ unmatched",
-        "`{{ foo }}` and a stray }}",
         r"\`{{ foo }}\`",
         "`{{ foo }}",
         "``{{ foo }}`",
@@ -112,7 +112,6 @@ fn ambiguous_or_non_code_templates_keep_the_original_paragraph() {
         "`{{ foo }}` < value",
         "`{{ foo }}` <kbd>text</kbd>",
         "`{{ foo }}` <!-- comment -->",
-        "`{{ foo }}` <http://example.com>",
         "`{{ foo }}` *<kbd>text</kbd>*",
         "`{{ foo\nbar }}`",
         "`{{ foo }}` and `multiline\ncode`",
@@ -146,18 +145,14 @@ fn ambiguous_or_non_code_templates_keep_the_original_paragraph() {
 fn late_delimiters_recheck_original_code_ranges_and_explicit_targets() {
     let late = "\n<!-- fmt: template.delimiters \"[[\" \"]]\" scope=file -->\n";
     for target in ["", "<!-- fmt: wrap=sentence scope=next -->\n"] {
-        for (body, eligible) in [
-            ("`[[ foo ]]`", true),
-            ("`{{ foo }}` and `[[ bar ]]`", true),
-            ("`{{ foo }}` and [[ outside ]]", true),
-            ("`[[ foo` and `bar ]]`", false),
+        for body in [
+            "`[[ foo ]]`",
+            "`{{ foo }}` and `[[ bar ]]`",
+            "`{{ foo }}` and [[ outside ]]",
+            "`[[ foo` and `bar ]]`",
         ] {
             let source = format!("{target}Before\n{body}. After\nsentence.\n{late}");
-            let expected = if eligible {
-                format!("{target}Before {body}.\nAfter sentence.\n{late}")
-            } else {
-                source.clone()
-            };
+            let expected = format!("{target}Before {body}.\nAfter sentence.\n{late}");
             // On the second pass the file directive is still encountered late.
             assert_format(&source, &expected, "sentence", false);
         }
@@ -284,8 +279,8 @@ fn explicit_targets_keep_other_rejections_and_skip_precedence() {
             .write_stdin(source.as_str())
             .output()
             .unwrap();
-        if body == "Before {{ foo }}.\n" {
-            // This target was rejected solely for its simple bare expression.
+        if matches!(body, "Before {{ foo }}.\n" | "Before `{{ foo` }}.\n") {
+            // Bare words and markers contained in code do not reject this target.
             assert_eq!(output.status.code(), Some(0));
             assert_eq!(output.stdout, source.as_bytes());
             assert!(output.stderr.is_empty());

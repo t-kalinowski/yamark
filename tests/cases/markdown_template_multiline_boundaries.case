@@ -1,0 +1,51 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical --verify
+-- stdin
+{{ token
+---
+  Keep   _this_ [x](  url  ).
+}}
+After   _word_.
+
+Before {{ token
+
+<!-- fmt: skip file -->
+}}
+After   _word_.
+
+{{ first
+}} {{ second
+<!-- fmt: skip file -->
+    Keep   _this_.
+}}
+
+{{ missing
+Keep   this.   
+
+<!-- fmt: on -->
+Still   exact.   
+-- stdout
+{{ token
+---
+  Keep   _this_ [x](  url  ).
+}} After *word*.
+
+Before {{ token
+
+<!-- fmt: skip file -->
+}} After *word*.
+
+{{ first
+}} {{ second
+<!-- fmt: skip file -->
+    Keep   _this_.
+}}
+
+{{ missing
+Keep   this.   
+
+<!-- fmt: on -->
+Still   exact.   
+-- stderr
+-- status
+0

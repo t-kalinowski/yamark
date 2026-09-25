@@ -28,6 +28,12 @@ fn assert_format(source: &str, expected: &str, wrap: &str, canonical: bool) {
 #[test]
 fn complete_expressions_keep_exact_bytes_under_paragraph_options() {
     for expression in [
+        "{{ foo }} {{< ref target >}}",
+        "{{ foo }} {{% ref target %}}",
+        "{{ foo }} stray }}",
+        "`{{ foo` }}",
+        "{{ foo }} and `{{ other` outside }}",
+        "{{ foo\n.bar }}",
         "{{ 'foo' }}",
         "{{ \"foo\" }}",
         "{{ }}",
@@ -89,14 +95,9 @@ fn complete_expressions_keep_exact_bytes_under_paragraph_options() {
 #[test]
 fn unsupported_expressions_and_contexts_keep_baseline_preservation() {
     for body in [
-        "{{ foo }} {{< ref target >}}",
-        "{{ foo }} {{% ref target %}}",
         r"\{{ foo }}",
-        "{{ foo }} stray }}",
         "{{ foo }} and {{ unmatched",
-        "`{{ foo` }}",
         "{{ foo `bar }}`",
-        "{{ foo }} and `{{ other` outside }}",
         "*{{ foo }}*",
         "_{{ foo }}_",
         "~~{{ foo }}~~",
@@ -106,9 +107,7 @@ fn unsupported_expressions_and_contexts_keep_baseline_preservation() {
         "{{ foo }} < value",
         "{{ foo }} <kbd>text</kbd>",
         "{{ foo }} <!-- x -->",
-        "{{ foo }} <https://example.com>",
         "{{ foo }} *<kbd>text</kbd>*",
-        "{{ foo\n.bar }}",
         "{{ foo }} and `multi\nline`",
         "{{ foo }} and $multi\nline$",
         "{{ foo }} and *multi\nline*",
@@ -250,9 +249,15 @@ fn target_skip_frontmatter_and_child_documents_keep_their_policies() {
         let source = format!("{skip}First\nwith {{{{ foo }}}}. Second\nsentence.\n");
         assert_format(&source, &source, "sentence", true);
     }
+    assert_format(
+        "<!-- fmt: wrap=8 scope=next -->\nBefore {{ render(\"unclosed) }} after.\n",
+        "<!-- fmt: wrap=8 scope=next -->\nBefore\n{{ render(\"unclosed) }}\nafter.\n",
+        "sentence",
+        false,
+    );
     for body in [
         "Before {{ foo }} < value.\n",
-        "Before {{ render(\"unclosed) }} after.\n",
+        "Before {{ render(\"unclosed) after.\n",
     ] {
         let source = format!("<!-- fmt: wrap=8 scope=next -->\n{body}");
         let output = Command::cargo_bin("yamark")

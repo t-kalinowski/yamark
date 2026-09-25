@@ -53,7 +53,7 @@ Keep   this body.
 
 <!-- fmt: skip -->
 {{< skipped   token >}}
-Format after the token.
+Format   after the token.
 
 <!-- fmt: off -->
 {{% notice message="

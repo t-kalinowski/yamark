@@ -193,15 +193,6 @@ fn emit_document_inner(
             });
         }
         let state = document.state(node.state);
-        if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode))
-            && !matches!(node.emit, EmitPlan::MarkdownShortcode { .. })
-        {
-            out.push_verbatim(source.slice(node.span), true);
-            cursor = node.span.end;
-            previous_adjacent_div = false;
-            index += 1;
-            continue;
-        }
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
             if document.kind == DocumentKind::Markdown {
                 out.push_verbatim(source.slice(node.span), true);
@@ -317,18 +308,8 @@ fn emit_document_inner(
                 opening,
                 closing,
                 nested,
-            }
-            | EmitPlan::MarkdownShortcode {
-                opening,
-                closing,
-                nested,
             } => {
-                let shortcode = matches!(node.emit, EmitPlan::MarkdownShortcode { .. });
-                if shortcode {
-                    out.push_verbatim(source.slice(*opening), false);
-                } else {
-                    out.push_str(source.slice(*opening));
-                }
+                out.push_str(source.slice(*opening));
                 let mut nested_output = emit_document_inner(
                     source,
                     &document.nested[*nested],
@@ -348,11 +329,7 @@ fn emit_document_inner(
                         .push_str(line_ending_for_span(source, *opening));
                 }
                 out.push_fragment(&nested_output);
-                if shortcode {
-                    out.push_verbatim(source.slice(*closing), true);
-                } else {
-                    out.push_str(source.slice(*closing));
-                }
+                out.push_str(source.slice(*closing));
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
             EmitPlan::YamlDocument => {

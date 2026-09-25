@@ -36,13 +36,12 @@ Ordinary prose with `{{< inline >}}` and {{ value }}.
 
 Before {{< inline >}} after.
 
-{{< single >}} Mixed   token/prose stays.
+{{< single >}} Mixed token/prose stays. \
 Following prose formats.
 
 - {{< list >}} Keep list continuation.
 
-> {{% quote %}}
-> Keep   quote continuation.
+> {{% quote %}} Keep quote continuation.
 
 <div>
 Keep   this HTML body.
@@ -59,7 +58,8 @@ Keep   this code.
 
 After everything.
 
-## {{< title >}}
+{{< title >}}
+---
 -- stderr
 -- status
 0

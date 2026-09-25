@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::core::directives::{
     Directive, DirectiveDelta, DirectiveEngine, DirectiveState, DirectiveStateTable, Scope,
-    StateId, TemplateDelimiter, contains_markdown_template_span, file_scope_delta,
+    StateId, TemplateDelimiter, contains_template_span, file_scope_delta,
     parse_markdown_html_directive, parse_markdown_html_directive_checked,
 };
 use crate::core::document::{
@@ -14,7 +14,6 @@ use crate::core::yaml_model::{
     YamlAstKind, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind, YamlScalar,
 };
 use crate::diagnostic::Result;
-use std::collections::HashMap;
 
 pub(crate) fn parse_markdown(
     source: &SourceBuffer,
@@ -22,14 +21,7 @@ pub(crate) fn parse_markdown(
     options: FormatOptions,
     config: &Config,
 ) -> Result<Document> {
-    parse_markdown_with_mode(
-        source,
-        range,
-        options,
-        config,
-        MarkdownParseMode::Concrete,
-        MarkdownParseContext::Document,
-    )
+    parse_markdown_with_mode(source, range, options, config, MarkdownParseMode::Concrete)
 }
 
 pub(crate) fn parse_markdown_for_formatting(
@@ -44,7 +36,6 @@ pub(crate) fn parse_markdown_for_formatting(
         options,
         config,
         MarkdownParseMode::SemanticOnly,
-        MarkdownParseContext::Document,
     )
 }
 
@@ -60,7 +51,6 @@ pub(crate) fn parse_markdown_for_validation(
         options,
         config,
         MarkdownParseMode::SemanticOnlyValidation,
-        MarkdownParseContext::Document,
     )
 }
 
@@ -76,7 +66,6 @@ pub(crate) fn parse_markdown_for_concrete_validation(
         options,
         config,
         MarkdownParseMode::ConcreteValidation,
-        MarkdownParseContext::Document,
     )
 }
 
@@ -86,12 +75,6 @@ enum MarkdownParseMode {
     SemanticOnly,
     ConcreteValidation,
     SemanticOnlyValidation,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MarkdownParseContext {
-    Document,
-    Fragment,
 }
 
 impl MarkdownParseMode {
@@ -106,7 +89,6 @@ fn parse_markdown_with_mode(
     options: FormatOptions,
     config: &Config,
     mode: MarkdownParseMode,
-    context: MarkdownParseContext,
 ) -> Result<Document> {
     let mut options = options;
     if !matches!(
@@ -122,10 +104,8 @@ fn parse_markdown_with_mode(
     let start_line = first_line_index(source, range);
     let mut i = start_line;
     let end_line = end_line_index(source, range);
-    let mut shortcode_pairs = None;
 
-    if context == MarkdownParseContext::Document
-        && i < end_line
+    if i < end_line
         && front_matter_opening(source.line_text(i))
         && let Some(closing) = find_front_matter_closing(source, i + 1, end_line)
     {
@@ -170,7 +150,7 @@ fn parse_markdown_with_mode(
         let text = source.line_text(i);
 
         // Disabled regions use the existing linewise directive policy. Block
-        // structure, including shortcodes, does not hide a fmt: on line.
+        // structure does not hide a fmt: on line.
         if engine.formatting_disabled() {
             if markdown_on_directive_line(text) {
                 let state = engine.state_for_node(&mut doc, false);
@@ -250,9 +230,9 @@ fn parse_markdown_with_mode(
         }
 
         if markdown_indented_code_at(text) {
+            let state = engine.state_for_node(&mut doc, true);
             let start = i;
             i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -267,11 +247,39 @@ fn parse_markdown_with_mode(
             continue;
         }
 
+        if html_comment_at(text) {
+            let start = i;
+            i = html_comment_end(source, i, end_line);
+            let state = engine.state_for_node(&mut doc, false);
+            doc.push_node(Node {
+                kind: NodeKind::Markdown(MarkdownNodeKind::HtmlComment),
+                span: Span::new(
+                    source.lines[start].full.start(),
+                    source.lines[i - 1].full.end(),
+                ),
+                state,
+                emit: EmitPlan::Copy,
+            });
+            continue;
+        }
+
+        let state = engine.state_for_node(&mut doc, true);
+        // Check only when a lookahead-based block would otherwise be selected.
+        // Lines inside an opaque word cannot promote its opener to a heading,
+        // table, or definition list.
+        let template_crosses_line = || {
+            crate::core::wrap::markdown_template_line_end(
+                &source.as_str()[line.full.start()..range.end],
+                line.full.end().min(range.end) - line.full.start(),
+                &doc.state(state).template_delimiters,
+            )
+            .is_none_or(|end| end > line.full.len())
+        };
+
         if let Some(marker_len) = quarto_div_opening(text) {
             let start = i;
             let Some(closing) = find_quarto_div_closing(source, i + 1, end_line, marker_len) else {
                 i = end_line;
-                let state = engine.state_for_node(&mut doc, true);
                 let span = Span::new(
                     source.lines[start].full.start(),
                     source.lines[i - 1].full.end(),
@@ -285,7 +293,6 @@ fn parse_markdown_with_mode(
                 });
                 continue;
             };
-            let state = engine.state_for_node(&mut doc, true);
             let opening = source.lines[start].full;
             let closing_span = source.lines[closing].full;
             let content = Span::new(opening.end(), closing_span.start());
@@ -298,7 +305,6 @@ fn parse_markdown_with_mode(
                 nested_options,
                 &nested_config,
                 mode,
-                MarkdownParseContext::Fragment,
             )?);
             let span = Span::new(opening.start(), closing_span.end());
             validate_markdown_format_target(source, &doc, state, span, true)?;
@@ -316,10 +322,9 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if pandoc_grid_table_at(source, i, end_line) {
+        if pandoc_grid_table_at(source, i, end_line) && !template_crosses_line() {
             let start = i;
             i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             push_markdown_format_node(
                 source,
                 &mut doc,
@@ -335,10 +340,11 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if let Some(table_end) = pandoc_multiline_table_end(source, i, end_line) {
+        if let Some(table_end) = pandoc_multiline_table_end(source, i, end_line)
+            && !template_crosses_line()
+        {
             let start = i;
             i = table_end;
-            let state = engine.state_for_node(&mut doc, true);
             push_markdown_format_node(
                 source,
                 &mut doc,
@@ -354,10 +360,9 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if pandoc_table_at(source, i, end_line) {
+        if pandoc_table_at(source, i, end_line) && !template_crosses_line() {
             let start = i;
             i = pandoc_simple_table_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             push_markdown_format_node(
                 source,
                 &mut doc,
@@ -373,10 +378,9 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if definition_list_at(source, i, end_line) {
+        if definition_list_at(source, i, end_line) && !template_crosses_line() {
             let start = i;
             i = definition_list_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -397,7 +401,6 @@ fn parse_markdown_with_mode(
         if paired_html_block_start(text).is_some() {
             let start = i;
             i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -412,13 +415,12 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if let Some((content, depth)) = setext_heading_at(source, i, end_line) {
-            let state = engine.state_for_node(&mut doc, true);
+        if let Some((content, depth)) = setext_heading_at(source, i, end_line)
+            && !template_crosses_line()
+        {
             let span = Span::new(source.lines[i].full.start(), source.lines[i + 1].full.end());
-            let supported = !contains_markdown_template_span(
-                source.slice(span),
-                &doc.state(state).template_delimiters,
-            );
+            let supported =
+                !contains_template_span(source.slice(span), &doc.state(state).template_delimiters);
             validate_markdown_format_target(source, &doc, state, span, supported)?;
             let emit = plan_markdown_setext_heading(source, span, content, depth, doc.state(state));
             doc.push_node(Node {
@@ -432,8 +434,7 @@ fn parse_markdown_with_mode(
         }
 
         if let Some((marker, content)) = heading_ranges(source, i) {
-            let state = engine.state_for_node(&mut doc, true);
-            let supported = !contains_markdown_template_span(
+            let supported = !contains_template_span(
                 source.slice(line.full),
                 &doc.state(state).template_delimiters,
             );
@@ -451,7 +452,6 @@ fn parse_markdown_with_mode(
         }
 
         if thematic_break_at(text) {
-            let state = engine.state_for_node(&mut doc, true);
             validate_markdown_format_target(source, &doc, state, line.full.into(), true)?;
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::ThematicBreak),
@@ -463,7 +463,7 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if pipe_table_at(source, i, end_line) {
+        if pipe_table_at(source, i, end_line) && !template_crosses_line() {
             let start = i;
             i += 2;
             while i < end_line {
@@ -473,7 +473,6 @@ fn parse_markdown_with_mode(
                 }
                 i += 1;
             }
-            let state = engine.state_for_node(&mut doc, true);
             push_markdown_format_node(
                 source,
                 &mut doc,
@@ -492,7 +491,6 @@ fn parse_markdown_with_mode(
         if list_item_at(text) {
             let start = i;
             i = list_block_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -516,7 +514,6 @@ fn parse_markdown_with_mode(
             while i < end_line && blockquote_at(source.line_text(i)) {
                 i += 1;
             }
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -541,7 +538,6 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let state = engine.state_for_node(&mut doc, true);
             push_markdown_format_node(
                 source,
                 &mut doc,
@@ -554,79 +550,9 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if html_comment_at(text) {
-            let start = i;
-            i = html_comment_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, false);
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::HtmlComment),
-                span: Span::new(
-                    source.lines[start].full.start(),
-                    source.lines[i - 1].full.end(),
-                ),
-                state,
-                emit: EmitPlan::Copy,
-            });
-            continue;
-        }
-
-        if let Some(token_start) = shortcode_block_start(source, i) {
-            let pairs = shortcode_pairs
-                .get_or_insert_with(|| shortcode_body_pairs(source, i, end_line, range.end));
-            if let Some(&closing_line) = pairs.get(&i) {
-                let token_end = shortcode_token_end(source, token_start, range.end);
-                let opening_end = source.line_at_byte(token_end - 1) + 1;
-                let opening =
-                    Span::new(line.full.start(), source.lines[opening_end - 1].full.end());
-                let closing_start = shortcode_block_start(source, closing_line)
-                    .expect("paired shortcode closing tag");
-                let closing_end = shortcode_token_end(source, closing_start, range.end);
-                let next_line = source.line_at_byte(closing_end - 1) + 1;
-                let closing = Span::new(
-                    source.lines[closing_line].full.start(),
-                    source.lines[next_line - 1].full.end(),
-                );
-                let span = Span::new(opening.start, closing.end);
-                let state = engine.state_for_node(&mut doc, true);
-                validate_markdown_format_target(source, &doc, state, span, true)?;
-                let tag = shortcode_tag(source.slice(Span::new(token_start, token_end)))
-                    .expect("paired shortcode tag");
-                let emit = if !tag.raw() && !doc.state(state).preserve {
-                    let state_value = doc.state(state).clone();
-                    let nested_config = config_for_directive_state(config, &state_value);
-                    let nested = doc.push_nested(parse_markdown_with_mode(
-                        source,
-                        Span::new(opening.end, closing.start),
-                        state_value.markdown_options(options),
-                        &nested_config,
-                        mode,
-                        MarkdownParseContext::Fragment,
-                    )?);
-                    EmitPlan::MarkdownShortcode {
-                        opening,
-                        closing,
-                        nested,
-                    }
-                } else {
-                    EmitPlan::MarkdownOpaque
-                };
-                doc.push_node(Node {
-                    kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
-                    span,
-                    state,
-                    emit,
-                });
-                i = next_line;
-                continue;
-            }
-            i = push_shortcode_token(source, &mut doc, &mut engine, i, token_start, range);
-            continue;
-        }
-
         if display_math_block_at(text) {
             let start = i;
             i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -644,7 +570,6 @@ fn parse_markdown_with_mode(
         if link_definition_start(text.trim_start()) {
             let start = i;
             i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -662,7 +587,6 @@ fn parse_markdown_with_mode(
         if raw_sensitive_at(text) {
             let start = i;
             i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
@@ -678,7 +602,6 @@ fn parse_markdown_with_mode(
         }
 
         if standalone_template_line_at(text, &config.markdown_standalone_template_delimiters) {
-            let state = engine.state_for_node(&mut doc, true);
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::Raw),
                 span: line.full.into(),
@@ -691,7 +614,6 @@ fn parse_markdown_with_mode(
 
         if let Some(fence) = code_fence_at(text) {
             let Some(closing) = find_code_fence_closing(source, i + 1, end_line, fence) else {
-                let state = engine.state_for_node(&mut doc, true);
                 let span = Span::new(line.full.start(), source.lines[end_line - 1].full.end());
                 validate_markdown_format_target(source, &doc, state, span, false)?;
                 doc.push_node(Node {
@@ -725,7 +647,6 @@ fn parse_markdown_with_mode(
                 || supported_opaque_language
                 || raw_format
                 || code_cell_without_language;
-            let state = engine.state_for_node(&mut doc, true);
             let state_value = doc.state(state).clone();
             let nested_options = state_value.markdown_options(options);
             let normalized_opening = (!local_skip)
@@ -764,7 +685,6 @@ fn parse_markdown_with_mode(
                         nested_options,
                         &nested_config,
                         mode,
-                        MarkdownParseContext::Document,
                     )?)),
                     _ => None,
                 }
@@ -803,21 +723,45 @@ fn parse_markdown_with_mode(
         }
 
         let start = i;
-        i += 1;
-        while i < end_line
-            && !paragraph_should_end_before(
-                source,
-                i,
-                &config.markdown_standalone_template_delimiters,
-            )
-        {
-            i += 1;
+        let mut incomplete = false;
+        loop {
+            let line_start = source.lines[i].full.start();
+            let line_end = source.lines[i].full.end().min(range.end);
+            let token_end = crate::core::wrap::markdown_template_line_end(
+                &source.as_str()[line_start..range.end],
+                line_end - line_start,
+                &doc.state(state).template_delimiters,
+            );
+            let Some(token_end) = token_end else {
+                incomplete = true;
+                i = end_line;
+                break;
+            };
+            i = source.line_at_byte(line_start + token_end - 1) + 1;
+            if i >= end_line
+                || paragraph_should_end_before(
+                    source,
+                    i,
+                    &config.markdown_standalone_template_delimiters,
+                )
+            {
+                break;
+            }
         }
         let span = Span::new(
             source.lines[start].full.start(),
             source.lines[i - 1].full.end(),
         );
-        let state = engine.state_for_node(&mut doc, true);
+        if incomplete {
+            validate_markdown_format_target(source, &doc, state, span, false)?;
+            doc.push_node(Node {
+                kind: NodeKind::Markdown(MarkdownNodeKind::Paragraph),
+                span,
+                state,
+                emit: EmitPlan::Preserve,
+            });
+            continue;
+        }
         push_markdown_format_node(
             source,
             &mut doc,
@@ -985,7 +929,7 @@ fn patch_nested_documents_after_file_scope_delta(
                     mode,
                 )?;
             }
-            EmitPlan::MarkdownDiv { nested, .. } | EmitPlan::MarkdownShortcode { nested, .. } => {
+            EmitPlan::MarkdownDiv { nested, .. } => {
                 let nested_config = config_for_directive_state(config, &state);
                 apply_file_scope_delta_to_nested_document(
                     source,
@@ -1058,7 +1002,7 @@ fn plan_markdown_heading(
     content: Span,
     state: &DirectiveState,
 ) -> EmitPlan {
-    if contains_markdown_template_span(source.slice(span), &state.template_delimiters) {
+    if contains_template_span(source.slice(span), &state.template_delimiters) {
         return EmitPlan::Copy;
     }
     EmitPlan::MarkdownHeading { marker, content }
@@ -1071,7 +1015,7 @@ fn plan_markdown_setext_heading(
     depth: usize,
     state: &DirectiveState,
 ) -> EmitPlan {
-    if contains_markdown_template_span(source.slice(span), &state.template_delimiters) {
+    if contains_template_span(source.slice(span), &state.template_delimiters) {
         return EmitPlan::Copy;
     }
     EmitPlan::MarkdownSetextHeading { content, depth }
@@ -1188,7 +1132,7 @@ impl MarkdownPlanning {
         if matches!(
             kind,
             MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-        ) || !contains_markdown_template_span(input, delimiters)
+        ) || !contains_template_span(input, delimiters)
         {
             return false;
         }
@@ -1431,10 +1375,8 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
             node.emit,
             EmitPlan::MarkdownHeading { .. } | EmitPlan::MarkdownSetextHeading { .. }
         ) {
-            let preserve = contains_markdown_template_span(
-                source.slice(node.span),
-                &state.template_delimiters,
-            );
+            let preserve =
+                contains_template_span(source.slice(node.span), &state.template_delimiters);
             let options = state.markdown_options(options);
             let plan = if preserve {
                 None
@@ -1512,7 +1454,6 @@ fn nested_emit_policies<'a>(
         let id = match node.emit {
             EmitPlan::MarkdownFrontMatter { nested, .. }
             | EmitPlan::MarkdownDiv { nested, .. }
-            | EmitPlan::MarkdownShortcode { nested, .. }
             | EmitPlan::EmbeddedMarkdownString { nested, .. }
             | EmitPlan::EmbeddedMarkdownComment { nested, .. }
             | EmitPlan::EmbeddedYamlComment { nested, .. }
@@ -2792,8 +2733,6 @@ fn rich_child_block_start(text: &str) -> bool {
         || trimmed.starts_with("\\[")
         || trimmed.starts_with("\\begin{")
         || trimmed.starts_with(":::")
-        || trimmed.starts_with("{{<")
-        || trimmed.starts_with("{{%")
         || blockquote_at(trimmed)
         || list_item_at(trimmed)
 }
@@ -2937,8 +2876,6 @@ fn raw_sensitive_at(text: &str) -> bool {
         || display_math_delimiter(trimmed)
         || trimmed.starts_with("\\[")
         || trimmed.starts_with("\\begin{")
-        || trimmed.starts_with("{{<")
-        || trimmed.starts_with("{{%")
         || trimmed.starts_with('|')
         || pandoc_block_attribute_line(trimmed)
         || trimmed.starts_with("Table:")
@@ -2968,22 +2905,6 @@ fn markdown_indented_code_at(text: &str) -> bool {
         }
     }
     false
-}
-
-fn shortcode_block_start(source: &SourceBuffer, line: usize) -> Option<usize> {
-    let text = source.line_text(line);
-    // A file-leading BOM is retained in the node's span, but is not indentation.
-    let content = if line == 0 {
-        text.strip_prefix('\u{feff}').unwrap_or(text)
-    } else {
-        text
-    };
-    let trimmed = content.trim_start();
-    let indent = content.len() - trimmed.len();
-    (indent <= 3
-        && !markdown_indented_code_at(content)
-        && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%")))
-    .then_some(source.lines[line].text.start() + text.len() - trimmed.len())
 }
 
 fn display_math_block_at(text: &str) -> bool {
@@ -3146,161 +3067,6 @@ fn raw_continuation(first: &str, candidate: &str) -> bool {
         return !candidate_trimmed.is_empty();
     }
     first_indent >= 4 && candidate_indent >= 4
-}
-
-#[derive(Clone, Copy)]
-struct ShortcodeTag<'a> {
-    key: (u8, &'a str),
-    closing: bool,
-}
-
-impl ShortcodeTag<'_> {
-    fn raw(self) -> bool {
-        self.key.0 == b'<' || self.key.1.ends_with(".inline")
-    }
-}
-
-fn shortcode_tag(text: &str) -> Option<ShortcodeTag<'_>> {
-    let delimiter = text.as_bytes()[2];
-    let suffix = if delimiter == b'<' { ">}}" } else { "%}}" };
-    let body = text[3..].strip_suffix(suffix)?.trim();
-    if body.ends_with('/') {
-        return None;
-    }
-    let closing = body.starts_with('/');
-    let body = body.strip_prefix('/').unwrap_or(body).trim_start();
-    let name = body.split_whitespace().next()?;
-    if closing && body != name {
-        return None;
-    }
-    Some(ShortcodeTag {
-        key: (delimiter, name),
-        closing,
-    })
-}
-
-/// Index complete, standalone tags once per fragment, then pair raw bodies
-/// before Markdown bodies so literal tags inside raw data have no structure.
-fn shortcode_body_pairs(
-    source: &SourceBuffer,
-    mut line: usize,
-    end_line: usize,
-    end: usize,
-) -> HashMap<usize, usize> {
-    let mut tags = Vec::new();
-    while line < end_line {
-        let Some(start) = shortcode_block_start(source, line) else {
-            line += 1;
-            continue;
-        };
-        let token_end = shortcode_token_end(source, start, end);
-        let last_line = source.line_at_byte(token_end - 1);
-        if source.as_str()[token_end..source.lines[last_line].full.end().min(end)]
-            .trim()
-            .is_empty()
-            && let Some(tag) = shortcode_tag(source.slice(Span::new(start, token_end)))
-        {
-            tags.push((line, tag));
-        }
-        line = last_line + 1;
-    }
-
-    let mut pairs = pair_shortcode_tags(tags.iter().copied().filter(|(_, tag)| tag.raw()));
-    let mut raw_end = None;
-    let markdown_tags = tags
-        .iter()
-        .copied()
-        .filter(|(line, tag)| {
-            if raw_end.is_some_and(|end| *line <= end) {
-                return false;
-            }
-            if let Some(&closing) = pairs.get(line) {
-                raw_end = Some(closing);
-            }
-            !tag.raw()
-        })
-        .collect::<Vec<_>>();
-    pairs.extend(pair_shortcode_tags(markdown_tags.into_iter()));
-    pairs
-}
-
-fn pair_shortcode_tags<'a>(
-    tags: impl DoubleEndedIterator<Item = (usize, ShortcodeTag<'a>)>,
-) -> HashMap<usize, usize> {
-    let mut pairs = HashMap::new();
-    let mut closes: HashMap<_, Vec<usize>> = HashMap::new();
-    let mut pending: Vec<(usize, ShortcodeTag<'_>)> = Vec::new();
-    for (line, tag) in tags.rev() {
-        if tag.closing {
-            closes.entry(tag.key).or_default().push(line);
-            pending.push((line, tag));
-        } else if let Some(&closing_line) = closes.get(&tag.key).and_then(|lines| lines.last()) {
-            pairs.insert(line, closing_line);
-            // A matched body owns its contents. Discard unmatched closing tags
-            // inside it so they cannot form crossing pairs with earlier tags.
-            while pending
-                .last()
-                .is_some_and(|(line, _)| *line <= closing_line)
-            {
-                let (_, inner) = pending.pop().expect("pending closing tag");
-                closes
-                    .get_mut(&inner.key)
-                    .expect("indexed closing tag")
-                    .pop();
-            }
-        }
-    }
-    pairs
-}
-
-fn push_shortcode_token(
-    source: &SourceBuffer,
-    doc: &mut Document,
-    engine: &mut DirectiveEngine,
-    line: usize,
-    token_start: usize,
-    range: Span,
-) -> usize {
-    let token_end = shortcode_token_end(source, token_start, range.end);
-    let next_line = source.line_at_byte(token_end - 1) + 1;
-    let state = engine.state_for_node(doc, true);
-    doc.push_node(Node {
-        kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
-        // The rest of the closing line stays outside the token. Advancing to
-        // the next line retains the existing mixed token/prose boundary.
-        span: Span::new(source.lines[line].full.start(), token_end),
-        state,
-        emit: EmitPlan::MarkdownOpaque,
-    });
-    next_line
-}
-
-/// Find one lexical token, bounded by the enclosing Markdown fragment. Names
-/// and braces in arguments have no structural meaning. An incomplete token
-/// consumes the remaining range so it cannot trigger repeated suffix scans.
-fn shortcode_token_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
-    let text = &source.as_str()[start..end];
-    let closing = if text.starts_with("{{<") {
-        ">}}"
-    } else {
-        "%}}"
-    };
-    let mut quote = None;
-    let mut chars = text[3..].char_indices();
-    while let Some((offset, ch)) = chars.next() {
-        if let Some(delimiter) = quote {
-            if ch == '\\' && delimiter != '`' {
-                chars.next();
-            } else if ch == delimiter {
-                quote = None;
-            }
-        } else if matches!(ch, '\'' | '"' | '`') {
-            quote = Some(ch);
-        } else if text[3 + offset..].starts_with(closing) {
-            return start + 3 + offset + closing.len();
-        }
-    }
-    end
 }
 
 fn link_definition_start(trimmed: &str) -> bool {

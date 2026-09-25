@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap 20 --verify
+-- stdin
+Before {{< long name="keep   spacing" >}} after.
+-- stdout
+Before
+{{< long name="keep   spacing" >}}
+after.
+-- stderr
+-- status
+0

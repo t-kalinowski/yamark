@@ -57,7 +57,7 @@ Raw 3,908, CodeFence 2,151, HtmlComment 819, Paragraph 810, List 551, QuartoDiv
 - [x] Support lists with rich child blocks.
 - [x] Support blockquotes with rich child blocks.
 - [x] Support Pandoc footnotes with rich inline content.
-- [x] Support Quarto/Pandoc shortcodes and includes as block syntax.
+- [x] Treat shortcode-looking text as generic template words.
 - [x] Support display math blocks.
 - [x] Re-run corpus diagnostics and update this document with before/after
       counts.
@@ -1010,116 +1010,54 @@ After:
     Second paragraph with [**strong label**](https://example.com).
 ~~~~~
 
-## 14. Quarto And Pandoc Shortcode Blocks
+## 14. Double-Brace Template Words
 
 Expected behavior:
 
-While formatting is enabled, recognize standalone `{{< ... >}}` and `{{% ... %}}`
-tokens, including complete multiline tokens. Find the lexical
-closing delimiter outside single, double, or backtick quotes; backslashes escape
-the next character in single and double quotes. Keep each token's source bytes,
-including whitespace and line endings. An unterminated token or quote preserves
-the remainder of its enclosing Markdown document or fragment.
+Recognize `{{` through the first literal `}}` as one opaque word. Preserve every
+byte in the word, including spaces and line endings. Quotes, nested braces,
+names, and opening/closing-tag conventions do not affect the boundary.
+Standalone words can join surrounding prose or occupy their own line when
+wrapping. An unfinished word in prose preserves the remainder of its enclosing
+Markdown document or fragment.
 
-Matching standalone tags define a body scope. Format Markdown inside paired
-`{{% name %}}` tags; preserve paired `{{< name >}}` bodies and `.inline` template
-definitions. Raw bodies may contain literal tags that resemble the surrounding
-Markdown shortcode's closing tag. Index raw pairs before Markdown pairs, once
-per fragment, so unpaired calls do not repeatedly search the remaining input.
-
-Unpaired and self-closing tokens remain independent, and surrounding Markdown
-formats normally. Directive-looking text inside a token or raw body is data.
-Directives in a Markdown body stay scoped to that fragment, and `fmt: skip`
-before a paired shortcode preserves the whole body. Markdown shortcode bodies
-and fenced divs do not interpret leading `---` lines as YAML front matter.
+`{{< ... >}}` and `{{% ... %}}` use this same rule. Names such as `raw`,
+`verbatim`, and `something.inline` have no special meaning. Format the Markdown
+between independent words normally. To disable formatting for a region, use
+`<!-- fmt: off -->` and `<!-- fmt: on -->`. Directive-looking text inside a word
+recognized while formatting is enabled is data.
 
 While formatting is disabled, retain the existing linewise directive policy.
-A recognized `fmt: on` line resumes formatting regardless of surrounding
-shortcode, quote, fence, HTML, or math-like text. Disabled-region scanning does
-not interpret those structures.
+A recognized `fmt: on` line resumes formatting regardless of surrounding text.
+`fmt: skip` preserves the next Markdown node, which may now contain both a
+standalone template word and following prose. Explicit preservation retains
+trailing spaces, line endings, and an absent final newline. Ordinary template
+words use the normal final-newline policy.
 
-Explicitly preserved Markdown is opaque to whitespace cleanup: `fmt: skip`
-copies the complete selected node, `fmt: off` copies the disabled region up to
-the existing linewise `fmt: on` boundary, and `fmt: skip file` copies the entire
-enclosing Markdown document or fragment. Trailing spaces, line endings, and an
-absent final newline survive, including through supported nested Markdown
-fences/divs. Contents need not be recognized syntax. Ordinary gaps and automatic
-formatting fallback retain their existing cleanup behavior.
+Internally, the generic inline scanner produces literal spans. Paragraph
+collection keeps lines inside a multiline word together so internal indentation,
+blank lines, and directive-looking text do not split the token. There is no
+shortcode name parser, paired-body index, or shortcode-specific emission path.
 
-The emitter carries verbatim ranges in its returned text, using output offsets
-rather than source offsets. A skipped document marks its entire nonempty output;
-a skipped container contributes one complete source slice without walking its
-children to recover shortcode boundaries. Explicit directive state and
-`EmitPlan::Preserve` produce these ranges for Markdown; `EmitPlan::Copy`,
-missing format plans, and retained-plan preservation do not. Other document
-kinds, source-language adapters, reindentation, and external formatters are
-unchanged.
+This does not imply rendering equivalence for arbitrary template languages.
+Templates in otherwise unsupported Markdown contexts retain their existing
+preservation policy.
 
-Future literal-aware formatting can append already-identified literal bytes at
-this same output boundary and carry the ranges through nested emission. It must
-preserve those bytes before they reach the emitter; this boundary cannot undo
-earlier trimming in actively formatted content. No new inline literal producers
-are introduced here.
+With `--wrap paragraph`, this input:
 
-This support does not interpret template expressions or validate arguments, and
-does not extend inline, mixed token/prose line, list, or blockquote support.
-It does not imply rendering equivalence for arbitrary Hugo or Jinja templates.
-
-Implementation checklist:
-
-- [x] Parse single-line and complete multiline shortcode tokens.
-- [x] Pair standalone tags while keeping unpaired and self-closing tokens independent.
-- [x] Preserve shortcode token bytes.
-- [x] Format Markdown bodies and preserve raw bodies with scoped directives.
-
-Example 1:
-
-Before:
-
-~~~~~md
-{{< include _footer.md >}}
+~~~~~text
+Before
+{{< raw caption="keep   _this_" >}}
+Keep   this payload
+as Markdown.
+{{< /raw >}}
+After.
 ~~~~~
 
-After:
+becomes:
 
-~~~~~md
-{{< include _footer.md >}}
-~~~~~
-
-Example 2:
-
-Before:
-
-~~~~~md
-{{< video https://www.youtube.com/embed/abc123 >}}
-~~~~~
-
-After:
-
-~~~~~md
-{{< video https://www.youtube.com/embed/abc123 >}}
-~~~~~
-
-Example 3:
-
-Before:
-
-~~~~~md
-Intro paragraph.
-
-{{< meta title >}}
-
-Closing paragraph.
-~~~~~
-
-After:
-
-~~~~~md
-Intro paragraph.
-
-{{< meta title >}}
-
-Closing paragraph.
+~~~~~text
+Before {{< raw caption="keep   _this_" >}} Keep this payload as Markdown. {{< /raw >}} After.
 ~~~~~
 
 ## 15. Display Math Blocks

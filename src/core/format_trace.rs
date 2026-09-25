@@ -92,9 +92,6 @@ fn markdown_decision_message(kind: MarkdownNodeKind, emit: &EmitPlan) -> Option<
         EmitPlan::MarkdownDiv { .. } => Some(format!(
             "markdown trace: formatted kind={kind} emit=MarkdownDiv"
         )),
-        EmitPlan::MarkdownShortcode { .. } => Some(format!(
-            "markdown trace: formatted kind={kind} emit=MarkdownShortcode"
-        )),
         EmitPlan::MarkdownOpaque => Some(format!(
             "markdown trace: formatted kind={kind} emit=MarkdownOpaque"
         )),
@@ -127,7 +124,6 @@ fn markdown_kind_name(kind: MarkdownNodeKind) -> &'static str {
         MarkdownNodeKind::Blockquote => "Blockquote",
         MarkdownNodeKind::CodeFence => "CodeFence",
         MarkdownNodeKind::QuartoDiv => "QuartoDiv",
-        MarkdownNodeKind::Shortcode => "Shortcode",
         MarkdownNodeKind::DisplayMath => "DisplayMath",
         MarkdownNodeKind::HtmlComment => "HtmlComment",
         MarkdownNodeKind::Raw => "Raw",

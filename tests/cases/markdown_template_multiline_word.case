@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical --verify
+-- stdin
+Before
+{{< name
+    arg="keep   this"
+>}}
+after   _word_.
+
+Before {{ token
+<!-- fmt: off -->
+}} after   _word_.
+-- stdout
+Before {{< name
+    arg="keep   this"
+>}} after *word*.
+
+Before {{ token
+<!-- fmt: off -->
+}} after *word*.
+-- stderr
+-- status
+0

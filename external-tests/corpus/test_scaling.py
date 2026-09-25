@@ -1,4 +1,4 @@
-"""Public CLI scaling controls for template rejection and lexical shortcodes.
+"""Public CLI scaling controls for opaque template words and rejection.
 
 Run via `uv run external-tests/run.py --suite corpus/test_scaling.py`.
 """
@@ -145,13 +145,20 @@ def test_unpaired_shortcode_calls_scale_with_input_size(tmp_path: Path) -> None:
     for count in [2000, 8000]:
         tokens = "{{< meta title >}}\n" * count
         source = tmp_path / f"shortcodes-{count}.md"
+        directive = "<!-- fmt: wrap=paragraph scope=file -->\n"
         source.write_text(
-            "{{% notice %}}\n" + tokens + "Following\nprose.\n{{% /notice %}}\n",
+            directive
+            + "{{% notice %}}\n"
+            + tokens
+            + "Following\nprose.\n{{% /notice %}}\n",
             encoding="utf-8",
         )
         cpu, formatted = measure_formatting_cpu(source)
         assert formatted == (
-            "{{% notice %}}\n" + tokens + "Following prose.\n{{% /notice %}}\n"
+            directive
+            + "{{% notice %}} "
+            + tokens.replace("\n", " ")
+            + "Following prose. {{% /notice %}}\n"
         )
         durations.append(cpu)
 
@@ -160,6 +167,24 @@ def test_unpaired_shortcode_calls_scale_with_input_size(tmp_path: Path) -> None:
     assert large <= small * 6, (
         "independent shortcode calls should scale with input size: "
         f"2000 calls used {small:.6f}s CPU, 8000 calls used {large:.6f}s CPU"
+    )
+
+
+def test_unclosed_template_lines_scale_with_input_size(tmp_path: Path) -> None:
+    durations = []
+    for count in [2000, 8000]:
+        text = "{{ unfinished   \n" * count + "Keep   the tail.  \t"
+        source = tmp_path / f"unclosed-templates-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == text
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "an unfinished template must not rescan the suffix on every line: "
+        f"2000 lines used {small:.6f}s CPU, 8000 used {large:.6f}s CPU"
     )
 
 
@@ -172,7 +197,7 @@ def test_overlapping_delimiters_and_attributes_scale_with_input_size(
     for count in [2000, 8000]:
         text = (
             '<!-- fmt: template.delimiters "{{" "END" scope=file -->\n'
-            '<!-- fmt: wrap=paragraph scope=file -->\n'
+            "<!-- fmt: wrap=paragraph scope=file -->\n"
             + (token + " ") * count
             + "{{ last }}"
             + suffix

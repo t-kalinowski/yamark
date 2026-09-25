@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap paragraph --verify
+-- stdin
+Keep [x](/_path_) ![alt](/_img_) <https://example.com/_id_> {{< relref "_slug_" >}} but change _emphasis_.
+
+Keep <https://example.com/_id_> {{ value   _raw_ }} but change _emphasis_.
+
+Before
+{{ value }} <https://example.com> and [real](  target  ) _word_.
+
+Before
+`{{ value }}` <https://example.com> and [real](  target  ) _word_.
+-- stdout
+Keep [x](/_path_) ![alt](/_img_) <https://example.com/_id_> {{< relref "_slug_" >}} but change *emphasis*.
+
+Keep <https://example.com/_id_> {{ value   _raw_ }} but change *emphasis*.
+
+Before {{ value }} <https://example.com> and [real]( target ) *word*.
+
+Before `{{ value }}` <https://example.com> and [real]( target ) *word*.
+-- stderr
+-- status
+0

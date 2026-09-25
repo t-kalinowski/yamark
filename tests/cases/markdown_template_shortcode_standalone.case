@@ -1,0 +1,14 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --verify
+-- stdin
+Before
+{{< raw >}}
+Keep   this payload
+exactly as written.
+{{< /raw >}}
+After.
+-- stdout
+Before {{< raw >}} Keep this payload exactly as written. {{< /raw >}} After.
+-- stderr
+-- status
+0

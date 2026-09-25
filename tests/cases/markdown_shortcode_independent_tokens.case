@@ -30,29 +30,17 @@ call.
 -- stdout
 {{< notice >}}
 
-First
-sentence. Second
-sentence.
+First sentence.
+Second sentence.
 
 {{< /notice >}}
 
-{{% outer %}}
-{{< raw >}}
-Format   this
-body.
-{{% verbatim %}}
-Nested   ordinary
-Markdown.
-{{< /raw >}}
-{{% /different %}}
-{{% /verbatim %}}
-{{% /outer %}}
+{{% outer %}} {{< raw >}} Format this body.
+{{% verbatim %}} Nested ordinary Markdown.
+{{< /raw >}} {{% /different %}} {{% /verbatim %}} {{% /outer %}}
 
-{{< something.inline />}}
-After the self-closing call.
-{{% single /%}}
-{{< /orphan >}}
-{{% /orphan %}}
+{{< something.inline />}} After the self-closing call.
+{{% single /%}} {{< /orphan >}} {{% /orphan %}}
 -- stderr
 -- status
 0

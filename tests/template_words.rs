@@ -20,24 +20,29 @@ fn format(source: &str, wrap: &str) -> String {
 }
 
 #[test]
-fn shortcode_bytes_survive_line_endings_eof_and_nested_documents() {
+fn template_words_preserve_bytes_across_line_endings_and_nested_documents() {
     for newline in ["\n", "\r\n", "\r"] {
         for wrap in ["none", "paragraph", "sentence", "20"] {
             for token in [
-                "{{< call   arg=\"é >}} \\\" still quoted\"  >}}",
+                r#"{{< call   arg="é keep   this"  >}}"#,
                 "{{% /call   %}}",
                 "{{< call / >}}",
                 "{{< data message=\"\n<!-- fmt: off -->\n<!-- fmt: on -->\n\" >}}",
-                "{{% call\narg='\\\' %}} still   quoted'  \t\nraw=`\\`\n%}}",
-                "{{< missing\nKeep   this.  \t\n\n<!-- fmt: on -->\nStill   opaque.  ",
-                "{{% call arg=\"unterminated\n%}}\n<!-- fmt: skip file -->\nKeep   this.  ",
+                "{{% call\narg='quotes have no   meaning'  \t\nraw=`\\`\n%}}",
+                "{{% call arg=\"unterminated\n%}}",
             ] {
                 let token = token.replace('\n', newline);
                 for prefix in ["", "\u{feff}"] {
                     for suffix in ["", newline] {
                         let source = format!("{prefix}{token}{suffix}");
                         let output = format(&source, wrap);
-                        assert_eq!(output, source, "wrap={wrap}");
+                        let final_newline = if suffix.is_empty() && !token.contains(['\n', '\r']) {
+                            "\n"
+                        } else {
+                            newline
+                        };
+                        let expected = format!("{prefix}{token}{final_newline}");
+                        assert_eq!(output, expected, "wrap={wrap}");
                         assert_eq!(format(&output, wrap), output, "second pass");
                     }
                 }
@@ -59,31 +64,8 @@ fn shortcode_bytes_survive_line_endings_eof_and_nested_documents() {
 }
 
 #[test]
-fn shortcode_body_tags_preserve_line_endings_and_eof() {
-    for newline in ["\n", "\r\n", "\r"] {
-        for closing_tag in ["{{% /notice %}}", "{{% /notice\n%}}"] {
-            for suffix in ["", newline] {
-                let opening = "{{% notice\n  title='keep %}} and   spacing'  \t\n%}}  \t\n"
-                    .replace('\n', newline);
-                let closing_tag = closing_tag.replace('\n', newline);
-                let closing = format!("{closing_tag}  \t{suffix}");
-                let body = "First   line.\nSecond   line.\n".replace('\n', newline);
-                let input = format!("{opening}{body}{closing}");
-                let expected = format!("{opening}First line. Second line.{newline}{closing}");
-                assert_eq!(format(&input, "paragraph"), expected);
-                assert_eq!(format(&expected, "paragraph"), expected, "second pass");
-            }
-        }
-    }
-}
-
-#[test]
-fn shortcode_transcript_outputs_are_idempotent() {
+fn template_word_transcript_outputs_are_idempotent() {
     for case in [
-        include_str!("cases/markdown_shortcode_body_column_wrap.case"),
-        include_str!("cases/markdown_shortcode_body_scope.case"),
-        include_str!("cases/markdown_shortcode_body_nested_raw.case"),
-        include_str!("cases/markdown_shortcode_body_multiline_tags.case"),
         include_str!("cases/markdown_shortcode_independent_tokens.case"),
         include_str!("cases/markdown_shortcode_multiline_tokens.case"),
         include_str!("cases/markdown_shortcode_directives.case"),

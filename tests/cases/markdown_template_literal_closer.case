@@ -1,0 +1,28 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical --verify
+-- stdin
+Before
+{{ "}}   after   [link](  target  ) _word_.
+
+Before
+{{ { }}   after   [link](  target  ) _word_.
+
+Before
+{{ "}}   after   [link](  target  ) _word_. }}
+
+<!-- fmt: wrap=8 scope=next -->
+Before {{ render("unclosed) }} after.
+-- stdout
+Before {{ "}} after [link](target) *word*.
+
+Before {{ { }} after [link](target) *word*.
+
+Before {{ "}} after [link](target) *word*. }}
+
+<!-- fmt: wrap=8 scope=next -->
+Before
+{{ render("unclosed) }}
+after.
+-- stderr
+-- status
+0

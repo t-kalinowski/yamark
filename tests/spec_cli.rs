@@ -1145,7 +1145,7 @@ Term
 }
 
 #[test]
-fn markdown_hugo_shortcodes_are_not_generic_template_spans() {
+fn markdown_shortcode_syntax_uses_generic_template_words() {
     let input = "Before {{< ref \"target\" >}} after    text.\n";
     let expected = "Before {{< ref \"target\" >}} after text.\n";
     let (status, stdout, stderr) = run_stdin(&["format", "--stdin-file-path", "input.md"], input);
@@ -2927,7 +2927,7 @@ Term
 }
 
 #[test]
-fn markdown_hugo_angle_shortcode_bodies_are_preserved() {
+fn markdown_template_words_reflow_with_surrounding_prose() {
     let input = "\
 {{< notice >}}
 This    Markdown body formats normally.
@@ -2944,7 +2944,10 @@ This    Markdown body formats normally.
         input,
     );
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, input);
+    assert_eq!(
+        stdout,
+        "{{< notice >}} This Markdown body formats normally.\n{{< /notice >}}\n"
+    );
     assert_eq!(stderr, "");
 }
 

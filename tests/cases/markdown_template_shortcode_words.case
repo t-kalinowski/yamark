@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical --verify
+-- stdin
+Before   {{< raw caption="Keep   _this_ [x]( url )" >}} keep   this payload {{< /raw >}}   after.
+
+{{% greeting.inline %}}
+First   line.
+Second   line.
+{{% /greeting.inline %}}
+-- stdout
+Before {{< raw caption="Keep   _this_ [x]( url )" >}} keep this payload {{< /raw >}} after.
+
+{{% greeting.inline %}} First line. Second line. {{% /greeting.inline %}}
+-- stderr
+-- status
+0

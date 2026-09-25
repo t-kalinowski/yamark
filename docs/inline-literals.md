@@ -31,16 +31,18 @@ coordinates as it restores prefixes. Nested output carries those ranges through
 the same verbatim-range mechanism used for explicitly preserved Markdown.
 Editable gaps and structural blank lines still receive ordinary output cleanup.
 Literal protection also leaves document-level final-newline insertion active.
-Explicit preservation, including standalone shortcode tokens, retains its
-existing policy for an absent final newline. That policy follows the actual
-output tail after fragment composition.
+Explicit preservation retains its existing policy for an absent final newline.
+The absent-final-newline policy follows the actual output tail after fragment
+composition. Standalone template words use ordinary final-newline insertion.
 
 ## Boundaries
 
 This does not expand the block grammar, template eligibility, HTML matching, or
 malformed-delimiter rules. Recognition stops at existing opaque inline tokens;
 it does not recursively interpret code or math inside HTML or strikethrough.
-Block boundaries still limit which source belongs to one inline paragraph.
+Double-brace template words scan through the first literal `}}`. Their internal
+line breaks and block-looking text remain part of the same opaque word.
+Other block boundaries still limit which source belongs to one inline paragraph.
 
 Automatic fallback retains its existing cleanup policy. For example, a list
 starting with `100.` and a four-space continuation remains unsupported by the

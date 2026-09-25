@@ -54,8 +54,7 @@ Before   `{{
   render(customer.address)
 }}` after template.
 
-> {{% quote %}}
-> Keep   unsupported continuation.
+> {{% quote %}} Keep unsupported continuation.
 
 Format ordinary prose.
 Second sentence.

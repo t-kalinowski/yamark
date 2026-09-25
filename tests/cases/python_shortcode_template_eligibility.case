@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.py --wrap paragraph --canonical --verify
+-- stdin
+# fmt: markdown
+prompt = """
+Before   {{< raw >}} after   _word_.
+"""
+
+# fmt: markdown
+ordinary = """
+Before   text after   _word_.
+"""
+-- stdout
+# fmt: markdown
+prompt = """
+Before   {{< raw >}} after   _word_.
+"""
+
+# fmt: markdown
+ordinary = """
+Before text after *word*.
+"""
+-- stderr
+-- status
+0

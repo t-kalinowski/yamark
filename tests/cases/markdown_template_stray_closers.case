@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical --verify
+-- stdin
+Before {{% token   
+"%}} after   _word_. %}}
+
+Before {{ token }} after   _word_. %} #} %>
+-- stdout
+Before {{% token   
+"%}} after *word*. %}}
+
+Before {{ token }} after *word*. %} #} %>
+-- stderr
+-- status
+0

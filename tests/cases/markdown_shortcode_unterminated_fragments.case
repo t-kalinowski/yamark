@@ -25,7 +25,7 @@ Before the token.
 {{% notice message="unterminated
 %}}
 <!-- fmt: on -->
-Keep   this body.   
+Keep this body. \
 :::
 
 Outside the fragment.

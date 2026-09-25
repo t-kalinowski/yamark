@@ -453,7 +453,6 @@ pub enum MarkdownNodeKind {
     Blockquote,
     CodeFence,
     QuartoDiv,
-    Shortcode,
     DisplayMath,
     HtmlComment,
     Raw,
@@ -511,11 +510,6 @@ pub enum EmitPlan {
         supported: bool,
     },
     MarkdownDiv {
-        opening: Span,
-        closing: Span,
-        nested: usize,
-    },
-    MarkdownShortcode {
         opening: Span,
         closing: Span,
         nested: usize,

@@ -91,9 +91,11 @@ impl ProseTemplateSpans {
                 continue;
             }
             if !escaped_at(source, index) {
-                // Do not broaden HTML, nested markup, or multiline literals.
+                // Autolinks have a complete Markdown boundary; other HTML
+                // retains the conservative template policy.
                 if rest.starts_with('<') {
-                    return None;
+                    index = commonmark_autolink_span_end(source, index)?;
+                    continue;
                 }
                 let end = if rest.starts_with('[') || rest.starts_with("![") {
                     Some(link_or_bracket_token_end(&mut scan, index)?)
@@ -143,37 +145,18 @@ impl ProseTemplateSpans {
         let Some(contents) = &self.0 else {
             return false;
         };
+        // Only openers begin a template. A closer outside an expression is
+        // ordinary text; openers hidden by Markdown must belong to code spans.
         delimiters.iter().all(|delimiter| {
-            // Template expressions may quote either marker any number of times.
-            // Code keeps its existing requirement that both markers occur within
-            // the same code span; fragments in separate literals cannot pair.
-            let mut opens = markers_outside_expressions(source, &delimiter.open, contents);
-            let mut closes = markers_outside_expressions(source, &delimiter.close, contents);
-            let mut spans = contents.iter().filter(|span| !span.expression);
-            let mut span = spans.next();
-            loop {
-                let open = opens.next();
-                let close = if delimiter.open == delimiter.close {
-                    opens.next()
-                } else {
-                    closes.next()
-                };
-                let (open, close) = match (open, close) {
-                    (None, None) => return true,
-                    (Some(open), Some(close)) if open + delimiter.open.len() <= close => {
-                        (open, close)
-                    }
-                    _ => return false,
-                };
-                while span.is_some_and(|span| span.span.end() <= open) {
-                    span = spans.next();
+            let mut code = contents.iter().filter(|span| !span.expression).peekable();
+            markers_outside_expressions(source, &delimiter.open, contents).all(|open| {
+                while code.peek().is_some_and(|span| span.span.end() <= open) {
+                    code.next();
                 }
-                if !span.is_some_and(|span| {
-                    span.span.start() <= open && close + delimiter.close.len() <= span.span.end()
-                }) {
-                    return false;
-                }
-            }
+                code.peek().is_some_and(|span| {
+                    span.span.start() <= open && open + delimiter.open.len() <= span.span.end()
+                })
+            })
         })
     }
 }
@@ -224,12 +207,9 @@ fn inline_template_at(
     delimiters: &[TemplateDelimiter],
 ) -> TemplateBoundary {
     let source = scan.text;
-    let mut matches = delimiters.iter().filter(|delimiter| {
-        source[index..].starts_with(&delimiter.open)
-            && !(delimiter.open == "{{"
-                && delimiter.close == "}}"
-                && (source[index..].starts_with("{{<") || source[index..].starts_with("{{%")))
-    });
+    let mut matches = delimiters
+        .iter()
+        .filter(|delimiter| source[index..].starts_with(&delimiter.open));
     let Some(first) = matches.next() else {
         return TemplateBoundary::Absent;
     };
@@ -265,6 +245,10 @@ fn literal_template_comment(delimiter: &TemplateDelimiter) -> bool {
     delimiter.open == "{#" && delimiter.close == "#}"
 }
 
+fn literal_template_braces(delimiter: &TemplateDelimiter) -> bool {
+    delimiter.open == "{{" && delimiter.close == "}}"
+}
+
 struct TemplateCandidate<'a> {
     delimiter: &'a TemplateDelimiter,
     start: usize,
@@ -285,8 +269,8 @@ impl<'a> TemplateCandidate<'a> {
             return None;
         }
         let start = start + delimiter.open.len();
-        let literal = literal_template_comment(delimiter);
-        if literal {
+        let literal = literal_template_comment(delimiter) || literal_template_braces(delimiter);
+        if literal_template_comment(delimiter) {
             // Failed comment searches can fall back to Pandoc attributes. Index
             // closers once so successive attributes do not rescan the suffix.
             let closes = scan.template_comment_closes.get_or_insert_with(|| {
@@ -362,7 +346,11 @@ fn template_candidates_end(
     let start = candidates.iter().map(|candidate| candidate.start).min()?;
     for (offset, ch) in source[start..].char_indices() {
         if matches!(ch, '\n' | '\r') {
-            return None;
+            for candidate in &mut *candidates {
+                if !literal_template_braces(candidate.delimiter) {
+                    candidate.active = false;
+                }
+            }
         }
         let mut active = false;
         for candidate in &mut *candidates {
@@ -376,6 +364,68 @@ fn template_candidates_end(
         }
     }
     None
+}
+
+/// Keep block-looking lines inside a template word in the same paragraph.
+pub(crate) fn markdown_template_line_end(
+    source: &str,
+    line_end: usize,
+    delimiters: &[TemplateDelimiter],
+) -> Option<usize> {
+    if !delimiters
+        .iter()
+        .any(|delimiter| source[..line_end].contains(&delimiter.open))
+    {
+        return Some(line_end);
+    }
+    let mut scan = InlineScan::new(source);
+    let mut index = 0;
+    let mut end = line_end;
+    while index < end {
+        match inline_template_at(&mut scan, index, delimiters) {
+            TemplateBoundary::Complete(token_end) => {
+                if token_end > end {
+                    // A later word can start on the same physical closing line.
+                    end = source[token_end..]
+                        .find(['\n', '\r'])
+                        .map_or(source.len(), |newline| token_end + newline);
+                }
+                index = token_end;
+                continue;
+            }
+            TemplateBoundary::Incomplete => {
+                if source[index..].starts_with("{{")
+                    && delimiters.iter().any(literal_template_braces)
+                {
+                    // No closer exists in this fragment. Consume it once rather
+                    // than repeating the failed suffix search on each line.
+                    return None;
+                }
+                break;
+            }
+            TemplateBoundary::Absent => {}
+        }
+        if source[index..].starts_with('<') && !escaped_at(source, index) {
+            let Some(html_end) = paired_inline_html_span_end(source, index)
+                .or_else(|| commonmark_autolink_span_end(source, index))
+            else {
+                // Unsupported HTML is handled by the existing paragraph policy.
+                break;
+            };
+            index = html_end;
+            continue;
+        }
+        if let Some(literal_end) = scan.literal_span_end(index) {
+            index = literal_end;
+        } else {
+            index += source[index..]
+                .chars()
+                .next()
+                .expect("source character")
+                .len_utf8();
+        }
+    }
+    Some(end)
 }
 
 pub(crate) fn markdown_multiline_link_destination_spans(
@@ -1431,8 +1481,6 @@ fn rich_child_block_start(trimmed: &str) -> bool {
         || trimmed.starts_with("\\[")
         || trimmed.starts_with("\\begin{")
         || trimmed.starts_with(":::")
-        || trimmed.starts_with("{{<")
-        || trimmed.starts_with("{{%")
         || markdown_list_marker(trimmed).is_some()
 }
 
@@ -2119,11 +2167,6 @@ fn protected_inline_token_end(scan: &mut InlineScan<'_>, index: usize) -> Option
     }
     if rest.starts_with('<') {
         return rest.find('>').map(|close| index + close + 1);
-    }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(index + close + 2);
     }
     if rest.starts_with('{')
         && let Some(end) = balanced_brace_end(rest)
@@ -3846,11 +3889,6 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
     {
         return Some(end);
     }
-    if (rest.starts_with("{{<") || rest.starts_with("{{%"))
-        && let Some(close) = rest.find("}}")
-    {
-        return Some(start + close + 2);
-    }
     if rest.starts_with('{')
         && let Some(close) = balanced_brace_end(rest)
     {
@@ -3871,9 +3909,7 @@ fn inline_token_fragment_end(scan: &mut InlineScan<'_>, start: usize) -> Option<
                 || slice.starts_with('$')
                 || slice.starts_with("![")
                 || slice.starts_with('[')
-                || slice.starts_with('<')
-                || slice.starts_with("{{<")
-                || slice.starts_with("{{%"))
+                || slice.starts_with('<'))
         {
             break;
         }
@@ -4152,9 +4188,6 @@ fn raw_semantics_protected_token_end(scan: &mut InlineScan<'_>, index: usize) ->
             .or_else(|| rest.find('>').map(|close| index + close + 1)),
         b'[' => link_or_bracket_token_end(scan, index),
         b'!' if rest.as_bytes().get(1) == Some(&b'[') => link_or_bracket_token_end(scan, index),
-        b'{' if rest.starts_with("{{<") || rest.starts_with("{{%") => {
-            rest.find("}}").map(|close| index + close + 2)
-        }
         b'{' => balanced_brace_end(rest).map(|close| index + close),
         _ => None,
     }
