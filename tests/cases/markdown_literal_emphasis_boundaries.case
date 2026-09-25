@@ -1,0 +1,61 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+# _Before <kbd title="`">raw</kbd> after_ and `code`
+
+# _Before [link](`target) after_ and `code`
+
+Before <kbd>_raw_</kbd> after _outside_ [real](  target  ).
+
+Before <42 `_raw_`> after _outside_ [real](  target  ).
+
+Before _with `{{ value }} _raw_` inside_ after [real](  target  ).
+
+- Before {{ value }} _raw_ [real](  target  ).
+
+Before *```` unmatched `[x](  url  )`* after [r](  t  ).
+
+Before `code`` [x](  url  ) tail` after [r](  t  ).
+
+Before $$[x](  url  )$$ after _outside_ [r](  t  ).
+
+# Before ``unmatched _word_` after _outside_
+
+# _Before <kbd>_raw_</kbd> after_
+
+# _Before [raw _text_](target) after_
+
+# _Before <42 _raw_> after_
+
+# _Before {key="_raw_"} after_
+-- stdout
+# *Before <kbd title="`">raw</kbd> after* and `code`
+
+# *Before [link](`target) after* and `code`
+
+Before <kbd>_raw_</kbd> after *outside* [real]( target ).
+
+Before <42 `_raw_`> after *outside* [real]( target ).
+
+Before _with `{{ value }} _raw_` inside_ after [real](  target  ).
+
+- Before {{ value }} *raw* [real](target).
+
+Before *```` unmatched `[x](  url  )`* after [r](t).
+
+Before `code`` [x](url) tail` after [r](t).
+
+Before $$[x](url)$$ after *outside* [r](t).
+
+# Before ``unmatched _word_` after *outside*
+
+# *Before <kbd>*raw*</kbd> after*
+
+# *Before [raw _text*](target) after_
+
+# *Before <42 _raw*> after_
+
+# *Before {key="*raw*"} after*
+-- stderr
+-- status
+0

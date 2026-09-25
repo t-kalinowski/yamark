@@ -1,6 +1,7 @@
 <!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
 
 - Markdown bodies between standalone Hugo `{{% ... %}}` shortcode tags now format normally. Shortcode tags and arguments are preserved, as are standard `{{< ... >}}` bodies and `.inline` template definitions.
+- Markdown wrapping treats complete single-line template expressions such as `{{ render("keep   this") }}` as opaque words, including in lists and blockquotes. Expression contents stay exact while surrounding prose formats normally. Template-only lines can join surrounding prose or result from wrapping; use `fmt: skip`, `fmt: off`/`fmt: on`, or `fmt: skip file` to preserve layout.
 - Markdown tables fit their contents by default while retaining column alignment. Use `table-widths=preserve` in a scoped directive or document setting, `[format].table_widths` in `yamark.toml`, or `--table-widths preserve` to retain intentional source widths. Fitting can change Pandoc's rendered column proportions. Multiline cells retain their line breaks, and headerless tables end at their closing border.
 - Building from source now requires Rust 1.98.1 or newer.
 - Fix a panic when formatting headings with non-ASCII text and attached attributes, such as `# Café{#id}`.
@@ -10,3 +11,4 @@
 - In the Rust API, `SourceSpan`, `Document`, and their stored node and emission types no longer take source lifetime parameters. Text accessors borrow the supplied source buffer. Spans retain their compact representation and bounds checks.
 - YAML strings such as `:workspace` and `?query` no longer gain unnecessary quotes when formatted in flow collections.
 - `--compact` keeps single-pair root mappings and one-line block mappings in sequences free of unnecessary braces.
+- Releases now include 64-bit ARM Linux (`aarch64-unknown-linux-gnu`) archives and wheels.

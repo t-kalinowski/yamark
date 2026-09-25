@@ -8,20 +8,20 @@ use yamark::plugins::PluginRegistry;
 #[test]
 fn parsed_documents_can_move_with_their_source_buffer() {
     let options = FormatOptions::default();
-    let (source, document) = {
+    let document = {
         let source = SourceBuffer::new("name: 'Café'\n".to_owned());
-        let document = parse_source(
-            &source,
-            Span::new(0, source.as_str().len()),
+        let range = Span::new(0, source.as_str().len());
+        parse_source(
+            source,
+            range,
             DocumentKind::Yaml,
             options,
             &Config::default(),
         )
-        .unwrap();
-        (source, document)
+        .unwrap()
     };
     assert_eq!(
-        emit_document(&source, &document, options, &PluginRegistry::default()).unwrap(),
+        emit_document(&document.finalize(options), &PluginRegistry::default()).unwrap(),
         "name: Café\n"
     );
 }

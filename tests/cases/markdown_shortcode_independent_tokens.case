@@ -1,0 +1,58 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+{{< notice >}}
+
+First
+sentence. Second
+sentence.
+
+{{< /notice >}}
+
+{{% outer %}}
+{{< raw >}}
+Format   this
+body.
+{{% verbatim %}}
+Nested   ordinary
+Markdown.
+{{< /raw >}}
+{{% /different %}}
+{{% /verbatim %}}
+{{% /outer %}}
+
+{{< something.inline />}}
+After   the self-closing
+call.
+{{% single /%}}
+{{< /orphan >}}
+{{% /orphan %}}
+-- stdout
+{{< notice >}}
+
+First
+sentence. Second
+sentence.
+
+{{< /notice >}}
+
+{{% outer %}}
+{{< raw >}}
+Format   this
+body.
+{{% verbatim %}}
+Nested   ordinary
+Markdown.
+{{< /raw >}}
+{{% /different %}}
+{{% /verbatim %}}
+{{% /outer %}}
+
+{{< something.inline />}}
+After the self-closing call.
+{{% single /%}}
+{{< /orphan >}}
+{{% /orphan %}}
+-- stderr
+-- status
+0

@@ -1,8 +1,8 @@
 use crate::config::Config;
 use crate::core::directives::{
-    Directive, DirectiveDelta, DirectiveEngine, DirectiveState, Scope, StateId, TemplateDelimiter,
-    contains_markdown_template_span, file_scope_delta, parse_markdown_html_directive,
-    parse_markdown_html_directive_checked,
+    Directive, DirectiveDelta, DirectiveEngine, DirectiveState, DirectiveStateTable, Scope,
+    StateId, TemplateDelimiter, contains_markdown_template_span, file_scope_delta,
+    parse_markdown_html_directive, parse_markdown_html_directive_checked,
 };
 use crate::core::document::{
     CodeFenceSafety, Document, DocumentKind, EmitPlan, FormatOptions, MarkdownNodeKind,
@@ -10,10 +10,13 @@ use crate::core::document::{
 };
 use crate::core::markdown_marker::markdown_list_marker_len;
 use crate::core::source::{SourceBuffer, Span};
-use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlNodeId, YamlScalar};
+use crate::core::yaml_model::{
+    YamlAstKind, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind, YamlScalar,
+};
 use crate::diagnostic::Result;
+use std::collections::HashMap;
 
-pub fn parse_markdown(
+pub(crate) fn parse_markdown(
     source: &SourceBuffer,
     range: Span,
     options: FormatOptions,
@@ -119,6 +122,7 @@ fn parse_markdown_with_mode(
     let start_line = first_line_index(source, range);
     let mut i = start_line;
     let end_line = end_line_index(source, range);
+    let mut shortcode_pairs = None;
 
     if context == MarkdownParseContext::Document
         && i < end_line
@@ -165,6 +169,8 @@ fn parse_markdown_with_mode(
         let line = source.lines[i];
         let text = source.line_text(i);
 
+        // Disabled regions use the existing linewise directive policy. Block
+        // structure, including shortcodes, does not hide a fmt: on line.
         if engine.formatting_disabled() {
             if markdown_on_directive_line(text) {
                 let state = engine.state_for_node(&mut doc, false);
@@ -375,26 +381,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::DefinitionList,
-                definition_list_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::DefinitionList)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::DefinitionList),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::DefinitionList,
+                span,
+                MarkdownBlockFormatKind::DefinitionList,
+                options,
+                definition_list_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -501,26 +497,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::List,
-                list_block_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::List)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::List),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::List,
+                span,
+                MarkdownBlockFormatKind::List,
+                options,
+                list_block_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -535,26 +521,16 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            let supported = markdown_block_emit_supported(
+            push_structural_markdown_format_node(
                 source,
-                span,
-                doc.state(state),
-                options,
-                MarkdownBlockFormatKind::Blockquote,
-                blockquote_block_supported(source, start, i),
-            );
-            validate_markdown_format_target(source, &doc, state, span, supported)?;
-            let emit = if supported {
-                markdown_format_emit_plan(MarkdownBlockFormatKind::Blockquote)
-            } else {
-                EmitPlan::Copy
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::Blockquote),
-                span,
+                &mut doc,
                 state,
-                emit,
-            });
+                MarkdownNodeKind::Blockquote,
+                span,
+                MarkdownBlockFormatKind::Blockquote,
+                options,
+                blockquote_block_supported(source, start, i),
+            )?;
             continue;
         }
 
@@ -594,52 +570,56 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if shortcode_block_at(text) {
-            let start = i;
-            i = raw_sensitive_end(source, i, end_line);
-            let state = engine.state_for_node(&mut doc, true);
-            let span = Span::new(
-                source.lines[start].full.start(),
-                source.lines[i - 1].full.end(),
-            );
-            validate_markdown_format_target(source, &doc, state, span, true)?;
-            let emit = if let Some(shortcode) = hugo_shortcode_opening(text.trim_start())
-                && shortcode.delimiter == '%'
-                && !shortcode.name.ends_with(".inline")
-                && !doc.state(state).preserve
-                && hugo_shortcode_closes(source.line_text(i - 1).trim_start(), shortcode)
-                && let opening_end = hugo_shortcode_tag_end(source, start, i, shortcode)
-                && opening_end < i
-            {
-                // Markdown notation has a Markdown body. Inline definitions contain
-                // template code, and standard-notation bodies may contain raw data.
-                let opening = Span::new(span.start, source.lines[opening_end - 1].full.end());
-                let closing = source.lines[i - 1].full;
-                let content = Span::new(opening.end, closing.start());
-                let state_value = doc.state(state).clone();
-                let nested_config = config_for_directive_state(config, &state_value);
-                let nested = doc.push_nested(parse_markdown_with_mode(
-                    source,
-                    content,
-                    state_value.markdown_options(options),
-                    &nested_config,
-                    mode,
-                    MarkdownParseContext::Fragment,
-                )?);
-                EmitPlan::MarkdownShortcode {
-                    opening,
-                    closing: closing.into(),
-                    nested,
-                }
-            } else {
-                EmitPlan::MarkdownOpaque
-            };
-            doc.push_node(Node {
-                kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
-                span,
-                state,
-                emit,
-            });
+        if let Some(token_start) = shortcode_block_start(source, i) {
+            let pairs = shortcode_pairs
+                .get_or_insert_with(|| shortcode_body_pairs(source, i, end_line, range.end));
+            if let Some(&closing_line) = pairs.get(&i) {
+                let token_end = shortcode_token_end(source, token_start, range.end);
+                let opening_end = source.line_at_byte(token_end - 1) + 1;
+                let opening =
+                    Span::new(line.full.start(), source.lines[opening_end - 1].full.end());
+                let closing_start = shortcode_block_start(source, closing_line)
+                    .expect("paired shortcode closing tag");
+                let closing_end = shortcode_token_end(source, closing_start, range.end);
+                let next_line = source.line_at_byte(closing_end - 1) + 1;
+                let closing = Span::new(
+                    source.lines[closing_line].full.start(),
+                    source.lines[next_line - 1].full.end(),
+                );
+                let span = Span::new(opening.start, closing.end);
+                let state = engine.state_for_node(&mut doc, true);
+                validate_markdown_format_target(source, &doc, state, span, true)?;
+                let tag = shortcode_tag(source.slice(Span::new(token_start, token_end)))
+                    .expect("paired shortcode tag");
+                let emit = if !tag.raw() && !doc.state(state).preserve {
+                    let state_value = doc.state(state).clone();
+                    let nested_config = config_for_directive_state(config, &state_value);
+                    let nested = doc.push_nested(parse_markdown_with_mode(
+                        source,
+                        Span::new(opening.end, closing.start),
+                        state_value.markdown_options(options),
+                        &nested_config,
+                        mode,
+                        MarkdownParseContext::Fragment,
+                    )?);
+                    EmitPlan::MarkdownShortcode {
+                        opening,
+                        closing,
+                        nested,
+                    }
+                } else {
+                    EmitPlan::MarkdownOpaque
+                };
+                doc.push_node(Node {
+                    kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
+                    span,
+                    state,
+                    emit,
+                });
+                i = next_line;
+                continue;
+            }
+            i = push_shortcode_token(source, &mut doc, &mut engine, i, token_start, range);
             continue;
         }
 
@@ -857,6 +837,7 @@ fn parse_markdown_with_mode(
         ));
     }
 
+    retain_markdown_drafts(source, &mut doc, options);
     Ok(doc)
 }
 
@@ -1100,6 +1081,148 @@ fn plan_markdown_thematic_break() -> EmitPlan {
     EmitPlan::MarkdownThematicBreak
 }
 
+/// Only formatted nodes own a retained record; other nodes need one small index.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MarkdownPlans {
+    by_node: Vec<Option<std::num::NonZeroUsize>>,
+    // Both vectors share each slot through finalization; emission reads only plans.
+    plans: Vec<RetainedMarkdown>,
+    planning: Vec<MarkdownPlanning>,
+}
+
+impl MarkdownPlans {
+    pub(crate) fn block_count(&self) -> usize {
+        self.plans.len()
+    }
+
+    pub(crate) fn push_node(&mut self) {
+        self.by_node.push(None);
+    }
+
+    pub(crate) fn get(&self, node: usize) -> Option<&RetainedMarkdown> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&self.plans[id.get() - 1])
+    }
+
+    pub(crate) fn take_fragment_block(&mut self, node: usize) -> Option<crate::core::wrap::Plan> {
+        let retained = self.get_mut(node)?;
+        if retained.preserve {
+            None
+        } else {
+            retained.plan.take()
+        }
+    }
+
+    fn get_mut(&mut self, node: usize) -> Option<&mut RetainedMarkdown> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&mut self.plans[id.get() - 1])
+    }
+
+    fn get_pair_mut(
+        &mut self,
+        node: usize,
+    ) -> Option<(&mut RetainedMarkdown, &mut MarkdownPlanning)> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some((
+            &mut self.plans[id.get() - 1],
+            &mut self.planning[id.get() - 1],
+        ))
+    }
+
+    fn planning(&self, node: usize) -> Option<&MarkdownPlanning> {
+        let id = self.by_node.get(node).copied().flatten()?;
+        Some(&self.planning[id.get() - 1])
+    }
+
+    fn insert(&mut self, node: usize, plan: (RetainedMarkdown, MarkdownPlanning)) {
+        if let Some(id) = self.by_node[node] {
+            self.plans[id.get() - 1] = plan.0;
+            self.planning[id.get() - 1] = plan.1;
+        } else {
+            if self.plans.is_empty() {
+                self.plans.reserve_exact(1);
+                self.planning.reserve_exact(1);
+            }
+            self.plans.push(plan.0);
+            self.planning.push(plan.1);
+            self.by_node[node] = std::num::NonZeroUsize::new(self.plans.len());
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RetainedMarkdown {
+    pub(crate) preserve: bool,
+    pub(crate) plan: Option<crate::core::wrap::Plan>,
+}
+
+/// Recognition and policy facts are needed only until the last node is finalized.
+#[derive(Debug, Clone)]
+struct MarkdownPlanning {
+    state: StateId,
+    preserve_raw: bool,
+    options: Option<FormatOptions>,
+    draft: Option<crate::core::wrap::Draft>,
+    template_spans: Option<crate::core::wrap::ProseTemplateSpans>,
+}
+
+fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
+    Some(match emit {
+        EmitPlan::MarkdownParagraph => MarkdownBlockFormatKind::Paragraph,
+        EmitPlan::MarkdownList => MarkdownBlockFormatKind::List,
+        EmitPlan::MarkdownDefinitionList => MarkdownBlockFormatKind::DefinitionList,
+        EmitPlan::MarkdownBlockquote => MarkdownBlockFormatKind::Blockquote,
+        EmitPlan::MarkdownTable => MarkdownBlockFormatKind::Table,
+        EmitPlan::MarkdownPandocTable => MarkdownBlockFormatKind::PandocTable,
+        _ => return None,
+    })
+}
+
+impl MarkdownPlanning {
+    fn preserves_templates(
+        &mut self,
+        input: &str,
+        kind: MarkdownBlockFormatKind,
+        delimiters: &[TemplateDelimiter],
+    ) -> bool {
+        if matches!(
+            kind,
+            MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+        ) || !contains_markdown_template_span(input, delimiters)
+        {
+            return false;
+        }
+        !self
+            .template_spans
+            .get_or_insert_with(|| {
+                crate::core::wrap::ProseTemplateSpans::recognize(input, delimiters)
+            })
+            .contains_all_templates(input, delimiters)
+    }
+
+    fn resolve_plan(
+        &mut self,
+        retained: &mut RetainedMarkdown,
+        input: &str,
+        options: FormatOptions,
+        delimiters: &[TemplateDelimiter],
+    ) {
+        retained.plan = self
+            .draft
+            .as_mut()
+            .and_then(|draft| draft.resolve_with_templates(input, options, delimiters));
+        self.options = Some(options);
+    }
+
+    fn template_policy_changed(&self, node: &Node, doc: &Document) -> bool {
+        // Parsing and finalization share this tree's append-only state table.
+        // A late directive can add delimiters without changing format options.
+        self.state != node.state
+            && doc.state(self.state).template_delimiters
+                != doc.state(node.state).template_delimiters
+    }
+}
+
 fn push_markdown_format_node(
     source: &SourceBuffer,
     doc: &mut Document,
@@ -1109,80 +1232,372 @@ fn push_markdown_format_node(
     format_kind: MarkdownBlockFormatKind,
     options: FormatOptions,
 ) -> Result<()> {
-    let supported =
-        markdown_block_emit_supported(source, span, doc.state(state), options, format_kind, true);
-    validate_markdown_format_target(source, doc, state, span, supported)?;
-    let emit = if supported {
-        markdown_format_emit_plan(format_kind)
-    } else {
-        EmitPlan::Copy
-    };
-    doc.push_node(Node {
+    push_structural_markdown_format_node(source, doc, state, kind, span, format_kind, options, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_structural_markdown_format_node(
+    source: &SourceBuffer,
+    doc: &mut Document,
+    state: StateId,
+    kind: MarkdownNodeKind,
+    span: Span,
+    format_kind: MarkdownBlockFormatKind,
+    options: FormatOptions,
+    structurally_supported: bool,
+) -> Result<()> {
+    let mut node = Node {
         kind: NodeKind::Markdown(kind),
         span,
         state,
-        emit,
-    });
+        emit: markdown_format_emit_plan(format_kind),
+    };
+    // Explicit targets are checked here to preserve diagnostic/skip precedence.
+    // The successful plan is retained and reused after file directives settle.
+    let planned = if structurally_supported && doc.state(state).markdown_target {
+        Some(plan_markdown_block(
+            source,
+            &node,
+            doc.state(state),
+            options,
+            format_kind,
+            true,
+        ))
+    } else {
+        None
+    };
+    let supported = structurally_supported
+        && planned.as_ref().is_none_or(|(plan, _)| {
+            !plan.preserve
+                && (plan.plan.is_some()
+                    || matches!(
+                        format_kind,
+                        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+                    ))
+        });
+    validate_markdown_format_target(source, doc, state, span, supported)?;
+    if !supported {
+        node.emit = EmitPlan::Copy;
+    }
+    doc.push_node(node);
+    if let Some(planned) = planned {
+        doc.markdown.insert(doc.nodes.len() - 1, planned);
+    }
     Ok(())
 }
 
-fn markdown_block_emit_supported(
+fn plan_markdown_block(
     source: &SourceBuffer,
-    span: Span,
+    node: &Node,
     state: &DirectiveState,
     options: FormatOptions,
     kind: MarkdownBlockFormatKind,
-    structurally_supported: bool,
-) -> bool {
-    structurally_supported
-        && (!state.markdown_target
-            || markdown_block_format_supported(source, span, state, options, kind))
+    resolve: bool,
+) -> (RetainedMarkdown, MarkdownPlanning) {
+    let input = source.slice(node.span);
+    let options = state.markdown_options(options);
+    let preserve_raw =
+        crate::core::wrap::markdown_reflow_changes_raw_semantics(input, &state.template_delimiters);
+    let mut retained = RetainedMarkdown {
+        preserve: preserve_raw,
+        plan: None,
+    };
+    let mut planning = MarkdownPlanning {
+        state: node.state,
+        preserve_raw,
+        options: resolve.then_some(options),
+        draft: None,
+        template_spans: None,
+    };
+    retained.preserve =
+        preserve_raw || planning.preserves_templates(input, kind, &state.template_delimiters);
+    planning.draft = (!retained.preserve)
+        .then(|| prepare_markdown_block(input, kind))
+        .flatten();
+    if resolve {
+        planning.resolve_plan(&mut retained, input, options, &state.template_delimiters);
+    }
+    (retained, planning)
 }
 
-fn markdown_block_format_supported(
-    source: &SourceBuffer,
-    span: Span,
-    state: &DirectiveState,
-    options: FormatOptions,
+fn prepare_markdown_block(
+    input: &str,
     kind: MarkdownBlockFormatKind,
-) -> bool {
-    let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
-        return false;
-    }
-    if contains_markdown_template_span(input, &state.template_delimiters)
-        && !matches!(
-            kind,
-            MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
-        )
-    {
-        return false;
-    }
+) -> Option<crate::core::wrap::Draft> {
     match kind {
-        MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::markdown_paragraph_format_supported(
-                input,
-                state.markdown_options(options),
-            )
-        }
-        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => true,
-        MarkdownBlockFormatKind::List => crate::core::wrap::markdown_list_format_supported(
-            input,
-            state.markdown_options(options),
-        ),
+        MarkdownBlockFormatKind::Paragraph => crate::core::wrap::prepare_markdown_paragraph(input),
+        MarkdownBlockFormatKind::List => crate::core::wrap::prepare_markdown_list(input),
         MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::markdown_definition_list_format_supported(
-                input,
-                state.markdown_options(options),
-            )
+            crate::core::wrap::prepare_markdown_definition_list(input)
         }
         MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::markdown_blockquote_format_supported(
-                input,
-                state.markdown_options(options),
-            )
+            crate::core::wrap::prepare_markdown_blockquote(input)
+        }
+        MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => None,
+    }
+}
+
+fn retain_markdown_drafts(source: &SourceBuffer, doc: &mut Document, options: FormatOptions) {
+    if doc.skip_file {
+        return;
+    }
+    for (index, node) in doc.nodes.iter().enumerate() {
+        let state = doc.state(node.state);
+        if !state.preserve
+            && doc.markdown.get(index).is_none()
+            && let Some(kind) = markdown_block_kind(&node.emit)
+        {
+            doc.markdown.insert(
+                index,
+                plan_markdown_block(source, node, state, options, kind, false),
+            );
         }
     }
+}
+
+fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: FormatOptions) {
+    if doc.skip_file {
+        return;
+    }
+    for (index, node) in doc.nodes.iter().enumerate() {
+        let state = doc.states.get(node.state);
+        if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
+            if let Some((_, planning)) = doc.markdown.get_pair_mut(index) {
+                planning.draft = None;
+                planning.template_spans = None;
+            }
+            continue;
+        }
+        if let Some(kind) = markdown_block_kind(&node.emit) {
+            let effective = state.markdown_options(options);
+            let template_changed = doc
+                .markdown
+                .planning(index)
+                .is_some_and(|planning| planning.template_policy_changed(node, doc));
+            if let Some((retained, planning)) = doc.markdown.get_pair_mut(index) {
+                let was_preserved = retained.preserve;
+                if template_changed {
+                    planning.template_spans = None;
+                    planning.draft = None;
+                    planning.preserve_raw =
+                        crate::core::wrap::markdown_reflow_changes_raw_semantics(
+                            source.slice(node.span),
+                            &state.template_delimiters,
+                        );
+                    let template = planning.preserves_templates(
+                        source.slice(node.span),
+                        kind,
+                        &state.template_delimiters,
+                    );
+                    retained.preserve = planning.preserve_raw || template;
+                }
+                if !retained.preserve && planning.draft.is_none() {
+                    planning.draft = prepare_markdown_block(source.slice(node.span), kind);
+                }
+                if !retained.preserve
+                    && (planning.options != Some(effective) || was_preserved || template_changed)
+                {
+                    planning.resolve_plan(
+                        retained,
+                        source.slice(node.span),
+                        effective,
+                        &state.template_delimiters,
+                    );
+                }
+                planning.state = node.state;
+            } else {
+                doc.markdown.insert(
+                    index,
+                    plan_markdown_block(source, node, state, options, kind, true),
+                );
+            }
+            if matches!(
+                kind,
+                MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable
+            ) {
+                let retained = doc.markdown.get_mut(index).expect("planned table");
+                if !retained.preserve {
+                    let input = source.slice(node.span);
+                    let text = match kind {
+                        MarkdownBlockFormatKind::Table => {
+                            crate::core::wrap::format_markdown_table(input, effective)
+                        }
+                        _ => crate::core::wrap::format_markdown_pandoc_table(input, effective),
+                    };
+                    retained.plan = Some(crate::core::wrap::Plan::normalized_block(input, &text));
+                }
+            }
+        } else if matches!(
+            node.emit,
+            EmitPlan::MarkdownHeading { .. } | EmitPlan::MarkdownSetextHeading { .. }
+        ) {
+            let preserve = contains_markdown_template_span(
+                source.slice(node.span),
+                &state.template_delimiters,
+            );
+            let options = state.markdown_options(options);
+            let plan = if preserve {
+                None
+            } else {
+                let text = match node.emit {
+                    EmitPlan::MarkdownHeading { marker, content } => {
+                        render_markdown_heading(source, node.span, marker, content, options)
+                    }
+                    EmitPlan::MarkdownSetextHeading { content, depth } => {
+                        render_markdown_setext_heading(source, node.span, content, depth, options)
+                    }
+                    _ => unreachable!("heading plan"),
+                };
+                Some(crate::core::wrap::Plan::normalized_block(
+                    source.slice(node.span),
+                    &text,
+                ))
+            };
+            doc.markdown.insert(
+                index,
+                (
+                    RetainedMarkdown { preserve, plan },
+                    MarkdownPlanning {
+                        state: node.state,
+                        preserve_raw: false,
+                        options: Some(options),
+                        draft: None,
+                        template_spans: None,
+                    },
+                ),
+            );
+        }
+        // This node's effective policy and execution plan are now settled.
+        if let Some((_, planning)) = doc.markdown.get_pair_mut(index) {
+            planning.draft = None;
+            planning.template_spans = None;
+        }
+    }
+}
+
+/// All node and nested policies are settled; execution needs only the plans.
+pub(crate) fn release_planning(document: &mut Document) {
+    document.markdown.planning = Vec::new();
+    for nested in &mut document.nested {
+        release_planning(nested);
+    }
+}
+
+pub(crate) fn document_emit_options(
+    source: &SourceBuffer,
+    document: &Document,
+    options: FormatOptions,
+) -> FormatOptions {
+    let mut options = if document.options == FormatOptions::default() {
+        options
+    } else {
+        document.options
+    };
+    if !matches!(
+        source.dominant_line_ending,
+        crate::core::source::LineEnding::None
+    ) {
+        options.default_line_ending = source.dominant_line_ending.as_str();
+    }
+    options
+}
+
+fn nested_emit_policies<'a>(
+    nodes: &'a [Node],
+    states: &'a DirectiveStateTable,
+    yaml: Option<&'a YamlDocumentAst>,
+    options: FormatOptions,
+) -> impl Iterator<Item = (usize, FormatOptions)> + 'a {
+    let nodes = nodes.iter().filter_map(move |node| {
+        let id = match node.emit {
+            EmitPlan::MarkdownFrontMatter { nested, .. }
+            | EmitPlan::MarkdownDiv { nested, .. }
+            | EmitPlan::MarkdownShortcode { nested, .. }
+            | EmitPlan::EmbeddedMarkdownString { nested, .. }
+            | EmitPlan::EmbeddedMarkdownComment { nested, .. }
+            | EmitPlan::EmbeddedYamlComment { nested, .. }
+            | EmitPlan::MarkdownCodeFence {
+                nested: Some(nested),
+                ..
+            } => nested,
+            _ => return None,
+        };
+        let state = states.get(node.state);
+        (!state.preserve).then(|| (id, state.markdown_options(options)))
+    });
+    let scalars = yaml
+        .into_iter()
+        .flat_map(|ast| &ast.nodes)
+        .filter_map(move |node| {
+            // Finalize the child selected by the YAML executor.
+            let (YamlAstKind::Scalar(_), YamlEmitPlan::NestedMarkdownBlockScalar { nested }) =
+                (&node.kind, &node.emit)
+            else {
+                return None;
+            };
+            Some((
+                *nested as usize,
+                states.get(node.state).markdown_options(options),
+            ))
+        });
+    nodes.chain(scalars)
+}
+
+/// Resolve the privately owned tree under its settled directives. Called only
+/// while constructing PreparedTree; execution has no mutable tree access.
+pub(crate) fn finalize_document(
+    source: &SourceBuffer,
+    document: &mut Document,
+    options: FormatOptions,
+    document_options: bool,
+) {
+    if document_options && document.skip_file {
+        return;
+    }
+    let owned_source = document.source.take();
+    let source = if document_options {
+        owned_source.as_ref().unwrap_or(source)
+    } else {
+        source
+    };
+    let options = if document_options {
+        document_emit_options(source, document, options)
+    } else {
+        options
+    };
+    finalize_markdown_plans(source, document, options);
+    let yaml_may_need_markdown_finalization = document.yaml_may_need_markdown_finalization;
+    if let Some(ast) = document
+        .yaml
+        .as_mut()
+        .filter(|_| yaml_may_need_markdown_finalization)
+    {
+        for node in &mut ast.nodes {
+            if matches!(
+                node.emit,
+                YamlEmitPlan::Rendered(YamlRenderedKind::InlineMarkdownScalar)
+            ) {
+                let state = document.states.get(node.state);
+                crate::core::yaml::resolve_inline_markdown_plan(
+                    source,
+                    node,
+                    state.markdown_options(state.yaml_options(options)),
+                );
+            }
+        }
+    }
+    for (id, options) in nested_emit_policies(
+        &document.nodes,
+        &document.states,
+        document
+            .yaml
+            .as_ref()
+            .filter(|_| yaml_may_need_markdown_finalization),
+        options,
+    ) {
+        finalize_document(source, &mut document.nested[id], options, true);
+    }
+    document.source = owned_source;
 }
 
 fn validate_markdown_format_target(
@@ -1269,34 +1684,6 @@ pub(crate) fn render_markdown_thematic_break(
     let mut output = options.markdown_horizontal_rule.to_owned();
     output.push_str(line_ending_for_span(source, span));
     output
-}
-
-pub(crate) fn render_markdown_format(
-    source: &SourceBuffer,
-    span: Span,
-    options: FormatOptions,
-    kind: MarkdownBlockFormatKind,
-) -> String {
-    let input = source.slice(span);
-    if crate::core::wrap::markdown_reflow_changes_raw_semantics(input) {
-        return input.to_owned();
-    }
-    match kind {
-        MarkdownBlockFormatKind::Paragraph => {
-            crate::core::wrap::format_markdown_paragraph(input, options)
-        }
-        MarkdownBlockFormatKind::Table => crate::core::wrap::format_markdown_table(input, options),
-        MarkdownBlockFormatKind::PandocTable => {
-            crate::core::wrap::format_markdown_pandoc_table(input, options)
-        }
-        MarkdownBlockFormatKind::List => crate::core::wrap::format_markdown_list(input, options),
-        MarkdownBlockFormatKind::DefinitionList => {
-            crate::core::wrap::format_markdown_definition_list(input, options)
-        }
-        MarkdownBlockFormatKind::Blockquote => {
-            crate::core::wrap::format_markdown_blockquote(input, options)
-        }
-    }
 }
 
 fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
@@ -1547,7 +1934,6 @@ fn setext_heading_at(
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
         || list_item_at(text)
-        || shortcode_block_at(text)
     {
         return None;
     }
@@ -2323,7 +2709,7 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
-    let mut split_link_destinations: Option<Vec<std::ops::Range<usize>>> = None;
+    let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
     for line in start + 1..end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
@@ -2360,18 +2746,22 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
             if list_item_at(text.trim_start()) {
                 return false;
             }
-            // Multiline link destinations are rare. Keep this whole-block
+            // Multiline links and literals are rare. Keep this whole-block
             // scan off the ordinary-list hot path and cache it when needed.
             let block_start = source.lines[start].full.start();
-            let split_link_destinations = split_link_destinations.get_or_insert_with(|| {
+            let multiline_inlines = multiline_inlines.get_or_insert_with(|| {
                 let block = source.slice(Span::new(block_start, source.lines[end - 1].full.end()));
                 crate::core::wrap::markdown_multiline_link_destination_spans(block)
+                    .chain(crate::core::wrap::markdown_multiline_literal_spans(block))
                     .collect::<Vec<_>>()
             });
+            // Include openers after the source indentation as well as lines
+            // whose indentation is already inside a link or literal.
             let line_offset = source.lines[line].text.start() - block_start;
-            if split_link_destinations
+            let content_offset = line_offset + indent;
+            if multiline_inlines
                 .iter()
-                .any(|span| span.contains(&line_offset))
+                .any(|span| span.contains(&line_offset) || span.contains(&content_offset))
             {
                 continue;
             }
@@ -2580,10 +2970,20 @@ fn markdown_indented_code_at(text: &str) -> bool {
     false
 }
 
-fn shortcode_block_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    let indent = text.len() - trimmed.len();
-    indent <= 3 && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%"))
+fn shortcode_block_start(source: &SourceBuffer, line: usize) -> Option<usize> {
+    let text = source.line_text(line);
+    // A file-leading BOM is retained in the node's span, but is not indentation.
+    let content = if line == 0 {
+        text.strip_prefix('\u{feff}').unwrap_or(text)
+    } else {
+        text
+    };
+    let trimmed = content.trim_start();
+    let indent = content.len() - trimmed.len();
+    (indent <= 3
+        && !markdown_indented_code_at(content)
+        && (trimmed.starts_with("{{<") || trimmed.starts_with("{{%")))
+    .then_some(source.lines[line].text.start() + text.len() - trimmed.len())
 }
 
 fn display_math_block_at(text: &str) -> bool {
@@ -2672,13 +3072,6 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     if multiline_html_tag_start(source.line_text(line)) {
         return find_until_contains(source, line + 1, end, ">");
     }
-    if let Some(shortcode) = hugo_shortcode_opening(trimmed) {
-        let tag_end = hugo_shortcode_tag_end(source, line, end, shortcode);
-        if hugo_shortcode_self_closing(source.line_text(tag_end - 1), shortcode) {
-            return tag_end;
-        }
-        return find_hugo_shortcode_close(source, tag_end, end, shortcode).unwrap_or(tag_end);
-    }
     if display_math_delimiter(trimmed) {
         if trimmed[2..].contains("$$") {
             return line + 1;
@@ -2755,131 +3148,159 @@ fn raw_continuation(first: &str, candidate: &str) -> bool {
     first_indent >= 4 && candidate_indent >= 4
 }
 
-#[derive(Debug, Clone, Copy)]
-struct HugoShortcodeOpening<'a> {
-    delimiter: char,
-    name: &'a str,
+#[derive(Clone, Copy)]
+struct ShortcodeTag<'a> {
+    key: (u8, &'a str),
+    closing: bool,
 }
 
-fn hugo_shortcode_opening(trimmed: &str) -> Option<HugoShortcodeOpening<'_>> {
-    let (delimiter, rest) = if let Some(rest) = trimmed.strip_prefix("{{<") {
-        ('>', rest)
-    } else {
-        ('%', trimmed.strip_prefix("{{%")?)
-    };
-    let rest = rest.trim_start();
-    if rest.starts_with('/') {
+impl ShortcodeTag<'_> {
+    fn raw(self) -> bool {
+        self.key.0 == b'<' || self.key.1.ends_with(".inline")
+    }
+}
+
+fn shortcode_tag(text: &str) -> Option<ShortcodeTag<'_>> {
+    let delimiter = text.as_bytes()[2];
+    let suffix = if delimiter == b'<' { ">}}" } else { "%}}" };
+    let body = text[3..].strip_suffix(suffix)?.trim();
+    if body.ends_with('/') {
         return None;
     }
-    let name_end = rest
-        .char_indices()
-        .find_map(|(index, ch)| (ch.is_whitespace() || ch == delimiter).then_some(index))
-        .unwrap_or(rest.len());
-    let name = &rest[..name_end];
-    (!name.is_empty()).then_some(HugoShortcodeOpening { delimiter, name })
-}
-
-fn hugo_shortcode_tag_end(
-    source: &SourceBuffer,
-    start: usize,
-    end: usize,
-    opening: HugoShortcodeOpening<'_>,
-) -> usize {
-    let closing = if opening.delimiter == '%' {
-        "%}}"
-    } else {
-        ">}}"
-    };
-    let mut quote = None;
-    for line in start..end {
-        let text = source.line_text(line);
-        let mut chars = text.char_indices();
-        while let Some((index, ch)) = chars.next() {
-            if let Some(delimiter) = quote {
-                if ch == '\\' && delimiter == '"' {
-                    chars.next();
-                } else if ch == delimiter {
-                    quote = None;
-                }
-            } else if matches!(ch, '"' | '`') {
-                quote = Some(ch);
-            } else if text[index..].starts_with(closing) {
-                return line + 1;
-            }
-        }
+    let closing = body.starts_with('/');
+    let body = body.strip_prefix('/').unwrap_or(body).trim_start();
+    let name = body.split_whitespace().next()?;
+    if closing && body != name {
+        return None;
     }
-    // An incomplete tag has no safe boundary: subsequent lines can still be
-    // arguments or a quoted value. Preserve through the end of this fragment
-    // until the tag is complete instead of guessing where Markdown resumes.
-    end
-}
-
-fn find_hugo_shortcode_close(
-    source: &SourceBuffer,
-    mut line: usize,
-    end: usize,
-    opening: HugoShortcodeOpening<'_>,
-) -> Option<usize> {
-    let mut depth = 1;
-    while line < end {
-        let text = source.line_text(line).trim_start();
-        if hugo_shortcode_closes(text, opening) {
-            depth -= 1;
-            if depth == 0 {
-                return Some(line + 1);
-            }
-        } else if let Some(nested) = hugo_shortcode_opening(text) {
-            let tag_end = hugo_shortcode_tag_end(source, line, end, nested);
-            if !hugo_shortcode_self_closing(source.line_text(tag_end - 1), nested) {
-                if nested.delimiter == opening.delimiter && nested.name == opening.name {
-                    depth += 1;
-                } else if (nested.delimiter == '>' || nested.name.ends_with(".inline"))
-                    && let Some(close) = find_hugo_shortcode_close(source, tag_end, end, nested)
-                {
-                    // A raw body can contain literal tags that look like the
-                    // surrounding Markdown shortcode's closing delimiter.
-                    line = close;
-                    continue;
-                }
-            }
-            line = tag_end;
-            continue;
-        }
-        line += 1;
-    }
-    None
-}
-
-fn hugo_shortcode_self_closing(text: &str, opening: HugoShortcodeOpening<'_>) -> bool {
-    text.trim_end().ends_with(if opening.delimiter == '%' {
-        "/%}}"
-    } else {
-        "/>}}"
+    Some(ShortcodeTag {
+        key: (delimiter, name),
+        closing,
     })
 }
 
-fn hugo_shortcode_closes(trimmed: &str, opening: HugoShortcodeOpening<'_>) -> bool {
-    let rest = match opening.delimiter {
-        '>' => trimmed.strip_prefix("{{<"),
-        '%' => trimmed.strip_prefix("{{%"),
-        _ => None,
-    };
-    let Some(rest) = rest else {
-        return false;
-    };
-    let Some(rest) = rest.trim_start().strip_prefix('/') else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(after_name) = rest.strip_prefix(opening.name) else {
-        return false;
-    };
-    let after_name = after_name.trim_start();
-    match opening.delimiter {
-        '>' => after_name.starts_with(">}}"),
-        '%' => after_name.starts_with("%}}"),
-        _ => false,
+/// Index complete, standalone tags once per fragment, then pair raw bodies
+/// before Markdown bodies so literal tags inside raw data have no structure.
+fn shortcode_body_pairs(
+    source: &SourceBuffer,
+    mut line: usize,
+    end_line: usize,
+    end: usize,
+) -> HashMap<usize, usize> {
+    let mut tags = Vec::new();
+    while line < end_line {
+        let Some(start) = shortcode_block_start(source, line) else {
+            line += 1;
+            continue;
+        };
+        let token_end = shortcode_token_end(source, start, end);
+        let last_line = source.line_at_byte(token_end - 1);
+        if source.as_str()[token_end..source.lines[last_line].full.end().min(end)]
+            .trim()
+            .is_empty()
+            && let Some(tag) = shortcode_tag(source.slice(Span::new(start, token_end)))
+        {
+            tags.push((line, tag));
+        }
+        line = last_line + 1;
     }
+
+    let mut pairs = pair_shortcode_tags(tags.iter().copied().filter(|(_, tag)| tag.raw()));
+    let mut raw_end = None;
+    let markdown_tags = tags
+        .iter()
+        .copied()
+        .filter(|(line, tag)| {
+            if raw_end.is_some_and(|end| *line <= end) {
+                return false;
+            }
+            if let Some(&closing) = pairs.get(line) {
+                raw_end = Some(closing);
+            }
+            !tag.raw()
+        })
+        .collect::<Vec<_>>();
+    pairs.extend(pair_shortcode_tags(markdown_tags.into_iter()));
+    pairs
+}
+
+fn pair_shortcode_tags<'a>(
+    tags: impl DoubleEndedIterator<Item = (usize, ShortcodeTag<'a>)>,
+) -> HashMap<usize, usize> {
+    let mut pairs = HashMap::new();
+    let mut closes: HashMap<_, Vec<usize>> = HashMap::new();
+    let mut pending: Vec<(usize, ShortcodeTag<'_>)> = Vec::new();
+    for (line, tag) in tags.rev() {
+        if tag.closing {
+            closes.entry(tag.key).or_default().push(line);
+            pending.push((line, tag));
+        } else if let Some(&closing_line) = closes.get(&tag.key).and_then(|lines| lines.last()) {
+            pairs.insert(line, closing_line);
+            // A matched body owns its contents. Discard unmatched closing tags
+            // inside it so they cannot form crossing pairs with earlier tags.
+            while pending
+                .last()
+                .is_some_and(|(line, _)| *line <= closing_line)
+            {
+                let (_, inner) = pending.pop().expect("pending closing tag");
+                closes
+                    .get_mut(&inner.key)
+                    .expect("indexed closing tag")
+                    .pop();
+            }
+        }
+    }
+    pairs
+}
+
+fn push_shortcode_token(
+    source: &SourceBuffer,
+    doc: &mut Document,
+    engine: &mut DirectiveEngine,
+    line: usize,
+    token_start: usize,
+    range: Span,
+) -> usize {
+    let token_end = shortcode_token_end(source, token_start, range.end);
+    let next_line = source.line_at_byte(token_end - 1) + 1;
+    let state = engine.state_for_node(doc, true);
+    doc.push_node(Node {
+        kind: NodeKind::Markdown(MarkdownNodeKind::Shortcode),
+        // The rest of the closing line stays outside the token. Advancing to
+        // the next line retains the existing mixed token/prose boundary.
+        span: Span::new(source.lines[line].full.start(), token_end),
+        state,
+        emit: EmitPlan::MarkdownOpaque,
+    });
+    next_line
+}
+
+/// Find one lexical token, bounded by the enclosing Markdown fragment. Names
+/// and braces in arguments have no structural meaning. An incomplete token
+/// consumes the remaining range so it cannot trigger repeated suffix scans.
+fn shortcode_token_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
+    let text = &source.as_str()[start..end];
+    let closing = if text.starts_with("{{<") {
+        ">}}"
+    } else {
+        "%}}"
+    };
+    let mut quote = None;
+    let mut chars = text[3..].char_indices();
+    while let Some((offset, ch)) = chars.next() {
+        if let Some(delimiter) = quote {
+            if ch == '\\' && delimiter != '`' {
+                chars.next();
+            } else if ch == delimiter {
+                quote = None;
+            }
+        } else if matches!(ch, '\'' | '"' | '`') {
+            quote = Some(ch);
+        } else if text[3 + offset..].starts_with(closing) {
+            return start + 3 + offset + closing.len();
+        }
+    }
+    end
 }
 
 fn link_definition_start(trimmed: &str) -> bool {

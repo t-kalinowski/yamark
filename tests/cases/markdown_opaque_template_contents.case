@@ -1,0 +1,30 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+Before
+with {{ render("}}", "keep   this") }} after [real](  target  ) _outside_.
+
+Before
+with {{ render("say \"}}\"", 'it\'s   here') }} after [real](  target  ) _outside_.
+
+Before
+with {{ render({outer: {inner: "a   b"}}) }} after [real](  target  ) _outside_.
+
+Before
+with prefix{{ render("[x](  url  ) _keep_ **this** `code`") }}suffix, after [real](  target  ) _outside_.
+
+Before
+with {{ first("a   b") }} and {{ second("c   d") }} after [real](  target  ) _outside_.
+-- stdout
+Before with {{ render("}}", "keep   this") }} after [real](target) *outside*.
+
+Before with {{ render("say \"}}\"", 'it\'s   here') }} after [real](target) *outside*.
+
+Before with {{ render({outer: {inner: "a   b"}}) }} after [real](target) *outside*.
+
+Before with prefix{{ render("[x](  url  ) _keep_ **this** `code`") }}suffix, after [real](target) *outside*.
+
+Before with {{ first("a   b") }} and {{ second("c   d") }} after [real](target) *outside*.
+-- stderr
+-- status
+0

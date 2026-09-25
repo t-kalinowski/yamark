@@ -1,31 +1,44 @@
-use crate::core::directives::contains_markdown_template_span;
 use crate::core::document::{
-    CodeFenceSafety, Document, EmitPlan, FormatOptions, MarkdownNodeKind, Node, NodeKind,
+    CodeFenceSafety, Document, DocumentEmitMode, DocumentKind, EmitPlan, FormatOptions,
+    MarkdownNodeKind, Node, NodeKind, PreparedDocument, PreparedTree,
 };
 use crate::core::source::{SourceBuffer, Span};
 use crate::diagnostic::{Result, YamarkError};
 use crate::plugins::PluginRegistry;
 use memchr::memchr2;
 
-pub fn emit_document(
-    source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
-    plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_document_with_normalization(source, document, options, plugins, false)
+pub fn emit_document(document: &PreparedDocument, plugins: &PluginRegistry) -> Result<String> {
+    emit_prepared_tree(document.source(), document.tree(), plugins).map(|(output, _)| output)
 }
 
-pub(crate) fn emit_markdown_document(
+pub(crate) fn emit_prepared_tree(
     source: &SourceBuffer,
-    document: &Document,
-    options: FormatOptions,
+    tree: &PreparedTree,
     plugins: &PluginRegistry,
-) -> Result<String> {
-    emit_document_with_normalization(source, document, options, plugins, true)
+) -> Result<(String, usize)> {
+    let document = tree.document();
+    let options = tree.options();
+    if matches!(tree.mode(), DocumentEmitMode::Yaml) {
+        if document.skip_file {
+            return Ok((source.slice(document.range).to_owned(), 0));
+        }
+        return crate::core::yaml::emit_planned_yaml_document_with_stats(
+            source, document, options, plugins,
+        )
+        .map(|(output, stats)| (output, stats.emitted_nodes));
+    }
+    emit_planned_document(
+        source,
+        document,
+        options,
+        plugins,
+        matches!(tree.mode(), DocumentEmitMode::Markdown),
+    )
+    .map(|output| (output, 0))
 }
 
-fn emit_document_with_normalization(
+/// Execute a document whose effective policy has already been finalized.
+pub(crate) fn emit_planned_document(
     source: &SourceBuffer,
     document: &Document,
     options: FormatOptions,
@@ -42,6 +55,54 @@ fn emit_document_with_normalization(
         },
         normalize_markdown_output,
     )
+    .map(|output| output.text)
+}
+
+// Verbatim ranges refer to bytes in `text`, not source offsets. Nested Markdown
+// fences/divs carry them through parent cleanup; ordinary gaps still normalize.
+#[derive(Default)]
+pub(crate) struct EmittedText {
+    pub(crate) text: String,
+    pub(crate) verbatim: Vec<Span>,
+    // EOF policy belongs to explicit preservation, not inline literal ranges.
+    // An output offset keeps it tied to the actual tail after composition.
+    pub(crate) preserve_eof_at: usize,
+}
+
+impl EmittedText {
+    fn reset(&mut self) {
+        self.text.clear();
+        self.verbatim.clear();
+        self.preserve_eof_at = 0;
+    }
+
+    pub(crate) fn push_slice(&mut self, text: &str, verbatim: &[Span], slice: Span) {
+        let start = self.text.len();
+        self.text.push_str(&text[slice.start..slice.end]);
+        let first = verbatim.partition_point(|span| span.end <= slice.start);
+        for span in &verbatim[first..] {
+            if span.start >= slice.end {
+                break;
+            }
+            self.verbatim.push(Span::new(
+                start + span.start.max(slice.start) - slice.start,
+                start + span.end.min(slice.end) - slice.start,
+            ));
+        }
+    }
+}
+
+pub(crate) fn emit_fragment(source: &SourceBuffer, tree: &PreparedTree) -> Result<EmittedText> {
+    emit_document_inner(
+        source,
+        tree.document(),
+        tree.options(),
+        &PluginRegistry::default(),
+        EmitContext {
+            blank_between_adjacent_divs: false,
+        },
+        false,
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -56,10 +117,24 @@ fn emit_document_inner(
     plugins: &PluginRegistry,
     context: EmitContext,
     normalize_markdown_output: bool,
-) -> Result<String> {
+) -> Result<EmittedText> {
     let source = document.source.as_ref().unwrap_or(source);
     if document.skip_file {
-        return Ok(source.slice(document.range).to_owned());
+        let text = source.slice(document.range).to_owned();
+        let verbatim = if document.kind == DocumentKind::Markdown && !text.is_empty() {
+            vec![Span::new(0, text.len())]
+        } else {
+            Vec::new()
+        };
+        return Ok(EmittedText {
+            preserve_eof_at: if document.kind == DocumentKind::Markdown {
+                text.len()
+            } else {
+                0
+            },
+            text,
+            verbatim,
+        });
     }
     let mut options = if document.options == FormatOptions::default() {
         options
@@ -78,6 +153,8 @@ fn emit_document_inner(
         normalize_markdown_output,
         options.default_line_ending,
     );
+    // Each document call owns its sibling-block scratch; recursive calls own theirs.
+    let mut block_output = EmittedText::default();
     let mut cursor = document.range.start;
     let mut previous_adjacent_div = false;
     let mut index = 0usize;
@@ -116,14 +193,31 @@ fn emit_document_inner(
             });
         }
         let state = document.state(node.state);
+        if matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Shortcode))
+            && !matches!(node.emit, EmitPlan::MarkdownShortcode { .. })
+        {
+            out.push_verbatim(source.slice(node.span), true);
+            cursor = node.span.end;
+            previous_adjacent_div = false;
+            index += 1;
+            continue;
+        }
         if state.preserve || matches!(node.emit, EmitPlan::Preserve) {
-            out.push_str(source.slice(node.span));
+            if document.kind == DocumentKind::Markdown {
+                out.push_verbatim(source.slice(node.span), true);
+            } else {
+                out.push_str(source.slice(node.span));
+            }
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
             index += 1;
             continue;
         }
-        if markdown_emit_should_preserve_template_span(source, node.span, state, &node.emit) {
+        if document
+            .markdown
+            .get(index)
+            .is_some_and(|plan| plan.preserve)
+        {
             out.push_str(source.slice(node.span));
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
@@ -132,24 +226,6 @@ fn emit_document_inner(
         }
         match &node.emit {
             EmitPlan::Copy | EmitPlan::Preserve => out.push_str(source.slice(node.span)),
-            EmitPlan::MarkdownHeading {
-                marker, content, ..
-            } => out.push_str(&crate::core::markdown::render_markdown_heading(
-                source,
-                node.span,
-                *marker,
-                *content,
-                state.markdown_options(options),
-            )),
-            EmitPlan::MarkdownSetextHeading { content, depth } => {
-                out.push_str(&crate::core::markdown::render_markdown_setext_heading(
-                    source,
-                    node.span,
-                    *content,
-                    *depth,
-                    state.markdown_options(options),
-                ))
-            }
             EmitPlan::MarkdownThematicBreak => {
                 out.push_str(&crate::core::markdown::render_markdown_thematic_break(
                     source,
@@ -157,51 +233,27 @@ fn emit_document_inner(
                     state.markdown_options(options),
                 ))
             }
-            EmitPlan::MarkdownParagraph => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::Paragraph,
-                ))
-            }
-            EmitPlan::MarkdownTable => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::Table,
-                ))
-            }
-            EmitPlan::MarkdownPandocTable => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::PandocTable,
-                ))
-            }
-            EmitPlan::MarkdownList => out.push_str(&crate::core::markdown::render_markdown_format(
-                source,
-                node.span,
-                state.markdown_options(options),
-                crate::core::markdown::MarkdownBlockFormatKind::List,
-            )),
-            EmitPlan::MarkdownDefinitionList => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::DefinitionList,
-                ))
-            }
-            EmitPlan::MarkdownBlockquote => {
-                out.push_str(&crate::core::markdown::render_markdown_format(
-                    source,
-                    node.span,
-                    state.markdown_options(options),
-                    crate::core::markdown::MarkdownBlockFormatKind::Blockquote,
-                ))
+            EmitPlan::MarkdownHeading { .. }
+            | EmitPlan::MarkdownSetextHeading { .. }
+            | EmitPlan::MarkdownParagraph
+            | EmitPlan::MarkdownList
+            | EmitPlan::MarkdownDefinitionList
+            | EmitPlan::MarkdownBlockquote
+            | EmitPlan::MarkdownTable
+            | EmitPlan::MarkdownPandocTable => {
+                let retained = document
+                    .markdown
+                    .get(index)
+                    .expect("retained Markdown plan");
+                if let Some(plan) = &retained.plan {
+                    block_output.reset();
+                    let block_source = source.slice(node.span);
+                    block_output.text.reserve(block_source.len());
+                    plan.emit_into(block_source, &mut block_output);
+                    out.push_fragment(&block_output);
+                } else {
+                    out.push_str(source.slice(node.span));
+                }
             }
             EmitPlan::MarkdownFrontMatter {
                 opening,
@@ -217,13 +269,15 @@ fn emit_document_inner(
                     context,
                     false,
                 )?;
-                if !nested_output.is_empty()
-                    && !nested_output.ends_with('\n')
-                    && !nested_output.ends_with('\r')
+                if !nested_output.text.is_empty()
+                    && !nested_output.text.ends_with('\n')
+                    && !nested_output.text.ends_with('\r')
                 {
-                    nested_output.push_str(line_ending_for_span(source, *opening));
+                    nested_output
+                        .text
+                        .push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_verbatim_lines(&nested_output);
+                out.push_verbatim_lines(&nested_output.text);
                 emit_front_matter_marker(&mut out, source, *closing, false);
             }
             EmitPlan::MarkdownCodeFence {
@@ -244,14 +298,16 @@ fn emit_document_inner(
                         context,
                         false,
                     )?;
-                    if !nested_output.is_empty()
-                        && !nested_output.ends_with('\n')
-                        && !nested_output.ends_with('\r')
+                    if !nested_output.text.is_empty()
+                        && !nested_output.text.ends_with('\n')
+                        && !nested_output.text.ends_with('\r')
                     {
-                        nested_output.push_str(line_ending_for_span(source, *opening));
+                        nested_output
+                            .text
+                            .push_str(line_ending_for_span(source, *opening));
                     }
-                    ensure_code_fence_safe(&nested_output, *safety, source, *opening)?;
-                    out.push_str(&nested_output);
+                    ensure_code_fence_safe(&nested_output.text, *safety, source, *opening)?;
+                    out.push_fragment(&nested_output);
                 } else {
                     out.push_str(source.slice(Span::new(opening.end, closing.start)));
                 }
@@ -267,7 +323,12 @@ fn emit_document_inner(
                 closing,
                 nested,
             } => {
-                out.push_str(source.slice(*opening));
+                let shortcode = matches!(node.emit, EmitPlan::MarkdownShortcode { .. });
+                if shortcode {
+                    out.push_verbatim(source.slice(*opening), false);
+                } else {
+                    out.push_str(source.slice(*opening));
+                }
                 let mut nested_output = emit_document_inner(
                     source,
                     &document.nested[*nested],
@@ -278,20 +339,29 @@ fn emit_document_inner(
                     },
                     false,
                 )?;
-                if !nested_output.is_empty()
-                    && !nested_output.ends_with('\n')
-                    && !nested_output.ends_with('\r')
+                if !nested_output.text.is_empty()
+                    && !nested_output.text.ends_with('\n')
+                    && !nested_output.text.ends_with('\r')
                 {
-                    nested_output.push_str(line_ending_for_span(source, *opening));
+                    nested_output
+                        .text
+                        .push_str(line_ending_for_span(source, *opening));
                 }
-                out.push_str(&nested_output);
-                out.push_str(source.slice(*closing));
+                out.push_fragment(&nested_output);
+                if shortcode {
+                    out.push_verbatim(source.slice(*closing), true);
+                } else {
+                    out.push_str(source.slice(*closing));
+                }
             }
             EmitPlan::MarkdownOpaque => out.push_str(source.slice(node.span)),
             EmitPlan::YamlDocument => {
-                out.push_str(&crate::core::yaml::emit_yaml_document(
-                    source, document, options, plugins,
-                )?);
+                out.push_str(
+                    &crate::core::yaml::emit_planned_yaml_document_with_stats(
+                        source, document, options, plugins,
+                    )?
+                    .0,
+                );
             }
             EmitPlan::EmbeddedMarkdownString {
                 opening,
@@ -315,10 +385,10 @@ fn emit_document_inner(
                     *body,
                     source.slice(*opening),
                     source.slice(*closing),
-                    &nested_output,
+                    &nested_output.text,
                 )?;
                 out.push_str(&crate::core::source_lang::reindent_markdown_body(
-                    &nested_output,
+                    &nested_output.text,
                     source.slice(*indent),
                 ));
                 out.push_str(source.slice(*closing_indent));
@@ -334,7 +404,7 @@ fn emit_document_inner(
                     false,
                 )?;
                 out.push_str(&crate::core::source_lang::restore_comment_prefix(
-                    &nested_output,
+                    &nested_output.text,
                     prefix.as_str(source),
                 ));
             }
@@ -348,7 +418,7 @@ fn emit_document_inner(
                     false,
                 )?;
                 out.push_str(&crate::core::source_lang::restore_comment_prefix(
-                    &nested_output,
+                    &nested_output.text,
                     prefix.as_str(source),
                 ));
             }
@@ -439,6 +509,8 @@ struct EmitOutput {
     normalize_markdown: bool,
     final_line_ending: &'static str,
     line_trim_end: usize,
+    verbatim: Vec<Span>,
+    preserve_eof_at: usize,
 }
 
 impl EmitOutput {
@@ -452,6 +524,8 @@ impl EmitOutput {
             normalize_markdown,
             final_line_ending,
             line_trim_end: 0,
+            verbatim: Vec::new(),
+            preserve_eof_at: 0,
         }
     }
 
@@ -472,6 +546,33 @@ impl EmitOutput {
         self.push_markdown_normalized_str(text);
     }
 
+    fn push_verbatim(&mut self, text: &str, preserve_eof: bool) {
+        if text.is_empty() {
+            return;
+        }
+        let start = self.text.len();
+        self.text.push_str(text);
+        // Later line/final cleanup may trim gaps, but never this output.
+        self.line_trim_end = self.text.len();
+        self.verbatim.push(Span::new(start, self.text.len()));
+        if preserve_eof {
+            self.preserve_eof_at = self.text.len();
+        }
+    }
+
+    fn push_fragment(&mut self, fragment: &EmittedText) {
+        let mut cursor = 0;
+        for span in &fragment.verbatim {
+            self.push_str(&fragment.text[cursor..span.start]);
+            self.push_verbatim(&fragment.text[span.start..span.end], false);
+            cursor = span.end;
+        }
+        self.push_str(&fragment.text[cursor..]);
+        if !fragment.text.is_empty() && fragment.preserve_eof_at == fragment.text.len() {
+            self.preserve_eof_at = self.text.len();
+        }
+    }
+
     fn push_verbatim_lines(&mut self, text: &str) {
         assert!(
             text.is_empty() || text.ends_with('\n') || text.ends_with('\r'),
@@ -481,8 +582,9 @@ impl EmitOutput {
         self.line_trim_end = self.text.len();
     }
 
-    fn finish(mut self) -> String {
+    fn finish(mut self) -> EmittedText {
         if self.normalize_markdown
+            && self.preserve_eof_at != self.text.len()
             && !self.text.is_empty()
             && !self.text.ends_with('\n')
             && !self.text.ends_with('\r')
@@ -490,7 +592,11 @@ impl EmitOutput {
             self.text.truncate(self.line_trim_end);
             self.text.push_str(self.final_line_ending);
         }
-        self.text
+        EmittedText {
+            text: self.text,
+            verbatim: self.verbatim,
+            preserve_eof_at: self.preserve_eof_at,
+        }
     }
 
     fn push_markdown_normalized_str(&mut self, text: &str) {
@@ -547,7 +653,10 @@ impl EmitOutput {
     }
 }
 
-fn paragraph_separator_blank_run_end(document: &Document, index: usize) -> Option<usize> {
+pub(crate) fn paragraph_separator_blank_run_end(
+    document: &Document,
+    index: usize,
+) -> Option<usize> {
     if !node_is_markdown_blank(document.nodes.get(index)?) {
         return None;
     }
@@ -572,23 +681,6 @@ fn node_is_emitted_markdown_paragraph(document: &Document, node: &Node) -> bool 
     !document.state(node.state).preserve
         && matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Paragraph))
         && matches!(node.emit, EmitPlan::MarkdownParagraph)
-}
-
-fn markdown_emit_should_preserve_template_span(
-    source: &SourceBuffer,
-    span: Span,
-    state: &crate::core::directives::DirectiveState,
-    emit: &EmitPlan,
-) -> bool {
-    matches!(
-        emit,
-        EmitPlan::MarkdownHeading { .. }
-            | EmitPlan::MarkdownSetextHeading { .. }
-            | EmitPlan::MarkdownParagraph
-            | EmitPlan::MarkdownList
-            | EmitPlan::MarkdownDefinitionList
-            | EmitPlan::MarkdownBlockquote
-    ) && contains_markdown_template_span(source.slice(span), &state.template_delimiters)
 }
 
 fn emit_opening(
@@ -733,7 +825,7 @@ fn closes_code_fence(line: &str, safety: CodeFenceSafety) -> bool {
     marker_len >= safety.min_len && line[indent + marker_len..].trim().is_empty()
 }
 
-fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
+pub(crate) fn line_ending_for_span(source: &SourceBuffer, span: Span) -> &'static str {
     let text = source.slice(span);
     if text.ends_with("\r\n") {
         "\r\n"

@@ -1,0 +1,43 @@
+-- args
+format --wrap sentence --stdin-file-path input.md
+-- stdin
+First
+sentence with `{{ foo }}` and {{ outside }}. Second
+sentence.
+
+First
+sentence with `{{ foo }}` < value and [real](  target  ). Second
+sentence.
+
+First
+sentence with `{{ foo` }}. Second
+sentence.
+
+First
+sentence with `{{ foo` and `bar }}`. Second
+sentence.
+
+Following
+paragraph with [real](  target  ). Next
+sentence.
+-- stdout
+First sentence with `{{ foo }}` and {{ outside }}.
+Second sentence.
+
+First
+sentence with `{{ foo }}` < value and [real](  target  ). Second
+sentence.
+
+First
+sentence with `{{ foo` }}. Second
+sentence.
+
+First
+sentence with `{{ foo` and `bar }}`. Second
+sentence.
+
+Following paragraph with [real](target).
+Next sentence.
+-- stderr
+-- status
+0

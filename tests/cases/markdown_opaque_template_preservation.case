@@ -1,0 +1,33 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+<!-- fmt: skip -->
+Before
+{{ render("keep   this") }}
+after [real](  target  ) _word_.
+
+<!-- fmt: off -->
+Before
+{{ render("keep   this") }}
+after [real](  target  ) _word_.
+<!-- fmt: on -->
+
+Before
+{{ render("keep   this") }}
+after [real](  target  ) _word_.
+-- stdout
+<!-- fmt: skip -->
+Before
+{{ render("keep   this") }}
+after [real](  target  ) _word_.
+
+<!-- fmt: off -->
+Before
+{{ render("keep   this") }}
+after [real](  target  ) _word_.
+<!-- fmt: on -->
+
+Before {{ render("keep   this") }} after [real](target) *word*.
+-- stderr
+-- status
+0

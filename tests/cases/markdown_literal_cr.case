@@ -1,0 +1,14 @@
+-- args
+format --diff --wrap none --canonical tests/fixtures/markdown_literal_cr.md
+-- stdin
+-- stdout
+--- tests/fixtures/markdown_literal_cr.md
++++ tests/fixtures/markdown_literal_cr.md
+@@ -1,2 +1,2 @@
+ > > Before `first	
+-> >   second [x]( url )` after _outside_ [real](  target  ).
++> >   second [x]( url )` after *outside* [real](target).
+-- stderr
+1 files scanned, 1 formatted, 0 unchanged, 0 skipped, 0 failed
+-- status
+1

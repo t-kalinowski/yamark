@@ -76,6 +76,25 @@ Directory traversal skips hidden paths and respects `.gitignore`,
 `.ignore`, and global Git ignore files by default. Pass a hidden path
 explicitly to format it.
 
+While formatting is enabled, standalone `{{< ... >}}` and `{{% ... %}}`
+shortcode tokens are preserved, including multiline tokens and quoted arguments.
+Directive-looking text inside a recognized token is data. Yamark does not match
+shortcode names or interpret their bodies: Markdown between tokens formats
+normally. An unterminated token or quote preserves the rest of the enclosing
+Markdown document or fragment. This does not guarantee rendering equivalence for
+arbitrary Hugo or Jinja templates.
+
+To disable body formatting, surround the region with `<!-- fmt: off -->` and
+`<!-- fmt: on -->`. While formatting is disabled, directives follow the existing
+linewise policy: a recognized `fmt: on` line resumes formatting even if the
+surrounding text resembles a shortcode argument, code fence, HTML, or math block.
+
+Explicitly skipped Markdown retains its bytes, including trailing spaces and
+line endings: `<!-- fmt: skip -->` preserves the next selected node,
+`<!-- fmt: off -->` preserves the disabled region, and `<!-- fmt: skip file -->`
+preserves the enclosing Markdown document or fragment. This protection survives
+supported nesting in Markdown fences and divs; surrounding Markdown still formats.
+
 ## Editor integrations
 
 The VS Code and Positron formatter extension lives in `editors/vscode/`.
@@ -83,7 +102,6 @@ See the [editor guide][editor-docs] for installation and configuration.
 
 ## Development
 
-Development and release builds use Rust 1.98.1, pinned in `rust-toolchain.toml`.
 Building from source requires Rust 1.98.1 or newer.
 
 Build or install the binary from a checkout:

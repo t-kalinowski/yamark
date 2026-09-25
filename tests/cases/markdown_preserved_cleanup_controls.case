@@ -1,0 +1,64 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+    code   still copied  	
+
+<div>
+HTML   still copied  	
+</div>  
+
+Before {{ value }}   prose.  	
+
+Before <widget>   unsupported prose.  	
+
+```text
+code   still copied  	
+```
+
+::: {.note}
+Before {{ value }}   nested prose.  	
+
+    nested   code  	
+:::
+
+Before   `{{
+  render(customer.address)  	
+}}` after template.  	
+
+> {{% quote %}}
+> Keep   unsupported continuation.  	
+
+Format   ordinary prose. Second   sentence.  	
+-- stdout
+    code   still copied
+
+<div>
+HTML   still copied
+</div>
+
+Before {{ value }} prose.
+
+Before <widget> unsupported prose.
+
+```text
+code   still copied
+```
+
+::: {.note}
+Before {{ value }} nested prose.
+
+    nested   code
+:::
+
+Before   `{{
+  render(customer.address)
+}}` after template.
+
+> {{% quote %}}
+> Keep   unsupported continuation.
+
+Format ordinary prose.
+Second sentence.
+-- stderr
+-- status
+0

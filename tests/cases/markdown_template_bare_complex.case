@@ -1,0 +1,45 @@
+-- args
+format --canonical --wrap sentence --stdin-file-path input.md
+-- stdin
+Before
+with {{ "foo" }} after [real](  target  ) _outside_.
+
+Before
+with {{ foo | filter }} after [real](  target  ) _outside_.
+
+Before
+with {{ foo({ bar }) }} after [real](  target  ) _outside_.
+
+Before
+with {{{ foo }}} after [real](  target  ) _outside_.
+
+Before
+with {{ foo {{ bar }} }} after [real](  target  ) _outside_.
+
+Before
+with {% foo %} after [real](  target  ) _outside_.
+
+Before
+with {# foo #} after [real](  target  ) _outside_.
+
+Before
+with <% foo %> after [real](  target  ) _outside_.
+-- stdout
+Before with {{ "foo" }} after [real](target) *outside*.
+
+Before with {{ foo | filter }} after [real](target) *outside*.
+
+Before with {{ foo({ bar }) }} after [real](target) *outside*.
+
+Before with {{{ foo }}} after [real](target) *outside*.
+
+Before with {{ foo {{ bar }} }} after [real](target) *outside*.
+
+Before with {% foo %} after [real](target) *outside*.
+
+Before with {# foo #} after [real](target) *outside*.
+
+Before with <% foo %> after [real](target) *outside*.
+-- stderr
+-- status
+0

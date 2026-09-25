@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --verify
+-- stdin
+Before
+*`<% keep   this %>`* after.
+
+Before
+[`<% keep   this %>`](url) after.
+-- stdout
+Before
+*`<% keep   this %>`* after.
+
+Before
+[`<% keep   this %>`](url) after.
+-- stderr
+-- status
+0

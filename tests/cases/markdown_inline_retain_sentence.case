@@ -1,0 +1,14 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+Before  `raw  _text_` after _word_ [link](  target  ). Next sentence.
+
+<!-- fmt: wrap=sentence canonical=true scope=file -->
+-- stdout
+Before `raw  _text_` after *word* [link](target).
+Next sentence.
+
+<!-- fmt: wrap=sentence canonical=true scope=file -->
+-- stderr
+-- status
+0

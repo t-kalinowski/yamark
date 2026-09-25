@@ -66,6 +66,44 @@ replace_delimiters = [
 
 Every entry must contain non-empty `open` and `close` strings.
 
+In Markdown paragraphs and supported prose containers, including lists and
+blockquotes, a complete single-line expression is one opaque word. Yamark
+preserves every byte inside it and wraps the surrounding prose normally. For
+example, `{{ render("keep   this") }}` can occupy its own line or exceed the
+requested width, just like a long word. Function calls, quoted arguments,
+escaped quotes, and nested braces are supported. A closing delimiter inside a
+single- or double-quoted argument does not end the expression. For `{#` / `#}`
+comments, the first literal `#}` ends the token; quotes, apostrophes, and braces
+inside have no special meaning. Yamark only recognizes boundaries; it does not
+interpret or evaluate template languages.
+
+Configured openers take precedence over Markdown inline syntax. When several
+pairs match an opener, the first complete closing boundary ends the token. File
+directives apply to earlier content too, including nested Markdown blocks.
+
+A template-only source line does not preserve placement. With `--wrap sentence`:
+
+<!-- fmt: skip -->
+
+```markdown
+Before
+{{ render("keep   this") }}
+after.
+```
+
+becomes:
+
+```markdown
+Before {{ render("keep   this") }} after.
+```
+
+Wrapping still respects explicit hard breaks, blank lines, and block boundaries.
+Use `fmt: skip`, `fmt: off`/`fmt: on`, or `fmt: skip file` to preserve layout.
+Multiline expressions, templates nested in Markdown links or emphasis, and
+otherwise unsupported Markdown blocks retain their existing preservation
+policy. Headings, tables, host-language eligibility, and standalone shortcode
+block tokens are unchanged.
+
 ## `[embedded]`
 
 Each child table maps a directive or fence name to a formatter that reads stdin

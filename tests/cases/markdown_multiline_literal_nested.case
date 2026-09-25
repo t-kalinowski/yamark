@@ -1,0 +1,49 @@
+-- args
+format --stdin-file-path input.md --wrap paragraph --canonical
+-- stdin
+::: note
+```markdown
+Before `first  	
+  second\
+third [x]( url )` after _outside_.
+ 	
+Next   paragraph.	
+```
+:::
+
+> ```markdown
+> Before `first  
+>   second [x]( url )` after _outside_.
+> ```
+
+- Example
+
+  ```markdown
+  Before `first  
+    second [x]( url )` after _outside_.
+  ```
+-- stdout
+::: note
+```markdown
+Before `first  	
+  second\
+third [x]( url )` after *outside*.
+
+Next paragraph.
+```
+:::
+
+> ```markdown
+> Before `first  
+>   second [x]( url )` after *outside*.
+> ```
+
+- Example
+
+  ```markdown
+  Before `first  
+    second [x]( url )` after *outside*.
+  ```
+-- stderr
+-- status
+0

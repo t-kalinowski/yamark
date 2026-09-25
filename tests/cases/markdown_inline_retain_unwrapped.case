@@ -1,0 +1,18 @@
+-- args
+format --stdin-file-path input.md --wrap none --skip-embedded-formatters
+-- stdin
+Simple body stays exact.
+
+> Exact text stays here.
+
+> - Plain `literal  spaces` and [link](target).
+>   More   text [changed](  path  ).
+-- stdout
+Simple body stays exact.
+
+> Exact text stays here.
+
+> - Plain `literal  spaces` and [link](target). More text [changed](path).
+-- stderr
+-- status
+0

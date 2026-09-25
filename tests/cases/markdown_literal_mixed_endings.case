@@ -1,0 +1,22 @@
+-- args
+format --diff --wrap paragraph --canonical tests/fixtures/markdown_literal_mixed_endings.md
+-- stdin
+-- stdout
+--- tests/fixtures/markdown_literal_mixed_endings.md
++++ tests/fixtures/markdown_literal_mixed_endings.md
+@@ -1,8 +1,8 @@
+-Before   `first  
++Before `first  
+   second	
+ third\
+-last [x]( url )` after _outside_ [real](  target  ).
++last [x]( url )` after *outside* [real](target).
+ 
+ Before $first  	
+   second \$ [x]( url )
+-third$ after _outside_ [real](  target  ).
++third$ after *outside* [real](target).
+-- stderr
+1 files scanned, 1 formatted, 0 unchanged, 0 skipped, 0 failed
+-- status
+1

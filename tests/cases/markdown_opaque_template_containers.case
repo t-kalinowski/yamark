@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --canonical --wrap sentence
+-- stdin
+- Before
+  {{ render("keep   this") }}
+  after [real](  target  ) _outside_.
+
+> Before
+> {{ render("keep   this") }}
+> after [real](  target  ) _outside_.
+-- stdout
+- Before {{ render("keep   this") }} after [real](target) *outside*.
+
+> Before {{ render("keep   this") }} after [real](target) *outside*.
+-- stderr
+-- status
+0

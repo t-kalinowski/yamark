@@ -1014,17 +1014,63 @@ After:
 
 Expected behavior:
 
-Recognize shortcode and include lines as supported opaque block nodes. Preserve
-the shortcode line exactly. Do not let a shortcode block cause adjacent
-paragraphs, lists, or divs to be copied. Paired shortcodes should preserve their
-body unless a later feature explicitly models the body as Markdown.
+While formatting is enabled, recognize standalone `{{< ... >}}` and `{{% ... %}}`
+tokens, including complete multiline tokens. Find the lexical
+closing delimiter outside single, double, or backtick quotes; backslashes escape
+the next character in single and double quotes. Keep each token's source bytes,
+including whitespace and line endings. An unterminated token or quote preserves
+the remainder of its enclosing Markdown document or fragment.
+
+Matching standalone tags define a body scope. Format Markdown inside paired
+`{{% name %}}` tags; preserve paired `{{< name >}}` bodies and `.inline` template
+definitions. Raw bodies may contain literal tags that resemble the surrounding
+Markdown shortcode's closing tag. Index raw pairs before Markdown pairs, once
+per fragment, so unpaired calls do not repeatedly search the remaining input.
+
+Unpaired and self-closing tokens remain independent, and surrounding Markdown
+formats normally. Directive-looking text inside a token or raw body is data.
+Directives in a Markdown body stay scoped to that fragment, and `fmt: skip`
+before a paired shortcode preserves the whole body. Markdown shortcode bodies
+and fenced divs do not interpret leading `---` lines as YAML front matter.
+
+While formatting is disabled, retain the existing linewise directive policy.
+A recognized `fmt: on` line resumes formatting regardless of surrounding
+shortcode, quote, fence, HTML, or math-like text. Disabled-region scanning does
+not interpret those structures.
+
+Explicitly preserved Markdown is opaque to whitespace cleanup: `fmt: skip`
+copies the complete selected node, `fmt: off` copies the disabled region up to
+the existing linewise `fmt: on` boundary, and `fmt: skip file` copies the entire
+enclosing Markdown document or fragment. Trailing spaces, line endings, and an
+absent final newline survive, including through supported nested Markdown
+fences/divs. Contents need not be recognized syntax. Ordinary gaps and automatic
+formatting fallback retain their existing cleanup behavior.
+
+The emitter carries verbatim ranges in its returned text, using output offsets
+rather than source offsets. A skipped document marks its entire nonempty output;
+a skipped container contributes one complete source slice without walking its
+children to recover shortcode boundaries. Explicit directive state and
+`EmitPlan::Preserve` produce these ranges for Markdown; `EmitPlan::Copy`,
+missing format plans, and retained-plan preservation do not. Other document
+kinds, source-language adapters, reindentation, and external formatters are
+unchanged.
+
+Future literal-aware formatting can append already-identified literal bytes at
+this same output boundary and carry the ranges through nested emission. It must
+preserve those bytes before they reach the emitter; this boundary cannot undo
+earlier trimming in actively formatted content. No new inline literal producers
+are introduced here.
+
+This support does not interpret template expressions or validate arguments, and
+does not extend inline, mixed token/prose line, list, or blockquote support.
+It does not imply rendering equivalence for arbitrary Hugo or Jinja templates.
 
 Implementation checklist:
 
-- [x] Parse single-line shortcode blocks.
-- [x] Parse paired shortcode blocks.
-- [x] Preserve shortcode internals byte-for-byte.
-- [x] Keep surrounding Markdown format decisions independent.
+- [x] Parse single-line and complete multiline shortcode tokens.
+- [x] Pair standalone tags while keeping unpaired and self-closing tokens independent.
+- [x] Preserve shortcode token bytes.
+- [x] Format Markdown bodies and preserve raw bodies with scoped directives.
 
 Example 1:
 

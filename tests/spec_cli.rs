@@ -2927,10 +2927,10 @@ Term
 }
 
 #[test]
-fn markdown_hugo_shortcode_blocks_are_preserved_as_raw_blocks() {
+fn markdown_hugo_angle_shortcode_bodies_are_preserved() {
     let input = "\
 {{< notice >}}
-This    Markdown body should stay untouched.
+This    Markdown body formats normally.
 {{< /notice >}}
 ";
     let (status, stdout, stderr) = run_stdin(
