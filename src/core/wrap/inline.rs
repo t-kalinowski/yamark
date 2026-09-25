@@ -30,11 +30,35 @@ pub(super) enum Gaps {
     Reflow,
 }
 
-pub(super) struct NormalizedInline {
-    pub text: String,
+pub(super) struct NormalizedInline<'a> {
+    pub text: Cow<'a, str>,
     pub literals: Vec<Span>,
     pub tokens: Vec<(SourceSpan, usize)>,
     pub breaks: Vec<(usize, Option<MarkdownHardBreakMarker>)>,
+}
+
+impl<'a> NormalizedInline<'a> {
+    // Keep the output as a source prefix until normalization first changes it.
+    #[inline]
+    fn append(&mut self, source: &'a str, text: &str) {
+        match &mut self.text {
+            Cow::Borrowed(prefix) => {
+                let remaining = &source[prefix.len()..];
+                if text.len() <= remaining.len()
+                    && (std::ptr::eq(remaining.as_ptr(), text.as_ptr())
+                        || remaining.starts_with(text))
+                {
+                    self.text = Cow::Borrowed(&source[..prefix.len() + text.len()]);
+                } else {
+                    let mut owned = String::with_capacity(source.len());
+                    owned.push_str(prefix);
+                    owned.push_str(text);
+                    self.text = Cow::Owned(owned);
+                }
+            }
+            Cow::Owned(owned) => owned.push_str(text),
+        }
+    }
 }
 
 impl InlineSource {
@@ -167,13 +191,13 @@ impl InlineSource {
         })
     }
 
-    pub(super) fn normalize(
+    pub(super) fn normalize<'a>(
         &self,
-        source: &str,
+        source: &'a str,
         gaps: Gaps,
         canonical: bool,
         measure: bool,
-    ) -> Option<NormalizedInline> {
+    ) -> Option<NormalizedInline<'a>> {
         // Hard breaks retain their existing normalization/layout scope. Only
         // recognized literals can contain a physical hard-break spelling
         // without ending that scope; opaque HTML does not gain new semantics.
@@ -213,7 +237,7 @@ impl InlineSource {
             return self.normalize_whole(source, gaps, canonical, measure, false);
         }
         let mut out = NormalizedInline {
-            text: String::with_capacity(source.len()),
+            text: Cow::Owned(String::with_capacity(source.len())),
             literals: Vec::new(),
             tokens: Vec::new(),
             breaks: Vec::new(),
@@ -228,7 +252,7 @@ impl InlineSource {
                 gaps == Gaps::Reflow,
             )?;
             let offset = out.text.len();
-            out.text.push_str(&part.text);
+            out.text.to_mut().push_str(&part.text);
             out.literals.extend(
                 part.literals
                     .into_iter()
@@ -245,9 +269,9 @@ impl InlineSource {
                 out.breaks.push((out.tokens.len(), marker));
             }
             if let Some(marker) = marker {
-                out.text.push_str(marker.suffix());
+                out.text.to_mut().push_str(marker.suffix());
             }
-            out.text.push_str(newline);
+            out.text.to_mut().push_str(newline);
         }
         Some(out)
     }
@@ -290,16 +314,16 @@ impl InlineSource {
         })
     }
 
-    fn normalize_whole(
+    fn normalize_whole<'a>(
         &self,
-        source: &str,
+        source: &'a str,
         gaps: Gaps,
         canonical: bool,
         measure: bool,
         linewise_markup: bool,
-    ) -> Option<NormalizedInline> {
+    ) -> Option<NormalizedInline<'a>> {
         let mut out = NormalizedInline {
-            text: String::with_capacity(source.len()),
+            text: Cow::Borrowed(&source[..0]),
             literals: Vec::new(),
             tokens: Vec::new(),
             breaks: Vec::new(),
@@ -316,38 +340,35 @@ impl InlineSource {
                 match atom.kind {
                     Kind::Literal => {
                         let start = out.text.len();
-                        out.text.push_str(text);
+                        out.append(source, text);
                         out.literals.push(Span::new(start, out.text.len()));
                     }
                     Kind::Link if self.normalize_links => {
                         if gaps != Gaps::Preserve && text.contains(['\n', '\r']) {
                             let spaces = normalize_spaces_preserving_protected_spans(text);
-                            out.text
-                                .push_str(&normalize_supported_links_and_images(&spaces));
+                            out.append(source, &normalize_supported_links_and_images(&spaces));
                         } else if let Some((end, normalized)) =
                             normalize_link_or_image_at(&mut scan, index)
                         {
-                            out.text.push_str(&normalized);
+                            out.append(source, &normalized);
                             consumed = consumed.max(end);
-                            out.text.push_str(&source[end..consumed]);
+                            out.append(source, &source[end..consumed]);
                         } else {
-                            out.text.push_str(text);
+                            out.append(source, text);
                         }
                     }
                     Kind::Markup => {
                         let text = markup_line_gaps(text, linewise_markup);
                         if self.normalize_links {
-                            out.text
-                                .push_str(&normalize_supported_links_and_images(&text));
+                            out.append(source, &normalize_supported_links_and_images(&text));
                         } else {
-                            out.text.push_str(&text);
+                            out.append(source, &text);
                         }
                     }
                     Kind::Link if gaps != Gaps::Preserve => {
-                        out.text
-                            .push_str(&normalize_spaces_preserving_protected_spans(text));
+                        out.append(source, &normalize_spaces_preserving_protected_spans(text));
                     }
-                    _ => out.text.push_str(text),
+                    _ => out.append(source, text),
                 }
                 index = consumed;
                 while atoms.peek().is_some_and(|atom| atom.span.start() < index) {
@@ -361,29 +382,30 @@ impl InlineSource {
                 if gaps == Gaps::Preserve {
                     if !newline.is_empty() || end == source.len() {
                         if let Some(marker) = marker {
-                            out.text.push_str(
+                            out.append(
+                                source,
                                 body.strip_suffix('\\')
                                     .unwrap_or(body)
                                     .trim_end_matches([' ', '\t']),
                             );
-                            out.text.push_str(marker.suffix());
+                            out.append(source, marker.suffix());
                         } else {
-                            out.text.push_str(body.trim_end_matches([' ', '\t']));
+                            out.append(source, body.trim_end_matches([' ', '\t']));
                         }
-                        out.text.push_str(newline);
+                        out.append(source, newline);
                     } else {
-                        out.text.push_str(gap);
+                        out.append(source, gap);
                     }
                 } else if marker.is_some() || gaps == Gaps::Lines && !newline.is_empty() {
                     if let Some(marker) = marker {
-                        out.text.push_str(marker.suffix());
+                        out.append(source, marker.suffix());
                     }
-                    out.text.push_str(newline);
+                    out.append(source, newline);
                 } else if end < source.len()
                     && !out.text.is_empty()
                     && !out.text.ends_with([' ', '\r', '\n'])
                 {
-                    out.text.push(' ');
+                    out.append(source, " ");
                 }
                 index = end;
                 continue;
@@ -397,10 +419,10 @@ impl InlineSource {
                 }
                 index += 1;
             }
-            out.text.push_str(&source[start..index]);
+            out.append(source, &source[start..index]);
         }
         if canonical && out.text.contains('_') {
-            out.text = canonicalize_recognized_inline(&out.text, &out.literals, 0);
+            out.text = Cow::Owned(canonicalize_recognized_inline(&out.text, &out.literals, 0));
         }
         // Validate and tokenize with the existing scanner, using the retained
         // literal boundaries in the normalized buffer. No widths or token array
@@ -526,4 +548,63 @@ fn gap_end(source: &str, start: usize) -> Option<(usize, Option<MarkdownHardBrea
         return (end > start).then_some((end, marker));
     }
     (whitespace_end > start).then_some((whitespace_end, None))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_normalization_borrows_source_and_preserves_offsets() {
+        let source = "α `code  span` [link](target) omega";
+        let facts = InlineSource::recognize_with_templates(source, &[]).unwrap();
+        let result = facts.normalize(source, Gaps::Reflow, false, true).unwrap();
+        assert_eq!(result.text, source);
+        assert!(matches!(&result.text, Cow::Borrowed(_)));
+        assert_eq!(result.text.as_ptr(), source.as_ptr());
+        assert_eq!(result.literals[0].slice(&result.text), "`code  span`");
+        assert!(
+            result
+                .tokens
+                .iter()
+                .any(|(span, _)| span.span().slice(&result.text) == "[link](target)")
+        );
+    }
+
+    #[test]
+    fn changed_normalization_keeps_text_and_offsets() {
+        let source = "α `code  span` [link](  target  ) omega";
+        let facts = InlineSource::recognize_with_templates(source, &[]).unwrap();
+        let result = facts.normalize(source, Gaps::Reflow, false, true).unwrap();
+        assert_eq!(result.text, "α `code  span` [link](target) omega");
+        assert!(matches!(&result.text, Cow::Owned(_)));
+        assert_eq!(result.literals[0].slice(&result.text), "`code  span`");
+        assert!(
+            result
+                .tokens
+                .iter()
+                .any(|(span, _)| span.span().slice(&result.text) == "[link](target)")
+        );
+    }
+
+    #[test]
+    fn equal_length_change_after_long_prefix_keeps_canonical_text() {
+        let source = format!("{}_tail_", "word ".repeat(1000));
+        let facts = InlineSource::recognize_with_templates(&source, &[]).unwrap();
+        let result = facts.normalize(&source, Gaps::Reflow, true, false).unwrap();
+        assert!(matches!(&result.text, Cow::Owned(_)));
+        assert_eq!(result.text, source.replace("_tail_", "*tail*"));
+    }
+
+    #[test]
+    fn equal_length_soft_break_change_after_long_prefix_owns_text() {
+        let source = format!("{}before\ntail", "word ".repeat(1000));
+        let facts = InlineSource::recognize_with_templates(&source, &[]).unwrap();
+        let result = facts
+            .normalize(&source, Gaps::Reflow, false, false)
+            .unwrap();
+        assert!(matches!(&result.text, Cow::Owned(_)));
+        assert_eq!(result.text, source.replace("before\ntail", "before tail"));
+        assert_eq!(result.text.len(), source.len());
+    }
 }

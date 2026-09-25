@@ -760,7 +760,7 @@ impl Draft {
                             options.markdown_canonical,
                             !unwrapped,
                         )?;
-                    let text = input.text.as_str();
+                    let text = input.text.as_ref();
                     // Both handles use the enclosing source; token and literal
                     // spans below still use coordinates in the inline text.
                     let retained_text = if text == inline.source.get(source) {
