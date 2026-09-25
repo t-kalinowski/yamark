@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --wrap 22 --skip-embedded-formatters
+-- stdin
+Plain text stays byte-for-byte.
+
+> Nested `code  span` and [link](target).
+
+Changed   gap [link](  target  ) outside.
+-- stdout
+Plain text stays
+byte-for-byte.
+
+> Nested `code  span`
+> and [link](target).
+
+Changed gap
+[link](target)
+outside.
+-- stderr
+-- status
+0
