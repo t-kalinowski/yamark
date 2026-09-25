@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --config tests/fixtures/template-literal-delimiters.toml --wrap paragraph --canonical
+-- stdin
+Before   [[raw]] Keep   _this_ "quoted [[/raw]] after   _word_.
+
+Before [[raw]]
+# Keep   this heading
+[[raw]] no nesting
+[[/raw]] after   _word_.
+
+Before [[raw]] Keep   this incomplete longer opener.
+-- stdout
+Before [[raw]] Keep   _this_ "quoted [[/raw]] after *word*.
+
+Before [[raw]]
+# Keep   this heading
+[[raw]] no nesting
+[[/raw]] after *word*.
+
+Before [[raw]] Keep   this incomplete longer opener.
+-- stderr
+-- status
+0

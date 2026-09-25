@@ -33,8 +33,8 @@ other surfaces that expose these behaviors.
 ## `[template]`
 
 Template delimiters mark regions Yamark must preserve because rendering can
-change the host language. The defaults are `{{ }}`, `{% %}`, `{# #}`, and
-`<% %>`.
+change the host language. The defaults are `{{ }}`, `{% %}`, `{# #}`, `<% %>`,
+and the literal pair `{{< raw >}}` / `{{< /raw >}}`.
 
 | Key | Type | Effect |
 | --- | --- | --- |
@@ -59,25 +59,37 @@ replace_delimiters = [
 ]
 ```
 
-Every entry must contain non-empty `open` and `close` strings.
+Every entry must contain non-empty `open` and `close` strings. An optional
+`literal = true` makes a custom pair stop at its first exact closing string,
+including across line breaks, without interpreting quotes, braces, or nested
+openers. For example:
+
+```toml
+[template]
+add_delimiters = [
+  { open = "[[raw]]", close = "[[/raw]]", literal = true }
+]
+```
 
 In Markdown paragraphs and supported prose containers, including lists and
 blockquotes, a complete template span is one opaque word. Yamark preserves its
 bytes and wraps the surrounding prose normally. For `{{` / `}}`, the first
 literal `}}` ends the word, including across line breaks. Quotes, escapes, and
-nested braces inside have no special meaning. For example,
-`{{< raw >}} Keep   this payload. {{< /raw >}}` contains two independent template
-words; the prose between them formats normally. Names such as `raw`, `verbatim`,
-and `.inline` do not define a body or a formatting scope.
+nested braces inside have no special meaning. The default raw pair preserves
+the whole span in `{{< raw >}} Keep   this payload. {{< /raw >}}`, including the
+payload's spaces and line breaks. It matches those exact strings: a tag with
+arguments or different spacing still follows the ordinary `{{` / `}}` rule.
+Names such as `verbatim` and `.inline` do not define a body or formatting scope.
 
-Other delimiter pairs retain single-line boundaries with quoted arguments and
-nested braces. A closer inside a single- or double-quoted argument does not end
-those expressions. For `{#` / `#}` comments, the first literal `#}` ends the
-word. Yamark does not evaluate template languages.
+Other delimiter pairs without `literal = true` retain single-line boundaries
+with quoted arguments and nested braces. A closer inside a single- or
+double-quoted argument does not end those expressions. For `{#` / `#}` comments,
+the first literal `#}` ends the word. Yamark does not evaluate template languages.
 
 Configured openers take precedence over Markdown inline syntax. When several
-pairs match an opener, the first complete closing boundary ends the token. A
-closer without an opener is ordinary text. File directives apply to earlier
+pairs match an opener, the longest opening string wins, even if its closer is
+missing. Pairs with the same opening string keep the first complete closing
+boundary. A closer without an opener is ordinary text. File directives apply to earlier
 content too, including nested Markdown blocks.
 
 A template-only source line does not preserve placement. With `--wrap sentence`:
@@ -98,9 +110,9 @@ Before {{ render("keep   this") }} after.
 
 Wrapping still respects explicit hard breaks, blank lines, and block boundaries.
 Use `fmt: skip`, `fmt: off`/`fmt: on`, or `fmt: skip file` to preserve layout.
-An unfinished `{{` word in prose preserves the remainder of its Markdown
-fragment. Templates nested in Markdown links or emphasis and other unsupported
-Markdown blocks retain their preservation policy. Headings, tables, and
+An unfinished `{{` word or literal pair in prose preserves the remainder of its
+Markdown fragment. Templates nested in Markdown links or emphasis and other
+unsupported Markdown blocks retain their preservation policy. Headings, tables, and
 host-language eligibility have no separate shortcode rules. In source-language
 strings and comments, shortcode-looking spans now trigger the same preservation
 policy as other templates.

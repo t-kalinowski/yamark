@@ -1,0 +1,6 @@
+[template]
+add_delimiters = [
+  { open = "[[", close = "]]" },
+  { open = "[[raw]]", close = "[[/raw]]", literal = true },
+  { open = "{#raw#}", close = "{#/raw#}", literal = true },
+]

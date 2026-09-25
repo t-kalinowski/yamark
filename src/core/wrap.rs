@@ -149,7 +149,7 @@ impl ProseTemplateSpans {
         // ordinary text; openers hidden by Markdown must belong to code spans.
         delimiters.iter().all(|delimiter| {
             let mut code = contents.iter().filter(|span| !span.expression).peekable();
-            markers_outside_expressions(source, &delimiter.open, contents).all(|open| {
+            markers_outside_expressions(source, delimiter.open.as_ref(), contents).all(|open| {
                 while code.peek().is_some_and(|span| span.span.end() <= open) {
                     code.next();
                 }
@@ -199,23 +199,29 @@ enum TemplateBoundary {
 }
 
 // All inline passes share delimiter precedence and incomplete-token rejection.
-// Competing pairs advance together so a missing closer cannot repeatedly scan
-// the suffix before another pair completes at each subsequent opener.
+// The longest opener wins. Pairs with the same opener advance together so a
+// missing closer cannot repeatedly scan the suffix before another pair ends.
 fn inline_template_at(
     scan: &mut InlineScan<'_>,
     index: usize,
     delimiters: &[TemplateDelimiter],
 ) -> TemplateBoundary {
     let source = scan.text;
-    let mut matches = delimiters
+    let longest = delimiters
         .iter()
-        .filter(|delimiter| source[index..].starts_with(&delimiter.open));
-    let Some(first) = matches.next() else {
+        .filter(|delimiter| source[index..].starts_with(delimiter.open.as_ref()))
+        .map(|delimiter| delimiter.open.len())
+        .max();
+    let Some(longest) = longest else {
         return TemplateBoundary::Absent;
     };
     if escaped_at(source, index) {
         return TemplateBoundary::Absent;
     }
+    let mut matches = delimiters.iter().filter(|delimiter| {
+        delimiter.open.len() == longest && source[index..].starts_with(delimiter.open.as_ref())
+    });
+    let first = matches.next().expect("matching template opener");
     let end = if let Some(second) = matches.next() {
         let mut candidates = std::iter::once(first)
             .chain(std::iter::once(second))
@@ -224,13 +230,19 @@ fn inline_template_at(
             .collect::<Vec<_>>();
         template_candidates_end(source, &mut candidates)
     } else if let Some(candidate) = TemplateCandidate::new(scan, index, first) {
-        template_candidates_end(source, &mut [candidate])
+        if multiline_literal_template(first) {
+            source[candidate.start..]
+                .find(first.close.as_ref())
+                .map(|close| candidate.start + close + first.close.len())
+        } else {
+            template_candidates_end(source, &mut [candidate])
+        }
     } else {
         None
     };
     if let Some(end) = end {
         TemplateBoundary::Complete(end)
-    } else if source[index..].starts_with("{#")
+    } else if first.open == "{#"
         && delimiters.iter().any(literal_template_comment)
         && balanced_brace_span_end(source, index).is_some()
     {
@@ -247,6 +259,10 @@ fn literal_template_comment(delimiter: &TemplateDelimiter) -> bool {
 
 fn literal_template_braces(delimiter: &TemplateDelimiter) -> bool {
     delimiter.open == "{{" && delimiter.close == "}}"
+}
+
+fn multiline_literal_template(delimiter: &TemplateDelimiter) -> bool {
+    delimiter.literal || literal_template_braces(delimiter)
 }
 
 struct TemplateCandidate<'a> {
@@ -269,8 +285,8 @@ impl<'a> TemplateCandidate<'a> {
             return None;
         }
         let start = start + delimiter.open.len();
-        let literal = literal_template_comment(delimiter) || literal_template_braces(delimiter);
-        if literal_template_comment(delimiter) {
+        let literal = literal_template_comment(delimiter) || multiline_literal_template(delimiter);
+        if literal_template_comment(delimiter) && !delimiter.literal {
             // Failed comment searches can fall back to Pandoc attributes. Index
             // closers once so successive attributes do not rescan the suffix.
             let closes = scan.template_comment_closes.get_or_insert_with(|| {
@@ -311,7 +327,7 @@ impl<'a> TemplateCandidate<'a> {
             return None;
         }
         if self.literal || (self.quote.is_none() && self.braces == 0) {
-            if source[index..].starts_with(&self.delimiter.close) {
+            if source[index..].starts_with(self.delimiter.close.as_ref()) {
                 return Some(index + self.delimiter.close.len());
             }
             if self.literal {
@@ -347,7 +363,7 @@ fn template_candidates_end(
     for (offset, ch) in source[start..].char_indices() {
         if matches!(ch, '\n' | '\r') {
             for candidate in &mut *candidates {
-                if !literal_template_braces(candidate.delimiter) {
+                if !multiline_literal_template(candidate.delimiter) {
                     candidate.active = false;
                 }
             }
@@ -374,7 +390,7 @@ pub(crate) fn markdown_template_line_end(
 ) -> Option<usize> {
     if !delimiters
         .iter()
-        .any(|delimiter| source[..line_end].contains(&delimiter.open))
+        .any(|delimiter| source[..line_end].contains(delimiter.open.as_ref()))
     {
         return Some(line_end);
     }
@@ -394,9 +410,10 @@ pub(crate) fn markdown_template_line_end(
                 continue;
             }
             TemplateBoundary::Incomplete => {
-                if source[index..].starts_with("{{")
-                    && delimiters.iter().any(literal_template_braces)
-                {
+                if delimiters.iter().any(|delimiter| {
+                    multiline_literal_template(delimiter)
+                        && source[index..].starts_with(delimiter.open.as_ref())
+                }) {
                     // No closer exists in this fragment. Consume it once rather
                     // than repeating the failed suffix search on each line.
                     return None;

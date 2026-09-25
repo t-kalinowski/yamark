@@ -182,20 +182,29 @@ fn normalize_path_components(path: &Path) -> PathBuf {
 fn default_template_delimiters() -> Vec<TemplateDelimiter> {
     vec![
         TemplateDelimiter {
-            open: "{{".to_owned(),
-            close: "}}".to_owned(),
+            open: "{{< raw >}}".into(),
+            close: "{{< /raw >}}".into(),
+            literal: true,
         },
         TemplateDelimiter {
-            open: "{%".to_owned(),
-            close: "%}".to_owned(),
+            open: "{{".into(),
+            close: "}}".into(),
+            literal: false,
         },
         TemplateDelimiter {
-            open: "{#".to_owned(),
-            close: "#}".to_owned(),
+            open: "{%".into(),
+            close: "%}".into(),
+            literal: false,
         },
         TemplateDelimiter {
-            open: "<%".to_owned(),
-            close: "%>".to_owned(),
+            open: "{#".into(),
+            close: "#}".into(),
+            literal: false,
+        },
+        TemplateDelimiter {
+            open: "<%".into(),
+            close: "%>".into(),
+            literal: false,
         },
     ]
 }
@@ -301,7 +310,7 @@ fn parse_delimiters(value: &toml::Value, context: &str) -> Result<Vec<TemplateDe
             .as_table()
             .ok_or_else(|| YamarkError::new(format!("{context} entries must be tables")))?;
         for key in table.keys() {
-            if !matches!(key.as_str(), "open" | "close") {
+            if !matches!(key.as_str(), "open" | "close" | "literal") {
                 return Err(YamarkError::new(format!(
                     "unknown template delimiter key: {context}.{key}"
                 )));
@@ -315,6 +324,15 @@ fn parse_delimiters(value: &toml::Value, context: &str) -> Result<Vec<TemplateDe
             .get("close")
             .and_then(toml::Value::as_str)
             .ok_or_else(|| YamarkError::new(format!("{context}.close is required")))?;
+        let literal = table
+            .get("literal")
+            .map(|value| {
+                value
+                    .as_bool()
+                    .ok_or_else(|| YamarkError::new(format!("{context}.literal must be a boolean")))
+            })
+            .transpose()?
+            .unwrap_or(false);
         if open.is_empty() {
             return Err(YamarkError::new(format!(
                 "{context}.open must not be empty"
@@ -326,8 +344,9 @@ fn parse_delimiters(value: &toml::Value, context: &str) -> Result<Vec<TemplateDe
             )));
         }
         delimiters.push(TemplateDelimiter {
-            open: open.to_owned(),
-            close: close.to_owned(),
+            open: open.to_owned().into(),
+            close: close.to_owned().into(),
+            literal,
         });
     }
     Ok(delimiters)

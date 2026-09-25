@@ -517,6 +517,35 @@ def test_headerless_table_preserves_quarto_document(
     assert before == after
 
 
+def test_multiline_shortcode_preserves_quarto_document() -> None:
+    source = (
+        '---\ntitle: "Multiline shortcode control"\n---\n\n'
+        "Before {{< meta\n title >}} after.\n"
+    )
+    with TemporaryDirectory(prefix="yamark-quarto-shortcode-") as temp:
+        root = Path(temp)
+        before = render_quarto_json(root, "before", source)
+        result = subprocess.run(
+            [
+                os.environ["YAMARK_BIN"],
+                "format",
+                "--wrap",
+                "20",
+                "--stdin-file-path",
+                "input.qmd",
+            ],
+            input=source,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "{{< meta\n title >}}" in result.stdout
+        after = render_quarto_json(root, "after", result.stdout)
+    assert "{{<" not in json.dumps(before["blocks"])
+    assert canonicalize_quarto_json(before) == canonicalize_quarto_json(after)
+
+
 @pytest.mark.parametrize("width", WIDTHS)
 @pytest.mark.parametrize("canonical", [False, True])
 @pytest.mark.parametrize("table_widths", ["fit", "preserve"])

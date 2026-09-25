@@ -1782,8 +1782,8 @@ fn standalone_template_line_matches(text: &str, delimiter: &TemplateDelimiter) -
     if delimiter.open == "{" && delimiter.close == "}" {
         return python_f_string_replacement_field_line(text);
     }
-    text.starts_with(&delimiter.open)
-        && text.ends_with(&delimiter.close)
+    text.starts_with(delimiter.open.as_ref())
+        && text.ends_with(delimiter.close.as_ref())
         && text.len() > delimiter.open.len() + delimiter.close.len()
 }
 

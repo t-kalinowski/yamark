@@ -1,4 +1,5 @@
 use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -19,16 +20,18 @@ impl StateId {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TemplateDelimiter {
-    pub open: String,
-    pub close: String,
+    pub open: Cow<'static, str>,
+    pub close: Cow<'static, str>,
+    /// Stop at the first literal closer, including across line breaks.
+    pub literal: bool,
 }
 
 pub fn contains_template_span(source: &str, delimiters: &[TemplateDelimiter]) -> bool {
     delimiters.iter().any(|delimiter| {
         !delimiter.open.is_empty()
             && !delimiter.close.is_empty()
-            && source.find(&delimiter.open).is_some_and(|open| {
-                source[open + delimiter.open.len()..].contains(&delimiter.close)
+            && source.find(delimiter.open.as_ref()).is_some_and(|open| {
+                source[open + delimiter.open.len()..].contains(delimiter.close.as_ref())
             })
     })
 }
@@ -653,8 +656,9 @@ fn parse_fmt_directive(rest: &str) -> Option<Directive> {
     if action.text == "template.delimiters" {
         let (scope, _) = parse_scope_and_options(&fields, Scope::Next);
         let delimiter = parse_delimiter(&fields).unwrap_or(TemplateDelimiter {
-            open: "{{".to_owned(),
-            close: "}}".to_owned(),
+            open: "{{".into(),
+            close: "}}".into(),
+            literal: false,
         });
         return Some(Directive::Template { scope, delimiter });
     }
@@ -942,8 +946,9 @@ fn parse_yaml_template_directive(
     Ok(Directive::Template {
         scope,
         delimiter: TemplateDelimiter {
-            open: quoted[0].clone(),
-            close: quoted[1].clone(),
+            open: quoted[0].clone().into(),
+            close: quoted[1].clone().into(),
+            literal: false,
         },
     })
 }
@@ -1037,9 +1042,11 @@ fn parse_scope_and_options_checked(
             if open.is_empty() || close.is_empty() {
                 return Err("fmt: template.delimiters values must not be empty".to_owned());
             }
-            delta
-                .add_template_delimiters
-                .push(TemplateDelimiter { open, close });
+            delta.add_template_delimiters.push(TemplateDelimiter {
+                open: open.into(),
+                close: close.into(),
+                literal: false,
+            });
             index += 2;
         } else {
             return Err(format!("invalid fmt directive option: {field}"));
@@ -1198,8 +1205,9 @@ fn parse_delimiter(fields: &[DirectiveToken]) -> Option<TemplateDelimiter> {
     let quoted = fields.iter().filter_map(quoted_field).collect::<Vec<_>>();
     if quoted.len() == 2 && !quoted[0].is_empty() && !quoted[1].is_empty() {
         return Some(TemplateDelimiter {
-            open: quoted[0].clone(),
-            close: quoted[1].clone(),
+            open: quoted[0].clone().into(),
+            close: quoted[1].clone().into(),
+            literal: false,
         });
     }
     for field in fields {
@@ -1211,7 +1219,8 @@ fn parse_delimiter(fields: &[DirectiveToken]) -> Option<TemplateDelimiter> {
         }
     }
     Some(TemplateDelimiter {
-        open: open?,
-        close: close?,
+        open: open?.into(),
+        close: close?.into(),
+        literal: false,
     })
 }

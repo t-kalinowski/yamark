@@ -42,6 +42,9 @@ malformed-delimiter rules. Recognition stops at existing opaque inline tokens;
 it does not recursively interpret code or math inside HTML or strikethrough.
 Double-brace template words scan through the first literal `}}`. Their internal
 line breaks and block-looking text remain part of the same opaque word.
+The default `{{< raw >}}` / `{{< /raw >}}` pair and configured `literal = true`
+pairs use the same byte-preserving path. The longest opener wins; matching stops
+at the first literal closer without tracking nested openers or quoting.
 Other block boundaries still limit which source belongs to one inline paragraph.
 
 Automatic fallback retains its existing cleanup policy. For example, a list

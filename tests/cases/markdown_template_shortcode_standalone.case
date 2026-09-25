@@ -8,7 +8,10 @@ exactly as written.
 {{< /raw >}}
 After.
 -- stdout
-Before {{< raw >}} Keep this payload exactly as written. {{< /raw >}} After.
+Before {{< raw >}}
+Keep   this payload
+exactly as written.
+{{< /raw >}} After.
 -- stderr
 -- status
 0

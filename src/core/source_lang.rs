@@ -666,8 +666,9 @@ fn parse_generated_embedded_markdown(
 
 fn python_f_string_template_delimiters() -> Vec<TemplateDelimiter> {
     vec![TemplateDelimiter {
-        open: "{".to_owned(),
-        close: "}".to_owned(),
+        open: "{".into(),
+        close: "}".into(),
+        literal: false,
     }]
 }
 

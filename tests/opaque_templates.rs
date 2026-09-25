@@ -52,6 +52,10 @@ fn transcripts_are_exact_and_idempotent() {
         include_str!("cases/markdown_template_stray_closers.case"),
         include_str!("cases/markdown_template_autolink.case"),
         include_str!("cases/markdown_template_html_boundary.case"),
+        include_str!("cases/markdown_raw_delimiter_pair.case"),
+        include_str!("cases/markdown_raw_delimiter_unclosed.case"),
+        include_str!("cases/markdown_literal_delimiter_config.case"),
+        include_str!("cases/markdown_literal_delimiter_unclosed_comment_prefix.case"),
     ] {
         let (args, rest) = case
             .strip_prefix("-- args\n")
@@ -86,6 +90,7 @@ fn tokens_are_opaque_under_every_wrapping_mode() {
         r#"{{ render("[x](  url  ) _keep_ `code` $math$") }}"#,
         r#"{{ render("<b>  </b>", "x\ty", "café　東京") }}"#,
         r#"{{ render([x](  url  ), _keep_, **this**) }}"#,
+        r#"{{< raw >}} "unclosed { _keep_ [x](  url  ) {{ other }} {{< /raw >}}"#,
     ] {
         for wrap in [
             "none",

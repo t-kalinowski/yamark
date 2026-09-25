@@ -1021,10 +1021,13 @@ Standalone words can join surrounding prose or occupy their own line when
 wrapping. An unfinished word in prose preserves the remainder of its enclosing
 Markdown document or fragment.
 
-`{{< ... >}}` and `{{% ... %}}` use this same rule. Names such as `raw`,
-`verbatim`, and `something.inline` have no special meaning. Format the Markdown
-between independent words normally. To disable formatting for a region, use
-`<!-- fmt: off -->` and `<!-- fmt: on -->`. Directive-looking text inside a word
+`{{< ... >}}` and `{{% ... %}}` use this same rule. An additional default literal
+pair, `{{< raw >}}` / `{{< /raw >}}`, preserves its entire payload. It matches
+those exact strings and wins over the shorter `{{` opener. Custom delimiter
+pairs can select the same behavior with `literal = true`. Names and nested
+openers are not interpreted; the first exact closer ends the word. Format the
+Markdown between independent words normally. To disable formatting for a region,
+use `<!-- fmt: off -->` and `<!-- fmt: on -->`. Directive-looking text inside a word
 recognized while formatting is enabled is data.
 
 While formatting is disabled, retain the existing linewise directive policy.

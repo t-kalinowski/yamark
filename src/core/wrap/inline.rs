@@ -48,7 +48,7 @@ impl InlineSource {
         // scanner path free of per-character template matching.
         let delimiters = if delimiters
             .iter()
-            .any(|delimiter| source.contains(&delimiter.open))
+            .any(|delimiter| source.contains(delimiter.open.as_ref()))
         {
             delimiters
         } else {

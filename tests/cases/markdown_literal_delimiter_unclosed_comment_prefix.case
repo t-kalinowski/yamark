@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --config tests/fixtures/template-literal-delimiters.toml --wrap paragraph --canonical
+-- stdin
+Before   {#raw#} keep   this incomplete longer opener.
+
+# Keep   the remaining fragment
+-- stdout
+Before   {#raw#} keep   this incomplete longer opener.
+
+# Keep   the remaining fragment
+-- stderr
+-- status
+0

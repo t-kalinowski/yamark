@@ -30,6 +30,8 @@ fn template_words_preserve_bytes_across_line_endings_and_nested_documents() {
                 "{{< data message=\"\n<!-- fmt: off -->\n<!-- fmt: on -->\n\" >}}",
                 "{{% call\narg='quotes have no   meaning'  \t\nraw=`\\`\n%}}",
                 "{{% call arg=\"unterminated\n%}}",
+                "{{< raw >}} Keep   _this_ [x](  url  ). {{< /raw >}}",
+                "{{< raw >}}\n# Keep   this\n\n<!-- fmt: off -->\n\"unclosed {\n{{< /raw >}}",
             ] {
                 let token = token.replace('\n', newline);
                 for prefix in ["", "\u{feff}"] {

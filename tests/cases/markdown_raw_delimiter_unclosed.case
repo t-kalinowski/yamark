@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.qmd --wrap paragraph --canonical
+-- stdin
+Before   {{< raw >}} keep   _this_ and {{ other }}.
+
+# Keep   the remaining fragment
+-- stdout
+Before   {{< raw >}} keep   _this_ and {{ other }}.
+
+# Keep   the remaining fragment
+-- stderr
+-- status
+0

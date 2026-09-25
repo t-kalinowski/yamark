@@ -4614,11 +4614,11 @@ impl<'src, 'ast, 'cfg> FlowParser<'src, 'ast, 'cfg> {
             if open.is_empty() || delimiter.close.is_empty() || open[0] != byte {
                 continue;
             }
-            if !self.text[pos..].starts_with(&delimiter.open) {
+            if !self.text[pos..].starts_with(delimiter.open.as_ref()) {
                 continue;
             }
             let content_start = pos + delimiter.open.len();
-            if let Some(close) = self.text[content_start..].find(&delimiter.close) {
+            if let Some(close) = self.text[content_start..].find(delimiter.close.as_ref()) {
                 return Some(content_start + close + delimiter.close.len());
             }
         }
@@ -9004,7 +9004,7 @@ fn source_contains_any_template_opener(
     delimiters.iter().any(|delimiter| {
         !delimiter.open.is_empty()
             && !delimiter.close.is_empty()
-            && source.contains(&delimiter.open)
+            && source.contains(delimiter.open.as_ref())
     })
 }
 
@@ -10677,10 +10677,10 @@ fn preserves_yaml_template_span(
         if delimiter.open.is_empty() || delimiter.close.is_empty() {
             return false;
         }
-        let Some(open) = source.find(&delimiter.open) else {
+        let Some(open) = source.find(delimiter.open.as_ref()) else {
             return false;
         };
-        source[open + delimiter.open.len()..].contains(&delimiter.close)
+        source[open + delimiter.open.len()..].contains(delimiter.close.as_ref())
     })
 }
 

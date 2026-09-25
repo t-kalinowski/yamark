@@ -152,7 +152,8 @@ fn config_default_path_application_keeps_allocation_count_bounded() {
     set_count_thread_allocations(false);
 
     assert!(
-        ALLOCATIONS.load(Ordering::Relaxed) <= 1_900,
+        // Copy the two delimiter vectors, but borrow their default strings.
+        ALLOCATIONS.load(Ordering::Relaxed) <= 300,
         "default config path application allocated {} times",
         ALLOCATIONS.load(Ordering::Relaxed)
     );

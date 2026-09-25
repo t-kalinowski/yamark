@@ -1,0 +1,33 @@
+-- args
+format --stdin-file-path input.qmd --wrap paragraph --canonical --verify
+-- stdin
+Before   {{< raw >}} Keep   _this_ [link](  target  ) {{ "}} exactly. {{< /raw >}}   after _word_.
+
+Before
+{{< raw >}}
+# Keep   this heading
+
+<!-- fmt: off -->
+"unclosed { {{ arbitrary }}
+{{< /raw >}}
+after   _word_.
+
+Before {{< raw >}} first {{< raw >}} nested-looking {{< /raw >}} after   _word_. {{< /raw >}}
+
+Before {{< raw caption="x" >}} format   _this_ {{< /raw >}} after.
+-- stdout
+Before {{< raw >}} Keep   _this_ [link](  target  ) {{ "}} exactly. {{< /raw >}} after *word*.
+
+Before {{< raw >}}
+# Keep   this heading
+
+<!-- fmt: off -->
+"unclosed { {{ arbitrary }}
+{{< /raw >}} after *word*.
+
+Before {{< raw >}} first {{< raw >}} nested-looking {{< /raw >}} after *word*. {{< /raw >}}
+
+Before {{< raw caption="x" >}} format *this* {{< /raw >}} after.
+-- stderr
+-- status
+0
