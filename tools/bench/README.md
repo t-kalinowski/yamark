@@ -53,7 +53,11 @@ binary, then uses that frozen binary for the default per-file YAML
 benchmark, the three-file large-file benchmark, and the published
 directory comparison. The workload sizes, formatter rosters,
 repetitions, and warmups are explicit in the runner so a child script's
-changed defaults cannot silently change the suite.
+changed defaults cannot silently change the suite. It uses 5 measured
+repetitions for per-file YAML, 20 for each large file, and 7 for directory
+YAML, after 1, 2, and 1 warmup repetitions respectively. More repetitions
+reduce the effect of occasional delays; run on an idle machine to limit
+sustained host interference.
 
 By default, logs, scratch data, the frozen binary, and three separate
 JSON artifacts are written under a new

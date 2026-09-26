@@ -98,7 +98,7 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     assert!(default.contains("--invocation per-file --operation write"));
     assert!(default.contains("--width-profile default"));
     assert!(default.contains("--files 400 --items 80"));
-    assert!(default.contains("--reps 2 --warmups 1 --tools yamark"));
+    assert!(default.contains("--reps 5 --warmups 1 --tools yamark"));
     assert!(default.contains("--skip-yamark-build"));
     assert!(default.contains("--keep-corpus"));
     assert!(default.contains(&format!("--yamark-bin {}", frozen_binary.display())));
@@ -115,7 +115,7 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     assert!(big.contains("tools/bench/big.py"));
     assert!(big.contains("--target-bytes 4000000"));
     assert!(big.contains("--frontmatter-yaml-bytes 200000 --seed 20260602"));
-    assert!(big.contains("--reps 10 --warmups 2"));
+    assert!(big.contains("--reps 20 --warmups 2"));
     assert!(big.contains(
         "--tools yamark,panache,mdformat,prettier,dprint-markdown,deno-fmt,yamlfmt,yamlfix,dprint-yaml"
     ));
@@ -137,7 +137,7 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     assert!(directory.contains("--invocation directory --operation write"));
     assert!(directory.contains("--width-profile default"));
     assert!(directory.contains("--files 500 --items 540"));
-    assert!(directory.contains("--reps 3 --warmups 1"));
+    assert!(directory.contains("--reps 7 --warmups 1"));
     assert!(directory.contains("--tools yamark,yamlfmt,prettier,yamlfix,dprint-yaml,deno-fmt"));
     assert!(directory.contains("--skip-yamark-build"));
     assert!(directory.contains("--keep-corpus"));
