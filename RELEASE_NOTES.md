@@ -1,5 +1,3 @@
-<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
-
 Yamark 0.4.0 adds Markdown table-width controls, formats prose around template expressions, and improves preservation of inline literals and shortcodes.
 
 ## Command line
