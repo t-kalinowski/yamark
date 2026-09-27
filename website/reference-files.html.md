@@ -88,6 +88,7 @@ projection.
 | Blockquotes | Formats when supported | Wraps supported blockquote shapes recursively. |
 | Footnote blocks | Formats or preserves | Wraps definitions by default. A preserve setting keeps definitions byte-for-byte. |
 | Reference links | Formats around | Treats reference-style links as atomic wrapping tokens. Preserves reference definitions without relocation. |
+| Inline code and math | Preserves contents; formats around | Recognized spans retain authored whitespace and line endings while surrounding prose formats. |
 | Nested image links | Formats when safe | Normalizes and wraps simple nested image labels and long destinations. |
 | Pandoc citations | Formats around | Protects citation spans such as `[@key]` and `[-@key]` while wrapping. |
 | Quarto divs | Formats when supported | Formats supported fenced div bodies recursively. |
@@ -101,7 +102,8 @@ projection.
 | Pandoc tables | Formats when supported | Fits supported simple, grid, and multiline tables to their contents while preserving column alignment and multiline cell breaks. `table-widths=preserve` retains source widths. |
 | Definition lists | Formats when supported | Normalizes marker spacing and wraps definitions. |
 | Display math | Preserves | Keeps own-line `$$` display math blocks byte-for-byte. |
-| Raw HTML, TeX, Hugo shortcodes, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
+| Standalone Hugo shortcodes | Preserves tokens; formats between | Complete `{{< ... >}}` and `{{% ... %}}` tokens retain their bytes, including multiline tokens and quoted arguments. Markdown between tokens formats normally. |
+| Raw HTML, TeX, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
 | Template spans | Preserves contents; reflows prose | Complete single-line expressions using default or configured delimiters are opaque words in paragraphs and supported prose containers. See [template configuration](reference-config.qmd#template). |
 
 For Quarto header promotion, a supported fence is a YAML or Markdown fence, a

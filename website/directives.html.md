@@ -180,6 +180,9 @@ Markdown uses an HTML comment:
 A whole-file skip is useful for generated files or files whose layout is
 intentionally outside Yamark's scope.
 
+Markdown skip controls retain trailing spaces and line endings in the selected
+content, including supported nested Markdown.
+
 ## Preserve intentional table widths
 
 Yamark normally fits table columns to their contents. Keep a table's authored

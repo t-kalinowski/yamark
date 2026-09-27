@@ -96,8 +96,8 @@ Wrapping still respects explicit hard breaks, blank lines, and block boundaries.
 Use `fmt: skip`, `fmt: off`/`fmt: on`, or `fmt: skip file` to preserve layout.
 Multiline expressions, templates nested in Markdown links or emphasis, and
 otherwise unsupported Markdown blocks retain their existing preservation
-policy. Headings, tables, host-language eligibility, and standalone shortcode
-block tokens are unchanged.
+policy. Template settings do not change how Yamark handles headings, tables,
+host-language eligibility, or standalone shortcode tokens.
 
 ## `[embedded]`
 
