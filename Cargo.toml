@@ -1,6 +1,6 @@
 [package]
 name = "yamark"
-version = "0.4.0"
+version = "0.4.0+dev"
 edition = "2024"
 rust-version = "1.98.1"
 description = "A fast formatter for YAML and Markdown."
