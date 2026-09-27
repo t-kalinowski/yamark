@@ -23,6 +23,11 @@ BIG_TOOLS = (
     "yamlfmt,yamlfix,dprint-yaml"
 )
 DIRECTORY_TOOLS = "yamark,yamlfmt,prettier,yamlfix,dprint-yaml,deno-fmt"
+SUITE_RUNS = {
+    "default": {"reps": 5, "warmups": 1},
+    "big": {"reps": 20, "warmups": 2},
+    "directory": {"reps": 7, "warmups": 1},
+}
 REQUIRED_COMMANDS = (
     "cargo",
     "rustc",
@@ -72,6 +77,7 @@ def main() -> int:
     print(f"results:          {result_dir}")
     if args.dry_run:
         print_steps(steps)
+        print_validation_plan()
         return 0
 
     require_clean_worktree()
@@ -173,9 +179,9 @@ def benchmark_steps(result_dir: Path) -> list[tuple[str, list[str]]]:
                 "--items",
                 "80",
                 "--reps",
-                "5",
+                str(SUITE_RUNS["default"]["reps"]),
                 "--warmups",
-                "1",
+                str(SUITE_RUNS["default"]["warmups"]),
                 "--tools",
                 "yamark",
                 *common,
@@ -197,9 +203,9 @@ def benchmark_steps(result_dir: Path) -> list[tuple[str, list[str]]]:
                 "--seed",
                 "20260602",
                 "--reps",
-                "20",
+                str(SUITE_RUNS["big"]["reps"]),
                 "--warmups",
-                "2",
+                str(SUITE_RUNS["big"]["warmups"]),
                 "--tools",
                 BIG_TOOLS,
                 *common,
@@ -229,9 +235,9 @@ def benchmark_steps(result_dir: Path) -> list[tuple[str, list[str]]]:
                 "--items",
                 "540",
                 "--reps",
-                "7",
+                str(SUITE_RUNS["directory"]["reps"]),
                 "--warmups",
-                "1",
+                str(SUITE_RUNS["directory"]["warmups"]),
                 "--tools",
                 DIRECTORY_TOOLS,
                 *common,
@@ -248,6 +254,12 @@ def print_steps(steps: list[tuple[str, list[str]]]) -> None:
     for label, command in steps:
         print(f"\n[{label}]")
         print(shlex.join(command))
+
+
+def print_validation_plan() -> None:
+    print("\n[artifact-validation]")
+    for label, runs in SUITE_RUNS.items():
+        print(f"{label}: reps={runs['reps']} warmups={runs['warmups']}")
 
 
 def require_clean_worktree() -> None:
@@ -366,24 +378,21 @@ def validate_artifacts(
             "formatters": ["yamark"],
             "ok": 1,
             "skipped": 0,
-            "reps": 2,
-            "warmups": 1,
+            **SUITE_RUNS["default"],
         },
         "big": {
             "benchmark": "big-file-formatting",
             "formatters": BIG_TOOLS.split(","),
             "ok": 18,
             "skipped": 9,
-            "reps": 10,
-            "warmups": 2,
+            **SUITE_RUNS["big"],
         },
         "directory": {
             "benchmark": "yaml-formatting",
             "formatters": DIRECTORY_TOOLS.split(","),
             "ok": 6,
             "skipped": 0,
-            "reps": 3,
-            "warmups": 1,
+            **SUITE_RUNS["directory"],
         },
     }
     artifact_root = result_dir / "artifacts"

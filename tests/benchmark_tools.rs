@@ -150,6 +150,12 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
         "--artifact-dir {}",
         resolved_result.join("artifacts/directory").display()
     )));
+    assert!(stdout.contains(
+        "[artifact-validation]\n\
+default: reps=5 warmups=1\n\
+big: reps=20 warmups=2\n\
+directory: reps=7 warmups=1"
+    ));
 }
 
 #[test]
