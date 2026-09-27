@@ -158,9 +158,12 @@ configuration to plugin selection:
 Autofixing linters (`pymarkdown`, `markdownlint-cli2`) are outside this
 formatter-CLI comparison. The harness can still run them with `--tools`.
 
-Measured on a MacBook Pro (`r host_inline()`) using the published PyPI release
+Wall time can vary with system load and scheduling, especially for the parallel
+directory workload.
+
+Measured on a MacBook Pro (`r host_inline()`) using
 Yamark `r benchmark_yamark_version_inline()`, built from commit
-`r benchmark_commit_inline()`.
+`r benchmark_commit_inline()` with `cargo build --release --locked`.
 `r tool_versions_block()`
 
 The tables use the latest complete checked-in
@@ -172,12 +175,16 @@ table renders only when every tool in its roster completes the benchmark.
 ## Reproducing
 
 ```sh
-tools/bench/big.py
+tools/bench/big.py --reps 20 --warmups 2
 tools/bench/run.py --invocation directory --files 500 --items 540 \
-  --reps 3 --warmups 1 \
+  --reps 7 --warmups 1 \
   --tools yamark,yamlfmt,prettier,yamlfix,dprint-yaml,deno-fmt
 ```
 
 The corpora are generated deterministically, so the same commands reproduce
 the same inputs anywhere; each script writes a JSON artifact under
 `docs/benchmarks/`.
+
+Run `tools/bench/run-all.py` for the complete suite using one frozen release
+binary. It saves the artifacts, logs, retained corpora, and a manifest under
+`target/bench-all/`.

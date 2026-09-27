@@ -413,7 +413,8 @@ fn website_includes_benchmarks_page() {
     assert!(benchmarks.contains("tools/bench/big.py"));
     assert!(benchmarks.contains("--files 500 --items 540"));
     assert!(benchmarks.contains("MacBook Pro"));
-    assert!(benchmarks.contains("published PyPI release"));
+    assert!(benchmarks.contains("cargo build --release --locked"));
+    assert!(!benchmarks.contains("published PyPI release"));
     assert!(benchmarks.contains("benchmark_yamark_version_inline()"));
     assert!(benchmarks.contains("benchmark_commit_inline()"));
     assert!(benchmarks.contains("total user CPU time"));
@@ -461,7 +462,8 @@ fn website_includes_benchmarks_page() {
     assert!(rendered.contains("big-with-frontmatter.md"));
     assert!(rendered.contains("docs/benchmarks/big"));
     assert!(rendered.contains("MacBook Pro"));
-    assert!(rendered.contains("using the published PyPI release"));
+    assert!(rendered.contains("cargo build --release --locked"));
+    assert!(!rendered.contains("published PyPI release"));
     let commit = rendered
         .split_once("built from commit")
         .unwrap()
@@ -522,6 +524,20 @@ fn website_includes_benchmarks_page() {
     });
     let artifact_commit = big_artifact["git"]["commit"].as_str().unwrap();
     assert_eq!(yaml_artifact["git"]["commit"], artifact_commit);
+    for artifact in [&big_artifact, &yaml_artifact] {
+        let row = artifact["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["formatter"] == "yamark" && row["status"] == "ok")
+            .unwrap();
+        let reps = row["reps"].as_u64().unwrap();
+        let warmups = row["warmups"].as_u64().unwrap();
+        assert!(rendered.contains(&format!("--reps {reps} --warmups {warmups}")));
+        assert!(rendered.contains(&format!(
+            "the median of {reps} measured runs after {warmups} warmup run"
+        )));
+    }
     assert_eq!(commit, &artifact_commit[..12]);
     assert_eq!(
         yaml_artifact["tool_versions"]["yamark"],
