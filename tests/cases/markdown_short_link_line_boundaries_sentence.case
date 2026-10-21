@@ -10,13 +10,12 @@ Short [linked words](https://example.org/guide) finish. Another sentence follows
 Late policy changes this paragraph with [a link](https://example.org/late) and a final sentence.
 -- stdout
 Short [linked words](
-  https://example.org/guide
-) finish.
+  https://example.org/guide) finish.
 Another sentence follows.
 
 > - Nested [link](
->     https://example.org/nested
->   ) and words that should cross a
+>     https://example.org/nested)
+>   and words that should cross a
 >   line boundary.\
 >   Follow-up text keeps its
 >   container prefix.

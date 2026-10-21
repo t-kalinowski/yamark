@@ -187,8 +187,8 @@ You need to use the official locations for persistent file storage, because it's
     let expected = r#"This problem is hardly unique to R. Many applications need to leave
 notes to themselves. It is best to comply with external conventions,
 which in this case means the [XDG Base Directory Specification](
-  https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
-). You need to use the official locations for persistent file storage,
+  https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html).
+You need to use the official locations for persistent file storage,
 because it's the responsible and courteous thing to do and also to
 comply with CRAN policies.
 "#;
@@ -201,8 +201,8 @@ fn long_link_targets_split_with_following_words_when_no_punctuation_follows() {
     let input = r#"For setup, read [installation guide](https://example.com/products/cloud/sdk/install/linux/enterprise) before editing the configuration file.
 "#;
     let expected = r#"For setup, read [installation guide](
-  https://example.com/products/cloud/sdk/install/linux/enterprise
-) before editing the configuration file.
+  https://example.com/products/cloud/sdk/install/linux/enterprise)
+before editing the configuration file.
 "#;
 
     assert_eq!(format_markdown(input, 58), expected);
@@ -213,20 +213,20 @@ fn long_link_targets_split_with_following_words_when_punctuation_follows() {
     let input = r#"For setup, read [installation guide](https://example.com/products/cloud/sdk/install/linux/enterprise), then edit the configuration file.
 "#;
     let expected = r#"For setup, read [installation guide](
-  https://example.com/products/cloud/sdk/install/linux/enterprise
-), then edit the configuration file.
+  https://example.com/products/cloud/sdk/install/linux/enterprise),
+then edit the configuration file.
 "#;
 
     assert_eq!(format_markdown(input, 58), expected);
 }
 
 #[test]
-fn nested_image_links_keep_a_short_outer_destination_inline() {
+fn nested_image_links_keep_closing_parentheses_with_destinations() {
     let input = r#"[![Microsoft Foundry Discord](https://dcbadge.limes.pink/api/server/nTYy5BXMWG)](https://discord.gg/nTYy5BXMWG)
 "#;
     let expected = r#"[![Microsoft Foundry Discord](
-  https://dcbadge.limes.pink/api/server/nTYy5BXMWG
-)](https://discord.gg/nTYy5BXMWG)
+  https://dcbadge.limes.pink/api/server/nTYy5BXMWG)](
+  https://discord.gg/nTYy5BXMWG)
 "#;
 
     assert_eq!(format_markdown(input, 72), expected);

@@ -916,8 +916,7 @@ after.
 
 A
 [label with spaces](
-  dest
-) after.
+  dest) after.
 
 This
 ~~struck text keeps    spacing~~.
@@ -1657,8 +1656,8 @@ A [compact label](https://example.com/a/very/long/destination/path) after.
 ";
     let expected = "\
 A [compact label](
-  https://example.com/a/very/long/destination/path
-) after.
+  https://example.com/a/very/long/destination/path)
+after.
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "24"],
@@ -1718,8 +1717,8 @@ after.
 ";
     let expected = "\
 A [compact label](
-  https://example.com/a/very/long/destination/path
-) after.
+  https://example.com/a/very/long/destination/path)
+after.
 ";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "24"],

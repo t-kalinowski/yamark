@@ -1,0 +1,10 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:12
+-- stdin
+Link [text](https://example.com).
+-- stdout
+Link [text](
+  https://example.com).
+-- stderr
+-- status
+0
