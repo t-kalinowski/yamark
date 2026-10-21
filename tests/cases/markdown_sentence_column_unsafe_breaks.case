@@ -11,8 +11,7 @@ format --stdin-file-path input.md --wrap sentence:12
   sentence.
   First
   sentence.
-  2\.
-  More
+  2\. More
   prose.
   Last
   sentence.
@@ -21,8 +20,7 @@ format --stdin-file-path input.md --wrap sentence:12
   sentence.
   First
   sentence.
-  ii\.
-  More
+  ii\. More
   prose.
   Last
   sentence.

@@ -42,14 +42,19 @@ def markdown_ast(source: str, reader: str) -> object:
 
 @pytest.mark.parametrize("reader", ["markdown", "commonmark", "gfm"])
 @pytest.mark.parametrize("width", [8, 32, 72])
-def test_sentence_column_roundtrip_preserves_meaning(reader: str, width: int) -> None:
+@pytest.mark.parametrize("sentence_column", [False, True])
+def test_sentence_column_roundtrip_preserves_meaning(
+    reader: str, width: int, sentence_column: bool
+) -> None:
     paragraphs = []
     for marker in ["-", "+", "*", "(b)", "(ii)", "2.", "2)", "b.", "ii.", ">", "#"]:
         prose = f"Opening sentence. First sentence. {marker} More prose. Last sentence."
         paragraphs.extend([prose, f"- {prose}", f"> {prose}"])
     source = "\n\n".join(paragraphs) + "\n"
     column = format_markdown(source, str(width))
-    sentence = format_markdown(column, "sentence")
+    wrap = f"sentence:{width}" if sentence_column else "sentence"
+    sentence = format_markdown(column, wrap)
+    assert format_markdown(sentence, wrap) == sentence
     restored = format_markdown(sentence, str(width))
     assert restored == column
     expected = markdown_ast(source, reader)

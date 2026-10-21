@@ -1953,33 +1953,6 @@ fn write_sentence_token_lines(
     })
 }
 
-fn write_wrapped_sentence_token_lines(
-    out: &mut TokenLineWriter<'_, '_>,
-    tokens: TokenSlice<'_>,
-    first_width: usize,
-    continuation_width: usize,
-    suffix: &'static str,
-) -> Option<()> {
-    let mut first_sentence = true;
-    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix, escape| {
-        let sentence_first_width = if first_sentence {
-            first_width
-        } else {
-            continuation_width
-        };
-        first_sentence = false;
-        write_wrapped_tokens_with_first_width(
-            out,
-            sentence,
-            sentence_first_width,
-            continuation_width,
-            sentence_suffix,
-            true,
-            escape,
-        )
-    })
-}
-
 fn write_sentence_token_slices<'token>(
     tokens: TokenSlice<'token>,
     suffix: &'static str,
@@ -2013,10 +1986,20 @@ fn write_sentence_token_slices<'token>(
     };
     let mut start = 0usize;
     for (index, token) in tokens.iter().enumerate() {
-        if token_ends_sentence(token.text()) && !token_is_sentence_abbreviation(token.text()) {
-            push_sentence(start, index + 1)?;
-            start = index + 1;
+        if !token_ends_sentence(token.text()) || token_is_sentence_abbreviation(token.text()) {
+            continue;
         }
+        // A marker such as `2.` at a new sentence boundary will have its
+        // period escaped. Keep the following prose in that same sentence.
+        if index == start
+            && start > 0
+            && literal_block_marker_escape(&tokens.text[tokens.measured[index].0.start()..])
+                .is_some_and(|offset| offset + 1 == token.text().len())
+        {
+            continue;
+        }
+        push_sentence(start, index + 1)?;
+        start = index + 1;
     }
     if start < tokens.len() {
         push_sentence(start, tokens.len())?;
@@ -2028,11 +2011,11 @@ fn write_sentence_token_slices<'token>(
 }
 
 fn token_ends_sentence(token: &str) -> bool {
+    let token = token.trim_end_matches(['"', '\'', ')', ']', '}']);
     token
-        .trim_end_matches(['"', '\'', ')', ']', '}'])
-        .chars()
+        .char_indices()
         .next_back()
-        .is_some_and(|ch| matches!(ch, '.' | '!' | '?'))
+        .is_some_and(|(index, ch)| matches!(ch, '.' | '!' | '?') && !escaped_at(token, index))
 }
 
 fn token_is_sentence_abbreviation(token: &str) -> bool {
@@ -3121,7 +3104,6 @@ fn write_wrapped_tokens_with_first_width(
     continuation_width: usize,
     suffix: &'static str,
     sentence_wrap: bool,
-    escape_first: Option<usize>,
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
     for (index, mut token) in tokens.iter().enumerate() {
@@ -3129,10 +3111,35 @@ fn write_wrapped_tokens_with_first_width(
         // measuring whether this next token fits on the same line.
         lines.repair_current_line_if_markdown_block_start(&mut writer.safety_line, true)?;
         let literal = writer.overlaps_literal(token.text());
-        if index == 0
-            && let Some(offset) = escape_first
+        // Column layout may have escaped the previous period. Decide whether
+        // it ends a sentence using the text that will actually be written.
+        if sentence_wrap
+            && lines.current.tokens.last().is_some_and(|previous| {
+                token_ends_sentence(previous.text())
+                    && !token_is_sentence_abbreviation(previous.text())
+            })
         {
-            token.escape_marker(offset);
+            let start = tokens.measured[index].0.start();
+            let end = tokens.measured[index..]
+                .iter()
+                .find(|(span, _)| {
+                    let text = span.span().slice(tokens.text);
+                    token_ends_sentence(text) && !token_is_sentence_abbreviation(text)
+                })
+                .unwrap_or(&tokens.measured[tokens.len() - 1])
+                .0
+                .end();
+            writer.safety_line.clear();
+            writer.safety_line.push_str(&tokens.text[start..end]);
+            // Recognize a standalone ordered marker at the end, too.
+            writer.safety_line.push(' ');
+            let escape = literal_block_marker_escape(&writer.safety_line);
+            if !markdown_block_start_line(&writer.safety_line) || escape.is_some() {
+                lines.commit_current(writer)?;
+                if let Some(offset) = escape {
+                    token.escape_marker(offset);
+                }
+            }
         }
         // Column layout can remove a sentence-start escape once the marker is
         // back inside prose. Keep escapes at the start of a paragraph or hard
@@ -3170,7 +3177,7 @@ fn write_markdown_token_lines(
     match wrap {
         MarkdownWrap::None | MarkdownWrap::Paragraph => writer.write_retained_slice(tokens, suffix),
         MarkdownWrap::Sentence => write_sentence_token_lines(writer, tokens, suffix),
-        MarkdownWrap::Column(_) => {
+        MarkdownWrap::Column(_) | MarkdownWrap::SentenceAndColumn(_) => {
             let width = column_width.expect("column wrap has a width");
             let first_width = width
                 .saturating_sub(writer.first_prefix.chars().count())
@@ -3185,25 +3192,7 @@ fn write_markdown_token_lines(
                 first_width,
                 continuation_width,
                 suffix,
-                false,
-                None,
-            )
-        }
-        MarkdownWrap::SentenceAndColumn(_) => {
-            let width = column_width.expect("sentence-and-column wrap has a width");
-            let first_width = width
-                .saturating_sub(writer.first_prefix.chars().count())
-                .max(1);
-            let continuation_width = width
-                .saturating_sub(writer.continuation_prefix.chars().count())
-                .max(1);
-            writer.enable_block_start_check();
-            write_wrapped_sentence_token_lines(
-                writer,
-                tokens,
-                first_width,
-                continuation_width,
-                suffix,
+                matches!(wrap, MarkdownWrap::SentenceAndColumn(_)),
             )
         }
     }

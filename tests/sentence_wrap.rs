@@ -25,11 +25,7 @@ fn sentence_wrapping_escapes_literal_block_markers() {
         ] {
             let prose =
                 format!("Opening sentence. First sentence. {marker} More prose. Last sentence.");
-            let middle = if marker.ends_with('.') {
-                format!("First sentence.\n{escaped}\nMore prose.")
-            } else {
-                format!("First sentence.\n{escaped} More prose.")
-            };
+            let middle = format!("First sentence.\n{escaped} More prose.");
             let wrapped = format!("Opening sentence.\n{middle}\nLast sentence.\n");
             for (source, expected) in [
                 (format!("{prose}\n"), wrapped.clone()),
@@ -133,6 +129,14 @@ fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
         (
             include_str!("cases/markdown_sentence_meaning_sensitive.case"),
             MarkdownWrap::Sentence,
+        ),
+        (
+            include_str!("cases/markdown_sentence_escaped_punctuation.case"),
+            MarkdownWrap::Sentence,
+        ),
+        (
+            include_str!("cases/markdown_sentence_column_escaped_punctuation.case"),
+            MarkdownWrap::SentenceAndColumn(10),
         ),
         (
             include_str!("cases/markdown_column_sentence_escapes.case"),

@@ -21,8 +21,7 @@ format --stdin-file-path input.md --wrap sentence
   \+ third.
   Finish.
 - Version 1.12 ships now.
-  2\.
-  Later.
+  2\. Later.
 
 - Parent
   - First choice.

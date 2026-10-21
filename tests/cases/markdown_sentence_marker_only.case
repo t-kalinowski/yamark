@@ -12,16 +12,13 @@ format --stdin-file-path input.md --wrap sentence
 Safe first. Version 1.12 ships now.
 -- stdout
 - Version 1.12 ships now.
-  2\.
-  Later.
+  2\. Later.
 
 - Choose first.
-  b\.
-  Later.
+  b\. Later.
 
 - Choose first.
-  ii\.
-  Later.
+  ii\. Later.
 
 - Version 1.12 ships now.
   2\.

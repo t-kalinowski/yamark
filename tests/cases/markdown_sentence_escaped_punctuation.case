@@ -1,0 +1,47 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Opening sentence. 2\. Later. Last sentence.
+
+Escaped period\. Still one sentence. Last sentence.
+
+Escaped exclamation\! Still one sentence. Last sentence.
+
+Escaped question\? Still one sentence. Last sentence.
+
+Quoted "period\." Still one sentence. Last sentence.
+
+Even backslashes\\. Next sentence.
+
+Odd backslashes\\\. Still one sentence. Last sentence.
+
+Opening sentence. Version 2. Later.
+-- stdout
+Opening sentence.
+2\. Later.
+Last sentence.
+
+Escaped period\. Still one sentence.
+Last sentence.
+
+Escaped exclamation\! Still one sentence.
+Last sentence.
+
+Escaped question\? Still one sentence.
+Last sentence.
+
+Quoted "period\." Still one sentence.
+Last sentence.
+
+Even backslashes\\.
+Next sentence.
+
+Odd backslashes\\\. Still one sentence.
+Last sentence.
+
+Opening sentence.
+Version 2.
+Later.
+-- stderr
+-- status
+0
