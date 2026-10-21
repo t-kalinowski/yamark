@@ -39,6 +39,33 @@ Opening sentence. (b) value.
 
 Unmatched \( stays open.\
 Opening sentence. (b) value. Last sentence.
+
+HTML <span title="\(">x</span>. Opening sentence. (b) value.
+
+Link [text][\(]. Opening sentence. (b) value.
+
+Attribute [text]{title="\("}. Opening sentence. (b) value.
+
+Command \text{\(}. Opening sentence. (b) value.
+
+Autolink <https://example.com/\(>. Opening sentence. (b) value.
+
+*HTML <span title="\(">x</span>*. Opening sentence. (b) value.
+
+HTML <span>\(</span>. Opening sentence. (b) value.
+
+*Unmatched \(*. Opening sentence. (b) value.
+
+~~Unmatched \(~~. Opening sentence. (b) value.
+
+Braces {\(}. Opening sentence. (b) value.
+
+HTML <span title="\(">x</span>.\
+Opening sentence. (b) value.
+
+HTML <span title="\(">x</span>. Unmatched \( stays open. (b) value. Last sentence.
+
+Braces [text]{not an=attribute \(}. Opening sentence. (b) value.
 -- stdout
 Opening.
 (b\) value \) remains prose.
@@ -102,6 +129,53 @@ Opening sentence.
 Unmatched \( stays open.\
 Opening sentence. (b) value.
 Last sentence.
+
+HTML <span title="\(">x</span>.
+Opening sentence.
+(b\) value.
+
+Link [text][\(].
+Opening sentence.
+(b\) value.
+
+Attribute [text]{title="\("}.
+Opening sentence.
+(b\) value.
+
+Command \text{\(}.
+Opening sentence.
+(b\) value.
+
+Autolink <https://example.com/\(>.
+Opening sentence.
+(b\) value.
+
+*HTML <span title="\(">x</span>*.
+Opening sentence.
+(b\) value.
+
+HTML <span>\(</span>.
+Opening sentence. (b) value.
+
+*Unmatched \(*.
+Opening sentence. (b) value.
+
+~~Unmatched \(~~.
+Opening sentence. (b) value.
+
+Braces {\(}.
+Opening sentence. (b) value.
+
+HTML <span title="\(">x</span>.\
+Opening sentence.
+(b\) value.
+
+HTML <span title="\(">x</span>.
+Unmatched \( stays open. (b) value.
+Last sentence.
+
+Braces [text]{not an=attribute \(}.
+Opening sentence. (b) value.
 -- stderr
 -- status
 0

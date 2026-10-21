@@ -2887,20 +2887,37 @@ impl<'a> TokenLine<'a> {
 }
 
 // Only an unmatched opener can turn a later marker escape into a math closer.
-// Scan once across hard breaks, skipping retained literals and nested code/math.
+// Scan once across hard breaks, skipping literals and opaque inline syntax.
+// Inspect text inside emphasis, HTML elements and ordinary braces: a math
+// opener there can still consume a closer added after the enclosing markup.
 fn unmatched_math_opener(text: &str, literals: &[Span]) -> Option<usize> {
     if !text.contains("\\(") {
         return None;
     }
     let mut scan = InlineScan::new(text);
     let mut index = 0;
-    while let Some(offset) = text[index..].find(['`', '$', '\\']) {
+    while let Some(offset) = text[index..].find(['`', '$', '\\', '<', '[', '!']) {
         index += offset;
         let literal = literals.partition_point(|span| span.end <= index);
         if let Some(span) = literals.get(literal).filter(|span| span.start <= index) {
             index = span.end;
         } else if let Some(end) = scan.literal_span_end(index) {
             index = end;
+        } else if !escaped_at(text, index)
+            && let Some(end) = commonmark_autolink_span_end(text, index)
+                .or_else(|| inline_html_tag_span_end(text, index))
+                .or_else(|| match text.as_bytes()[index] {
+                    b'[' | b'!' | b'\\' => protected_inline_token_end(&mut scan, index),
+                    _ => None,
+                })
+        {
+            index = end;
+            if text[..end].ends_with(']')
+                && let Some(attribute_end) = balanced_brace_span_end(text, end)
+                && normalize_heading_attribute_block(&text[end..attribute_end]).is_some()
+            {
+                index = attribute_end;
+            }
         } else if text[index..].starts_with("\\(") && !escaped_at(text, index) {
             return Some(index);
         } else if text.as_bytes()[index] == b'`' {
