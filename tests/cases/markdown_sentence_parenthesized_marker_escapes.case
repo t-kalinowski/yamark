@@ -16,6 +16,29 @@ Keep \(a (b\) as math. Last sentence.
 Opening \( remains prose. (b) value. Last sentence.
 
 Opening \( remains prose. 2) value. Last sentence.
+
+Code `\(`. Opening sentence. (b) value.
+
+Code `\\(`. Opening sentence. 2) value.
+
+Closed \(x + y\). Opening sentence. (b) value.
+
+Closed \(x + y\). Opening sentence. 2) value.
+
+Escaped \\( remains prose. (b) value.
+
+Opening sentence. (b) value. Later \( remains open.
+
+*Code `\(`*. Opening sentence. (b) value.
+
+Code `\(`.\
+Opening sentence. (b) value.
+
+Closed \(x + y\).\
+Opening sentence. (b) value.
+
+Unmatched \( stays open.\
+Opening sentence. (b) value. Last sentence.
 -- stdout
 Opening.
 (b\) value \) remains prose.
@@ -39,6 +62,45 @@ Opening \( remains prose. (b) value.
 Last sentence.
 
 Opening \( remains prose. 2) value.
+Last sentence.
+
+Code `\(`.
+Opening sentence.
+(b\) value.
+
+Code `\\(`.
+Opening sentence.
+2\) value.
+
+Closed \(x + y\).
+Opening sentence.
+(b\) value.
+
+Closed \(x + y\).
+Opening sentence.
+2\) value.
+
+Escaped \\( remains prose.
+(b\) value.
+
+Opening sentence.
+(b\) value.
+Later \( remains open.
+
+*Code `\(`*.
+Opening sentence.
+(b\) value.
+
+Code `\(`.\
+Opening sentence.
+(b\) value.
+
+Closed \(x + y\).\
+Opening sentence.
+(b\) value.
+
+Unmatched \( stays open.\
+Opening sentence. (b) value.
 Last sentence.
 -- stderr
 -- status

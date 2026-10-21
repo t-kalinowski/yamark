@@ -1888,14 +1888,16 @@ fn newline_for_join(final_newline: &str, options: FormatOptions) -> &str {
 struct InlineToken<'a> {
     text: Cow<'a, str>,
     width: usize,
+    preserve_math_closers: bool,
 }
 
 impl<'a> InlineToken<'a> {
-    fn owned(text: String) -> Self {
+    fn owned(text: String, preserve_math_closers: bool) -> Self {
         let width = token_width(&text);
         Self {
             text: Cow::Owned(text),
             width,
+            preserve_math_closers,
         }
     }
 
@@ -1908,16 +1910,16 @@ impl<'a> InlineToken<'a> {
         self.width += 1;
     }
 
-    fn remove_literal_marker_escape(&mut self, preserve_math_closers: bool) {
+    fn remove_literal_marker_escape(&mut self) {
         let Some(offset) = self.text.find('\\') else {
             return;
         };
         let mut candidate = self.text.to_string();
         candidate.remove(offset);
         candidate.push(' ');
-        if literal_block_marker_escape(&candidate, preserve_math_closers) == Some(offset) {
+        if literal_block_marker_escape(&candidate, self.preserve_math_closers) == Some(offset) {
             candidate.pop();
-            *self = Self::owned(candidate);
+            *self = Self::owned(candidate, self.preserve_math_closers);
         }
     }
 }
@@ -1942,10 +1944,11 @@ impl<'a> TokenSlice<'a> {
         }
     }
 
-    fn iter(self) -> impl Iterator<Item = InlineToken<'a>> {
+    fn iter(self, unmatched_math_opener: Option<usize>) -> impl Iterator<Item = InlineToken<'a>> {
         self.measured.iter().map(move |(span, width)| InlineToken {
             text: Cow::Borrowed(span.span().slice(self.text)),
             width: *width,
+            preserve_math_closers: unmatched_math_opener.is_some_and(|open| open < span.start()),
         })
     }
 }
@@ -1955,12 +1958,13 @@ fn write_sentence_token_lines(
     tokens: TokenSlice<'_>,
     suffix: &'static str,
 ) -> Option<()> {
+    let unmatched_math_opener = out.unmatched_math_opener;
     write_sentence_token_slices(
         tokens,
         suffix,
-        out.preserve_math_closers,
+        unmatched_math_opener,
         |sentence, sentence_suffix, escape| {
-            let mut tokens = sentence.iter();
+            let mut tokens = sentence.iter(unmatched_math_opener);
             let mut first = tokens.next()?;
             if let Some(offset) = escape {
                 first.escape_marker(offset);
@@ -1980,7 +1984,7 @@ fn write_sentence_token_lines(
 fn write_sentence_token_slices<'token>(
     tokens: TokenSlice<'token>,
     suffix: &'static str,
-    preserve_math_closers: bool,
+    unmatched_math_opener: Option<usize>,
     mut write: impl FnMut(TokenSlice<'token>, &'static str, Option<usize>) -> Option<()>,
 ) -> Option<()> {
     let mut safety_line = String::new();
@@ -1995,7 +1999,10 @@ fn write_sentence_token_slices<'token>(
             // A sentence may be just an ordered marker, such as `2.`. Include
             // the whitespace required by the shared list-marker recognizer.
             safety_line.push(' ');
-            escape = literal_block_marker_escape(&safety_line, preserve_math_closers);
+            escape = literal_block_marker_escape(
+                &safety_line,
+                unmatched_math_opener.is_some_and(|open| open < start),
+            );
             if markdown_block_start_line(&safety_line) && escape.is_none() {
                 pending = Some((previous_from, to, previous_escape));
                 return Some(());
@@ -2010,7 +2017,7 @@ fn write_sentence_token_slices<'token>(
         Some(())
     };
     let mut start = 0usize;
-    for (index, token) in tokens.iter().enumerate() {
+    for (index, token) in tokens.iter(unmatched_math_opener).enumerate() {
         if !token_ends_sentence(token.text()) || token_is_sentence_abbreviation(token.text()) {
             continue;
         }
@@ -2020,7 +2027,7 @@ fn write_sentence_token_slices<'token>(
             && start > 0
             && literal_block_marker_escape(
                 &tokens.text[tokens.measured[index].0.start()..],
-                preserve_math_closers,
+                token.preserve_math_closers,
             )
             .is_some_and(|offset| offset + 1 == token.text().len())
         {
@@ -2854,6 +2861,32 @@ impl<'a> TokenLine<'a> {
     }
 }
 
+// Only an unmatched opener can turn a later marker escape into a math closer.
+// Scan once across hard breaks, skipping retained literals and nested code/math.
+fn unmatched_math_opener(text: &str, literals: &[Span]) -> Option<usize> {
+    if !text.contains("\\(") {
+        return None;
+    }
+    let mut scan = InlineScan::new(text);
+    let mut index = 0;
+    while let Some(offset) = text[index..].find(['`', '$', '\\']) {
+        index += offset;
+        let literal = literals.partition_point(|span| span.end <= index);
+        if let Some(span) = literals.get(literal).filter(|span| span.start <= index) {
+            index = span.end;
+        } else if let Some(end) = scan.literal_span_end(index) {
+            index = end;
+        } else if text[index..].starts_with("\\(") && !escaped_at(text, index) {
+            return Some(index);
+        } else if text.as_bytes()[index] == b'`' {
+            index += delimiter_run_len_at(text, index, b'`');
+        } else {
+            index += 1;
+        }
+    }
+    None
+}
+
 struct TokenLineWriter<'out, 'prefix> {
     out: &'out mut Vec<PlannedLine>,
     tokens: &'out mut Vec<Text>,
@@ -2861,7 +2894,7 @@ struct TokenLineWriter<'out, 'prefix> {
     literals: &'prefix [Span],
     first_prefix: &'prefix str,
     continuation_prefix: &'prefix str,
-    preserve_math_closers: bool,
+    unmatched_math_opener: Option<usize>,
     check_block_starts: bool,
     safety_line: String,
     line_count: usize,
@@ -2883,10 +2916,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             literals,
             first_prefix,
             continuation_prefix,
-            // A backslash parenthesis can be a Pandoc math opener or literal
-            // prose. Keep closing escapes unchanged to avoid creating or
-            // extending math spans. Check once, including across hard breaks.
-            preserve_math_closers: text.contains("\\("),
+            unmatched_math_opener: unmatched_math_opener(text, literals),
             check_block_starts: false,
             safety_line: String::new(),
             line_count: 0,
@@ -2978,23 +3008,16 @@ struct WrapLineBuffer<'a> {
     width: usize,
     continuation_width: usize,
     sentence_wrap: bool,
-    preserve_math_closers: bool,
 }
 
 impl<'a> WrapLineBuffer<'a> {
-    fn new(
-        first_width: usize,
-        continuation_width: usize,
-        sentence_wrap: bool,
-        preserve_math_closers: bool,
-    ) -> Self {
+    fn new(first_width: usize, continuation_width: usize, sentence_wrap: bool) -> Self {
         Self {
             pending: None,
             current: TokenLine::default(),
             width: first_width.max(1),
             continuation_width: continuation_width.max(1),
             sentence_wrap,
-            preserve_math_closers,
         }
     }
 
@@ -3039,12 +3062,13 @@ impl<'a> WrapLineBuffer<'a> {
         &mut self,
         writer: &mut TokenLineWriter<'_, '_>,
         split: Vec<String>,
+        preserve_math_closers: bool,
     ) -> Option<()> {
         let mut split = split.into_iter();
         let Some(first) = split.next() else {
             return Some(());
         };
-        let first = InlineToken::owned(first);
+        let first = InlineToken::owned(first, preserve_math_closers);
         if self.current.can_fit(&first, self.width) {
             self.current.push(first);
         } else {
@@ -3056,7 +3080,9 @@ impl<'a> WrapLineBuffer<'a> {
             self.sentence_wrap,
         )?;
 
-        let mut rest = split.map(InlineToken::owned).collect::<Vec<_>>();
+        let mut rest = split
+            .map(|text| InlineToken::owned(text, preserve_math_closers))
+            .collect::<Vec<_>>();
         if rest.is_empty() {
             return Some(());
         }
@@ -3093,7 +3119,8 @@ impl<'a> WrapLineBuffer<'a> {
         {
             return Some(());
         }
-        let escape = literal_block_marker_escape(scratch, self.preserve_math_closers);
+        let escape =
+            literal_block_marker_escape(scratch, self.current.tokens[0].preserve_math_closers);
         if self.sentence_wrap
             && let Some(offset) = escape
         {
@@ -3141,14 +3168,8 @@ fn write_wrapped_tokens_with_first_width(
     suffix: &'static str,
     sentence_wrap: bool,
 ) -> Option<()> {
-    let preserve_math_closers = writer.preserve_math_closers;
-    let mut lines = WrapLineBuffer::new(
-        first_width,
-        continuation_width,
-        sentence_wrap,
-        preserve_math_closers,
-    );
-    for (index, mut token) in tokens.iter().enumerate() {
+    let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
+    for (index, mut token) in tokens.iter(writer.unmatched_math_opener).enumerate() {
         // More text follows, so a bare ordered marker needs its escape before
         // measuring whether this next token fits on the same line.
         lines.repair_current_line_if_markdown_block_start(&mut writer.safety_line, true)?;
@@ -3177,7 +3198,8 @@ fn write_wrapped_tokens_with_first_width(
                 writer.safety_line.push_str(&tokens.text[start..end]);
                 // Recognize a standalone ordered marker at the end, too.
                 writer.safety_line.push(' ');
-                escape = literal_block_marker_escape(&writer.safety_line, preserve_math_closers);
+                escape =
+                    literal_block_marker_escape(&writer.safety_line, token.preserve_math_closers);
                 !markdown_block_start_line(&writer.safety_line) || escape.is_some()
             } else {
                 true
@@ -3193,13 +3215,13 @@ fn write_wrapped_tokens_with_first_width(
         // back inside prose. Keep escapes at the start of a paragraph or hard
         // break, and let the existing column repair avoid new block starts.
         if !sentence_wrap && index > 0 && !literal {
-            token.remove_literal_marker_escape(preserve_math_closers);
+            token.remove_literal_marker_escape();
         }
         if token.width > lines.width
             && !literal
             && let Some(split) = split_long_link_token(token.text(), lines.width)
         {
-            lines.push_split_token_lines(writer, split)?;
+            lines.push_split_token_lines(writer, split, token.preserve_math_closers)?;
             lines.width = lines.continuation_width;
             continue;
         }
