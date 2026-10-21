@@ -16,6 +16,22 @@ Escaped \\*. Opening sentence. * value.
 Math \(x \* y\). Opening sentence. * value.
 
 Comment <!-- * -->. Opening sentence. * value.
+
+Em *x*. Opening sentence. * value.
+
+Strong **x**. Opening sentence. * value.
+
+Nested **x *y* z**. Opening sentence. * value.
+
+Math *$x * y$*. Opening sentence. * value.
+
+Unmatched *x. Opening sentence. * value.
+
+Em *unmatched \(*. Opening sentence. (b) value.
+
+HTML *<!-- \> -->*. Opening sentence. * value.
+
+Em *x * y*. Opening sentence. * value.
 -- stdout
 One sentence. * two words. * three words.
 Last sentence.
@@ -43,6 +59,31 @@ Opening sentence.
 \* value.
 
 Comment <!-- * -->. Opening sentence. * value.
+
+Em *x*.
+Opening sentence.
+\* value.
+
+Strong **x**.
+Opening sentence.
+\* value.
+
+Nested **x *y* z**.
+Opening sentence. * value.
+
+Math *$x * y$*.
+Opening sentence. * value.
+
+Unmatched *x.
+Opening sentence. * value.
+
+Em *unmatched \(*.
+Opening sentence. (b) value.
+
+HTML *<!-- \> -->*. Opening sentence. * value.
+
+Em *x * y*.
+Opening sentence. * value.
 -- stderr
 -- status
 0

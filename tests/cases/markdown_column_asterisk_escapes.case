@@ -10,6 +10,8 @@ Literal \* \(x * y\)
 Literal \* $x * y$
 
 Literal \* $$x * y$$
+
+Literal \* *x*.
 -- stdout
 Literal \*
 star \*
@@ -29,6 +31,9 @@ $x * y$
 
 Literal
 \* $$x * y$$
+
+Literal \*
+*x*.
 -- stderr
 -- status
 0

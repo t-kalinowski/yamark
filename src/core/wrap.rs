@@ -2899,6 +2899,7 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, b
     let mut index = 0;
     let mut unmatched_math_opener = None;
     let mut asterisks = 0;
+    let mut emphasis_end = 0;
     while let Some(offset) = text[index..].find(['`', '$', '\\', '<', '[', '!', '{', '*']) {
         if !check_html
             && (!check_math || unmatched_math_opener.is_some())
@@ -2974,7 +2975,19 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, b
         } else if text.as_bytes()[index] == b'`' {
             index += delimiter_run_len_at(text, index, b'`');
         } else {
+            // Ignore simple matched emphasis, but keep scanning its contents
+            // for math and HTML. A preceding loose star can capture a closer
+            // after reflow; nested stars also need the conservative guard.
+            if asterisks == 0
+                && index >= emphasis_end
+                && text.as_bytes()[index] == b'*'
+                && let Some(span) = emphasis_span_at(&mut scan, index)
+                && !text[index + span.run..span.close].contains('*')
+            {
+                emphasis_end = span.end;
+            }
             if text.as_bytes()[index] == b'*'
+                && index >= emphasis_end
                 && (!escaped_at(text, index)
                     // Column reflow may unescape a standalone `\*`. Count it
                     // in both modes to preserve roundtrips, but not `\*.`.
