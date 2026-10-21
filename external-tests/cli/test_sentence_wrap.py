@@ -89,7 +89,9 @@ def test_column_wrapping_preserves_inline_html_escapes(reader: str, width: int) 
     "reader", ["markdown", "markdown+tex_math_single_backslash", "commonmark", "gfm"]
 )
 @pytest.mark.parametrize("wrap", ["sentence", "sentence:12", "sentence:72"])
-def test_parenthesized_marker_escapes_preserve_math_meaning(reader: str, wrap: str) -> None:
+def test_parenthesized_marker_escapes_preserve_math_meaning(
+    reader: str, wrap: str
+) -> None:
     case = (
         Path(os.environ["YAMARK_ROOT"])
         / "tests/cases/markdown_sentence_parenthesized_marker_escapes.case"
@@ -111,6 +113,10 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(reader: str, wrap: s
 @pytest.mark.parametrize(
     ("case_name", "wrap"),
     [
+        ("markdown_sentence_column_emphasis_repairs.case", "sentence:72"),
+        ("markdown_column_emphasis_repairs.case", "12"),
+        ("markdown_column_raw_tex_escapes.case", "72"),
+        ("markdown_column_raw_tex_escapes.case", "sentence:12"),
         ("markdown_column_asterisk_escapes.case", "12"),
         ("markdown_sentence_asterisk_boundaries.case", "sentence"),
         ("markdown_sentence_column_math_contents.case", "sentence:12"),
@@ -141,3 +147,31 @@ def test_asterisk_boundaries_keep_column_roundtrips(width: int, wrap: str) -> No
     expected = markdown_ast(source, "markdown")
     for output in [column, sentence]:
         assert markdown_ast(output, "markdown") == expected
+
+
+def test_shortcode_arguments_do_not_change_sentence_wrap_on_second_pass(
+    tmp_path: Path,
+) -> None:
+    case = (
+        Path(os.environ["YAMARK_ROOT"])
+        / "tests/cases/markdown_sentence_shortcode_math_opener.case"
+    ).read_text()
+    source = case.split("-- stdin\n")[1].split("-- stdout\n")[0]
+    expected = case.split("-- stdout\n")[1].split("-- stderr\n")[0]
+    assert format_markdown(source, "sentence:12") == expected
+    assert format_markdown(expected, "sentence:12") == expected
+    path = tmp_path / "input.md"
+    path.write_text(expected)
+    result = subprocess.run(
+        [
+            os.environ["YAMARK_BIN"],
+            "format",
+            "--check",
+            "--wrap",
+            "sentence:12",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

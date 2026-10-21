@@ -2886,28 +2886,53 @@ impl<'a> TokenLine<'a> {
     }
 }
 
-// Only an unmatched opener can turn a later marker escape into a math closer.
-// Scan once across hard breaks, skipping literals and opaque inline syntax.
-// Inspect text inside emphasis, HTML elements and ordinary braces: a math
-// opener there can still consume a closer added after the enclosing markup.
-fn unmatched_math_opener(text: &str, literals: &[Span]) -> Option<usize> {
-    if !text.contains("\\(") {
-        return None;
+// Interpret punctuation only in prose, reusing the existing opaque boundaries.
+// Text inside emphasis, HTML elements and ordinary braces remains visible.
+fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
+    let check_math = text.contains("\\(");
+    let check_asterisks = text.match_indices('*').nth(1).is_some();
+    if !check_math && !check_asterisks {
+        return (None, false);
     }
     let mut scan = InlineScan::new(text);
     let mut index = 0;
-    while let Some(offset) = text[index..].find(['`', '$', '\\', '<', '[', '!']) {
+    let mut unmatched_math_opener = None;
+    let mut asterisks = 0;
+    while let Some(offset) = text[index..].find(['`', '$', '\\', '<', '[', '!', '{', '*']) {
+        if (!check_math || unmatched_math_opener.is_some()) && (!check_asterisks || asterisks >= 2)
+        {
+            break;
+        }
         index += offset;
         let literal = literals.partition_point(|span| span.end <= index);
-        if let Some(span) = literals.get(literal).filter(|span| span.start <= index) {
+        let literal = literals
+            .get(literal)
+            .filter(|span| span.start <= index)
+            .copied()
+            .or_else(|| {
+                scan.literal_span_end(index)
+                    .map(|end| Span::new(index, end))
+            });
+        if let Some(span) = literal {
+            // Math syntax is prose in some supported readers. Its asterisks
+            // may pair with prose outside it even though layout keeps it whole.
+            if text[span.start..].starts_with('$') || text[span.start..].starts_with("\\(") {
+                asterisks += text[span.start..span.end]
+                    .match_indices('*')
+                    .take(2 - asterisks)
+                    .count();
+            }
             index = span.end;
-        } else if let Some(end) = scan.literal_span_end(index) {
-            index = end;
         } else if !escaped_at(text, index)
             && let Some(end) = commonmark_autolink_span_end(text, index)
                 .or_else(|| inline_html_tag_span_end(text, index))
                 .or_else(|| match text.as_bytes()[index] {
                     b'[' | b'!' | b'\\' => protected_inline_token_end(&mut scan, index),
+                    b'{' if text[index..].starts_with("{{<")
+                        || text[index..].starts_with("{{%") =>
+                    {
+                        protected_inline_token_end(&mut scan, index)
+                    }
                     _ => None,
                 })
         {
@@ -2919,14 +2944,18 @@ fn unmatched_math_opener(text: &str, literals: &[Span]) -> Option<usize> {
                 index = attribute_end;
             }
         } else if text[index..].starts_with("\\(") && !escaped_at(text, index) {
-            return Some(index);
+            unmatched_math_opener.get_or_insert(index);
+            index += 2;
         } else if text.as_bytes()[index] == b'`' {
             index += delimiter_run_len_at(text, index, b'`');
         } else {
+            if text.as_bytes()[index] == b'*' {
+                asterisks = (asterisks + 1).min(2);
+            }
             index += 1;
         }
     }
-    None
+    (unmatched_math_opener, asterisks >= 2)
 }
 
 struct TokenLineWriter<'out, 'prefix> {
@@ -2952,6 +2981,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         first_prefix: &'prefix str,
         continuation_prefix: &'prefix str,
     ) -> Self {
+        let (unmatched_math_opener, preserve_asterisk_escapes) = inline_wrap_safety(text, literals);
         Self {
             out,
             tokens,
@@ -2959,17 +2989,8 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             literals,
             first_prefix,
             continuation_prefix,
-            unmatched_math_opener: unmatched_math_opener(text, literals),
-            preserve_asterisk_escapes: text
-                .match_indices('*')
-                .filter(|(index, _)| {
-                    let literal = literals.partition_point(|span| span.end <= *index);
-                    !literals
-                        .get(literal)
-                        .is_some_and(|span| span.start <= *index)
-                })
-                .nth(1)
-                .is_some(),
+            unmatched_math_opener,
+            preserve_asterisk_escapes,
             check_block_starts: false,
             safety_line: String::new(),
             line_count: 0,
@@ -3055,6 +3076,10 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
     }
 }
 
+fn asterisk_run(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|byte| byte == b'*')
+}
+
 struct WrapLineBuffer<'a> {
     pending: Option<TokenLine<'a>>,
     current: TokenLine<'a>,
@@ -3094,7 +3119,7 @@ impl<'a> WrapLineBuffer<'a> {
                 .current
                 .tokens
                 .last()
-                .is_some_and(|token| token.text() == "*")
+                .is_some_and(|token| asterisk_run(token.text()))
         {
             return Some(());
         }
@@ -3204,6 +3229,9 @@ impl<'a> WrapLineBuffer<'a> {
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
+            if preserve_asterisk_escapes && asterisk_run(previous.tokens[split - 1].text()) {
+                continue;
+            }
             let suffix_width = previous.suffix_width(split);
             let candidate_width = suffix_width + 1 + self.current.width;
             if candidate_width > self.continuation_width && !self.sentence_wrap {
@@ -3224,17 +3252,14 @@ impl<'a> WrapLineBuffer<'a> {
             self.current.width += 1;
             return Some(());
         }
-        if preserve_asterisk_escapes && self.current.tokens[0].text() == "*" {
-            // Keep the marker and its following word on the previous line.
+        if self.sentence_wrap
+            || preserve_asterisk_escapes && asterisk_run(self.current.tokens[0].text())
+        {
+            // Keep the repaired line open so the marker's following text
+            // cannot be stranded across a delimiter-sensitive line break.
             let mut joined = self.pending.take()?;
             joined.append(std::mem::take(&mut self.current));
             self.current = joined;
-            return Some(());
-        }
-        if self.sentence_wrap {
-            // A narrow column must not restore an unsafe sentence break. Keep
-            // the marker attached even when the joined text exceeds the width.
-            previous.append(std::mem::take(&mut self.current));
             return Some(());
         }
         None

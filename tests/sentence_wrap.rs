@@ -119,6 +119,26 @@ fn sentence_wrapping_escapes_literal_block_markers() {
 fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
     for (case, wrap) in [
         (
+            include_str!("cases/markdown_sentence_column_emphasis_repairs.case"),
+            MarkdownWrap::SentenceAndColumn(72),
+        ),
+        (
+            include_str!("cases/markdown_column_emphasis_repairs.case"),
+            MarkdownWrap::Column(12),
+        ),
+        (
+            include_str!("cases/markdown_column_raw_tex_escapes.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_column_raw_tex_escapes.case"),
+            MarkdownWrap::SentenceAndColumn(12),
+        ),
+        (
+            include_str!("cases/markdown_sentence_shortcode_math_opener.case"),
+            MarkdownWrap::SentenceAndColumn(12),
+        ),
+        (
             include_str!("cases/markdown_sentence_asterisk_boundaries.case"),
             MarkdownWrap::Sentence,
         ),

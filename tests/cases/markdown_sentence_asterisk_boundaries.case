@@ -4,6 +4,8 @@ format --stdin-file-path input.md --wrap sentence
 One sentence. * two words. * three words. Last sentence.
 
 Code `*`. Opening sentence. * More prose.
+
+HTML <span title="*">x</span>. Opening sentence. * value.
 -- stdout
 One sentence. * two words. * three words.
 Last sentence.
@@ -11,6 +13,10 @@ Last sentence.
 Code `*`.
 Opening sentence.
 \* More prose.
+
+HTML <span title="*">x</span>.
+Opening sentence.
+\* value.
 -- stderr
 -- status
 0
