@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap 10
+-- stdin
+preamble (a) marker remains prose after wrapping.
+-- stdout
+preamble
+\(a)
+marker
+remains
+prose
+after
+wrapping.
+-- stderr
+-- status
+0

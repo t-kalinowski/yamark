@@ -3125,6 +3125,9 @@ fn write_wrapped_tokens_with_first_width(
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
     for (index, mut token) in tokens.iter().enumerate() {
+        // More text follows, so a bare ordered marker needs its escape before
+        // measuring whether this next token fits on the same line.
+        lines.repair_current_line_if_markdown_block_start(&mut writer.safety_line, true)?;
         let literal = writer.overlaps_literal(token.text());
         if index == 0
             && let Some(offset) = escape_first

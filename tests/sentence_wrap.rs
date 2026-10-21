@@ -146,6 +146,10 @@ fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
             include_str!("cases/markdown_column_ordered_marker_escapes.case"),
             MarkdownWrap::Column(8),
         ),
+        (
+            include_str!("cases/markdown_column_escape_width.case"),
+            MarkdownWrap::Column(10),
+        ),
     ] {
         let (_, case) = case.split_once("-- stdin\n").unwrap();
         let (input, case) = case.split_once("-- stdout\n").unwrap();
