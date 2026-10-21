@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+Literal \* star \* here.
+
+One sentence. * two words. * three words. Last sentence.
+-- stdout
+Literal \*
+star \*
+here.
+
+One
+sentence. * two
+words. * three
+words. Last
+sentence.
+-- stderr
+-- status
+0

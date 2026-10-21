@@ -103,3 +103,41 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(reader: str, wrap: s
     expected = markdown_ast(source, reader)
     for output in [column, sentence, restored]:
         assert markdown_ast(output, reader) == expected
+
+
+@pytest.mark.parametrize(
+    "reader", ["markdown", "markdown+tex_math_single_backslash", "commonmark", "gfm"]
+)
+@pytest.mark.parametrize(
+    ("case_name", "wrap"),
+    [
+        ("markdown_column_asterisk_escapes.case", "12"),
+        ("markdown_sentence_asterisk_boundaries.case", "sentence"),
+        ("markdown_sentence_column_math_contents.case", "sentence:12"),
+        ("markdown_sentence_setext_candidates.case", "sentence"),
+        ("markdown_sentence_setext_candidates.case", "sentence:12"),
+    ],
+)
+def test_marker_repair_preserves_inline_and_block_meaning(
+    reader: str, case_name: str, wrap: str
+) -> None:
+    case = (Path(os.environ["YAMARK_ROOT"]) / "tests/cases" / case_name).read_text()
+    source = case.split("-- stdin\n")[1].split("-- stdout\n")[0]
+    output = format_markdown(source, wrap)
+    assert format_markdown(output, wrap) == output
+    assert markdown_ast(output, reader) == markdown_ast(source, reader)
+    column = format_markdown(source, "72")
+    sentence = format_markdown(column, "sentence:12")
+    assert format_markdown(sentence, "72") == column
+
+
+@pytest.mark.parametrize("width", [8, 12, 20, 72])
+@pytest.mark.parametrize("wrap", ["sentence", "sentence:12"])
+def test_asterisk_boundaries_keep_column_roundtrips(width: int, wrap: str) -> None:
+    source = "One sentence. * two words. * three words. Last sentence.\n"
+    column = format_markdown(source, str(width))
+    sentence = format_markdown(column, wrap)
+    assert format_markdown(sentence, str(width)) == column
+    expected = markdown_ast(source, "markdown")
+    for output in [column, sentence]:
+        assert markdown_ast(output, "markdown") == expected

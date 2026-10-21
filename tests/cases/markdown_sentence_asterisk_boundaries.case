@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+One sentence. * two words. * three words. Last sentence.
+
+Code `*`. Opening sentence. * More prose.
+-- stdout
+One sentence. * two words. * three words.
+Last sentence.
+
+Code `*`.
+Opening sentence.
+\* More prose.
+-- stderr
+-- status
+0
