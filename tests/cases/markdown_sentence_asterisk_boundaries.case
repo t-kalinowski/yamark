@@ -14,6 +14,8 @@ Literal \* here. Opening sentence. * value.
 Escaped \\*. Opening sentence. * value.
 
 Math \(x \* y\). Opening sentence. * value.
+
+Comment <!-- * -->. Opening sentence. * value.
 -- stdout
 One sentence. * two words. * three words.
 Last sentence.
@@ -39,6 +41,8 @@ Opening sentence. * value.
 Math \(x \* y\).
 Opening sentence.
 \* value.
+
+Comment <!-- * -->. Opening sentence. * value.
 -- stderr
 -- status
 0

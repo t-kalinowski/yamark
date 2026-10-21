@@ -78,6 +78,8 @@ Link [text](https://example.com "\("). Opening sentence. (b) value.
 Link [x](a). Opening sentence. (b) value.
 
 Citation [@key]. Opening sentence. (b) value.
+
+Comment <!-- > \( -->. Opening sentence. (b) value.
 -- stdout
 Opening.
 (b\) value \) remains prose.
@@ -207,6 +209,8 @@ Opening sentence.
 Citation [@key].
 Opening sentence.
 (b\) value.
+
+Comment <!-- > \( -->. Opening sentence. (b) value.
 -- stderr
 -- status
 0

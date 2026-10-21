@@ -2888,18 +2888,21 @@ impl<'a> TokenLine<'a> {
 
 // Interpret punctuation only in prose, reusing the existing opaque boundaries.
 // Text inside emphasis, HTML elements and ordinary braces remains visible.
-fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
+fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, bool)> {
     let check_math = text.contains("\\(");
     let check_asterisks = text.match_indices('*').nth(1).is_some();
-    if !check_math && !check_asterisks {
-        return (None, false);
+    let check_html = text.contains("<!") || text.contains("<?");
+    if !check_math && !check_asterisks && !check_html {
+        return Some((None, false));
     }
     let mut scan = InlineScan::new(text);
     let mut index = 0;
     let mut unmatched_math_opener = None;
     let mut asterisks = 0;
     while let Some(offset) = text[index..].find(['`', '$', '\\', '<', '[', '!', '{', '*']) {
-        if (!check_math || unmatched_math_opener.is_some()) && (!check_asterisks || asterisks >= 2)
+        if !check_html
+            && (!check_math || unmatched_math_opener.is_some())
+            && (!check_asterisks || asterisks >= 2)
         {
             break;
         }
@@ -2924,6 +2927,13 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
                     .count();
             }
             index = span.end;
+        } else if !escaped_at(text, index)
+            && (text[index..].starts_with("<!") || text[index..].starts_with("<?"))
+        {
+            // Raw HTML comments, declarations, CDATA and processing
+            // instructions have no Markdown escapes. Preserve this block
+            // rather than extend the existing inline parser into their bodies.
+            return None;
         } else if !escaped_at(text, index)
             && let Some(end) = commonmark_autolink_span_end(text, index)
                 .or_else(|| inline_html_tag_span_end(text, index))
@@ -2976,7 +2986,7 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
             index += 1;
         }
     }
-    (unmatched_math_opener, asterisks >= 2)
+    Some((unmatched_math_opener, asterisks >= 2))
 }
 
 struct TokenLineWriter<'out, 'prefix> {
@@ -3001,9 +3011,10 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         literals: &'prefix [Span],
         first_prefix: &'prefix str,
         continuation_prefix: &'prefix str,
-    ) -> Self {
-        let (unmatched_math_opener, preserve_asterisk_escapes) = inline_wrap_safety(text, literals);
-        Self {
+    ) -> Option<Self> {
+        let (unmatched_math_opener, preserve_asterisk_escapes) =
+            inline_wrap_safety(text, literals)?;
+        Some(Self {
             out,
             tokens,
             text,
@@ -3015,7 +3026,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             check_block_starts: false,
             safety_line: String::new(),
             line_count: 0,
-        }
+        })
     }
 
     fn overlaps_literal(&self, token: &str) -> bool {

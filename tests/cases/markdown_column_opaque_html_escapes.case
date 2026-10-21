@@ -1,0 +1,57 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+Before <!-- \> --> after.
+
+Before <!-- > \# --> after.
+
+Before <?pi > \# ?> after.
+
+Before <![CDATA[ > \# ]]> after.
+
+Before <!DOCTYPE \# > after.
+
+Before *<!-- \> -->* after.
+
+Before <span><!-- \> --></span> after.
+
+Escaped \<!-- \> --> after.
+
+Before. \> literal blockquote marker.
+
+HTML <span title="<!--">x</span>.
+Opening sentence.
+\- value.
+
+Code `<!--`.
+Opening sentence.
+\- value.
+
+Before <!-- \> without a closer.
+-- stdout
+Before <!-- \> --> after.
+
+Before <!-- > \# --> after.
+
+Before <?pi > \# ?> after.
+
+Before <![CDATA[ > \# ]]> after.
+
+Before <!DOCTYPE \# > after.
+
+Before *<!-- \> -->* after.
+
+Before <span><!-- \> --></span> after.
+
+Escaped \<!-- > --> after.
+
+Before. > literal blockquote marker.
+
+HTML <span title="<!--">x</span>. Opening sentence. - value.
+
+Code `<!--`. Opening sentence. - value.
+
+Before <!-- \> without a closer.
+-- stderr
+-- status
+0

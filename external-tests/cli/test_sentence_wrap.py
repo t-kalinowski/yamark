@@ -115,6 +115,7 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(
     [
         ("markdown_sentence_column_emphasis_repairs.case", "sentence:72"),
         ("markdown_column_emphasis_repairs.case", "12"),
+        ("markdown_column_opaque_html_escapes.case", "72"),
         ("markdown_column_raw_tex_escapes.case", "72"),
         ("markdown_column_raw_tex_escapes.case", "sentence:12"),
         ("markdown_column_asterisk_escapes.case", "12"),
