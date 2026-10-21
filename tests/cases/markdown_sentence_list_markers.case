@@ -14,7 +14,7 @@ format --stdin-file-path input.md --wrap sentence
 - Escaped markers. \- still prose. \(b) still prose.
 -- stdout
 - Options: (a) keep it.
-  \(b) drop it.
+  (b\) drop it.
   Next option.
 - Steps: first.
   \- second.
@@ -25,7 +25,7 @@ format --stdin-file-path input.md --wrap sentence
 
 - Parent
   - First choice.
-    \(ii) Second choice.
+    (ii\) Second choice.
     Last choice.
 
 - First sentence.

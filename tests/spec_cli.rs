@@ -467,7 +467,7 @@ fn markdown_wrapping_escapes_ordered_markers_when_no_safe_break_fits() {
         ("1) ", "1\\) marker"),
         ("a. ", "a\\. marker"),
         ("i. ", "i\\. marker"),
-        ("(a) ", "\\(a)\nmarker"),
+        ("(a) ", "(a\\)\nmarker"),
     ] {
         let input = format!("preamble {marker}marker remains prose after wrapping.\n");
         let (status, stdout, stderr) = run_stdin(

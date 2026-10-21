@@ -4,7 +4,7 @@ format --stdin-file-path input.md --wrap 10
 preamble (a) marker remains prose after wrapping.
 -- stdout
 preamble
-\(a)
+(a\)
 marker
 remains
 prose

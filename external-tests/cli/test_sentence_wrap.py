@@ -71,3 +71,35 @@ def test_meaning_sensitive_sentence_boundaries_stay_joined(reader: str) -> None:
     source = case.split("-- stdin\n")[1].split("-- stdout\n")[0]
     output = format_markdown(source, "sentence")
     assert markdown_ast(output, reader) == markdown_ast(source, reader)
+
+
+@pytest.mark.parametrize("reader", ["markdown", "commonmark", "gfm"])
+@pytest.mark.parametrize("width", [12, 72])
+def test_column_wrapping_preserves_inline_html_escapes(reader: str, width: int) -> None:
+    case = (
+        Path(os.environ["YAMARK_ROOT"])
+        / "tests/cases/markdown_column_inline_html_escapes.case"
+    ).read_text()
+    source = case.split("-- stdin\n")[1].split("-- stdout\n")[0]
+    output = format_markdown(source, str(width))
+    assert markdown_ast(output, reader) == markdown_ast(source, reader)
+
+
+@pytest.mark.parametrize(
+    "reader", ["markdown", "markdown+tex_math_single_backslash", "commonmark", "gfm"]
+)
+@pytest.mark.parametrize("wrap", ["sentence", "sentence:12", "sentence:72"])
+def test_parenthesized_marker_escapes_preserve_math_meaning(reader: str, wrap: str) -> None:
+    case = (
+        Path(os.environ["YAMARK_ROOT"])
+        / "tests/cases/markdown_sentence_parenthesized_marker_escapes.case"
+    ).read_text()
+    source = case.split("-- stdin\n")[1].split("-- stdout\n")[0]
+    column = format_markdown(source, "72")
+    sentence = format_markdown(column, wrap)
+    assert format_markdown(sentence, wrap) == sentence
+    restored = format_markdown(sentence, "72")
+    assert restored == column
+    expected = markdown_ast(source, reader)
+    for output in [column, sentence, restored]:
+        assert markdown_ast(output, reader) == expected

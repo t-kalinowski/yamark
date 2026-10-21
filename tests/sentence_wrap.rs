@@ -14,8 +14,8 @@ fn sentence_wrapping_escapes_literal_block_markers() {
             ("-", r"\-"),
             ("+", r"\+"),
             ("*", r"\*"),
-            ("(b)", r"\(b)"),
-            ("(ii)", r"\(ii)"),
+            ("(b)", r"(b\)"),
+            ("(ii)", r"(ii\)"),
             ("2.", r"2\."),
             ("2)", r"2\)"),
             ("b.", r"b\."),
@@ -118,6 +118,22 @@ fn sentence_wrapping_escapes_literal_block_markers() {
 #[test]
 fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
     for (case, wrap) in [
+        (
+            include_str!("cases/markdown_column_backslash_math_escapes.case"),
+            MarkdownWrap::Column(12),
+        ),
+        (
+            include_str!("cases/markdown_column_inline_html_escapes.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_sentence_parenthesized_marker_escapes.case"),
+            MarkdownWrap::Sentence,
+        ),
+        (
+            include_str!("cases/markdown_sentence_parenthesized_marker_escapes.case"),
+            MarkdownWrap::SentenceAndColumn(72),
+        ),
         (
             include_str!("cases/markdown_sentence_column_block_candidates.case"),
             MarkdownWrap::SentenceAndColumn(32),

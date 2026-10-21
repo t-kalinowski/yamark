@@ -1,0 +1,45 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Opening. (b) value \) remains prose.
+
+Opening. (ii) value \) remains prose.
+
+- Opening. (2) value \) remains prose.
+
+> Opening. (B) value \) remains prose.
+
+Keep \(b) + y\) as math. Last sentence.
+
+Keep \(a (b\) as math. Last sentence.
+
+Opening \( remains prose. (b) value. Last sentence.
+
+Opening \( remains prose. 2) value. Last sentence.
+-- stdout
+Opening.
+(b\) value \) remains prose.
+
+Opening.
+(ii\) value \) remains prose.
+
+- Opening.
+  (2\) value \) remains prose.
+
+> Opening.
+> (B\) value \) remains prose.
+
+Keep \(b) + y\) as math.
+Last sentence.
+
+Keep \(a (b\) as math.
+Last sentence.
+
+Opening \( remains prose. (b) value.
+Last sentence.
+
+Opening \( remains prose. 2) value.
+Last sentence.
+-- stderr
+-- status
+0

@@ -1605,16 +1605,22 @@ fn token_may_start_markdown_block(token: &str) -> bool {
 
 /// These markers are literal punctuation in prose. Escaping HTML, math, or
 /// other inline constructs can change their meaning, so they stay joined.
-fn literal_block_marker_escape(line: &str) -> Option<usize> {
+fn literal_block_marker_escape(line: &str, preserve_math_closers: bool) -> Option<usize> {
     if atx_heading_start(line) || line.starts_with('>') {
         return Some(0);
     }
     let (marker, _) = markdown_list_marker(line)?;
-    Some(if marker.as_bytes()[0].is_ascii_alphanumeric() {
-        marker.len() - 1
-    } else {
-        0
-    })
+    if preserve_math_closers && marker.ends_with(')') {
+        return None;
+    }
+    // Escaping an opening parenthesis could create Pandoc inline math.
+    Some(
+        if marker.starts_with('(') || marker.as_bytes()[0].is_ascii_alphanumeric() {
+            marker.len() - 1
+        } else {
+            0
+        },
+    )
 }
 
 pub(crate) fn markdown_html_block_start_line(trimmed: &str) -> bool {
@@ -1902,14 +1908,14 @@ impl<'a> InlineToken<'a> {
         self.width += 1;
     }
 
-    fn remove_literal_marker_escape(&mut self) {
+    fn remove_literal_marker_escape(&mut self, preserve_math_closers: bool) {
         let Some(offset) = self.text.find('\\') else {
             return;
         };
         let mut candidate = self.text.to_string();
         candidate.remove(offset);
         candidate.push(' ');
-        if literal_block_marker_escape(&candidate) == Some(offset) {
+        if literal_block_marker_escape(&candidate, preserve_math_closers) == Some(offset) {
             candidate.pop();
             *self = Self::owned(candidate);
         }
@@ -1949,26 +1955,32 @@ fn write_sentence_token_lines(
     tokens: TokenSlice<'_>,
     suffix: &'static str,
 ) -> Option<()> {
-    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix, escape| {
-        let mut tokens = sentence.iter();
-        let mut first = tokens.next()?;
-        if let Some(offset) = escape {
-            first.escape_marker(offset);
-        }
-        out.record_tokens(
-            std::iter::once(first.text()).chain(
-                sentence.measured[1..]
-                    .iter()
-                    .map(|(span, _)| span.span().slice(sentence.text)),
-            ),
-            sentence_suffix,
-        )
-    })
+    write_sentence_token_slices(
+        tokens,
+        suffix,
+        out.preserve_math_closers,
+        |sentence, sentence_suffix, escape| {
+            let mut tokens = sentence.iter();
+            let mut first = tokens.next()?;
+            if let Some(offset) = escape {
+                first.escape_marker(offset);
+            }
+            out.record_tokens(
+                std::iter::once(first.text()).chain(
+                    sentence.measured[1..]
+                        .iter()
+                        .map(|(span, _)| span.span().slice(sentence.text)),
+                ),
+                sentence_suffix,
+            )
+        },
+    )
 }
 
 fn write_sentence_token_slices<'token>(
     tokens: TokenSlice<'token>,
     suffix: &'static str,
+    preserve_math_closers: bool,
     mut write: impl FnMut(TokenSlice<'token>, &'static str, Option<usize>) -> Option<()>,
 ) -> Option<()> {
     let mut safety_line = String::new();
@@ -1983,7 +1995,7 @@ fn write_sentence_token_slices<'token>(
             // A sentence may be just an ordered marker, such as `2.`. Include
             // the whitespace required by the shared list-marker recognizer.
             safety_line.push(' ');
-            escape = literal_block_marker_escape(&safety_line);
+            escape = literal_block_marker_escape(&safety_line, preserve_math_closers);
             if markdown_block_start_line(&safety_line) && escape.is_none() {
                 pending = Some((previous_from, to, previous_escape));
                 return Some(());
@@ -2006,8 +2018,11 @@ fn write_sentence_token_slices<'token>(
         // period escaped. Keep the following prose in that same sentence.
         if index == start
             && start > 0
-            && literal_block_marker_escape(&tokens.text[tokens.measured[index].0.start()..])
-                .is_some_and(|offset| offset + 1 == token.text().len())
+            && literal_block_marker_escape(
+                &tokens.text[tokens.measured[index].0.start()..],
+                preserve_math_closers,
+            )
+            .is_some_and(|offset| offset + 1 == token.text().len())
         {
             continue;
         }
@@ -2846,6 +2861,7 @@ struct TokenLineWriter<'out, 'prefix> {
     literals: &'prefix [Span],
     first_prefix: &'prefix str,
     continuation_prefix: &'prefix str,
+    preserve_math_closers: bool,
     check_block_starts: bool,
     safety_line: String,
     line_count: usize,
@@ -2867,6 +2883,10 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             literals,
             first_prefix,
             continuation_prefix,
+            // A backslash parenthesis can be a Pandoc math opener or literal
+            // prose. Keep closing escapes unchanged to avoid creating or
+            // extending math spans. Check once, including across hard breaks.
+            preserve_math_closers: text.contains("\\("),
             check_block_starts: false,
             safety_line: String::new(),
             line_count: 0,
@@ -2958,16 +2978,23 @@ struct WrapLineBuffer<'a> {
     width: usize,
     continuation_width: usize,
     sentence_wrap: bool,
+    preserve_math_closers: bool,
 }
 
 impl<'a> WrapLineBuffer<'a> {
-    fn new(first_width: usize, continuation_width: usize, sentence_wrap: bool) -> Self {
+    fn new(
+        first_width: usize,
+        continuation_width: usize,
+        sentence_wrap: bool,
+        preserve_math_closers: bool,
+    ) -> Self {
         Self {
             pending: None,
             current: TokenLine::default(),
             width: first_width.max(1),
             continuation_width: continuation_width.max(1),
             sentence_wrap,
+            preserve_math_closers,
         }
     }
 
@@ -3066,7 +3093,7 @@ impl<'a> WrapLineBuffer<'a> {
         {
             return Some(());
         }
-        let escape = literal_block_marker_escape(scratch);
+        let escape = literal_block_marker_escape(scratch, self.preserve_math_closers);
         if self.sentence_wrap
             && let Some(offset) = escape
         {
@@ -3114,7 +3141,13 @@ fn write_wrapped_tokens_with_first_width(
     suffix: &'static str,
     sentence_wrap: bool,
 ) -> Option<()> {
-    let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
+    let preserve_math_closers = writer.preserve_math_closers;
+    let mut lines = WrapLineBuffer::new(
+        first_width,
+        continuation_width,
+        sentence_wrap,
+        preserve_math_closers,
+    );
     for (index, mut token) in tokens.iter().enumerate() {
         // More text follows, so a bare ordered marker needs its escape before
         // measuring whether this next token fits on the same line.
@@ -3144,7 +3177,7 @@ fn write_wrapped_tokens_with_first_width(
                 writer.safety_line.push_str(&tokens.text[start..end]);
                 // Recognize a standalone ordered marker at the end, too.
                 writer.safety_line.push(' ');
-                escape = literal_block_marker_escape(&writer.safety_line);
+                escape = literal_block_marker_escape(&writer.safety_line, preserve_math_closers);
                 !markdown_block_start_line(&writer.safety_line) || escape.is_some()
             } else {
                 true
@@ -3160,7 +3193,7 @@ fn write_wrapped_tokens_with_first_width(
         // back inside prose. Keep escapes at the start of a paragraph or hard
         // break, and let the existing column repair avoid new block starts.
         if !sentence_wrap && index > 0 && !literal {
-            token.remove_literal_marker_escape();
+            token.remove_literal_marker_escape(preserve_math_closers);
         }
         if token.width > lines.width
             && !literal
@@ -4446,6 +4479,7 @@ struct InlineScan<'a> {
     cached_from: Option<usize>,
     square_closes: HashMap<usize, usize>,
     code_ends: Option<HashMap<usize, usize>>,
+    parenthesized_math_closes: Option<Vec<usize>>,
     literals: &'a [Span],
     literal_offset: usize,
     template_comment_closes: Option<Vec<(usize, usize)>>,
@@ -4458,6 +4492,7 @@ impl<'a> InlineScan<'a> {
             cached_from: None,
             square_closes: HashMap::new(),
             code_ends: None,
+            parenthesized_math_closes: None,
             literals: &[],
             literal_offset: 0,
             template_comment_closes: None,
@@ -4479,6 +4514,18 @@ impl<'a> InlineScan<'a> {
         match self.text.as_bytes().get(start)? {
             b'`' if !escaped_at(self.text, start) => self.code_span_end(start),
             b'$' => inline_math_span_end(self.text, start),
+            b'\\' if self.text[start..].starts_with("\\(") && !escaped_at(self.text, start) => {
+                // Preserve possible Pandoc math as one literal. Index closers
+                // once so unmatched openers do not repeatedly scan the suffix.
+                let closes = self.parenthesized_math_closes.get_or_insert_with(|| {
+                    self.text
+                        .match_indices("\\)")
+                        .map(|(index, _)| index)
+                        .collect()
+                });
+                let next = closes.partition_point(|close| *close < start + 2);
+                closes.get(next).map(|close| close + 2)
+            }
             _ => None,
         }
     }
