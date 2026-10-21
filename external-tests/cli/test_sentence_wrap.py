@@ -123,6 +123,7 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(
         ("markdown_sentence_column_math_contents.case", "sentence:12"),
         ("markdown_sentence_setext_candidates.case", "sentence"),
         ("markdown_sentence_setext_candidates.case", "sentence:12"),
+        ("markdown_sentence_reference_boundaries.case", "sentence"),
     ],
 )
 def test_marker_repair_preserves_inline_and_block_meaning(

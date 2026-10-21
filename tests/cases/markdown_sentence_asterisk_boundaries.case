@@ -32,6 +32,8 @@ Em *unmatched \(*. Opening sentence. (b) value.
 HTML *<!-- \> -->*. Opening sentence. * value.
 
 Em *x * y*. Opening sentence. * value.
+
+Math 2 * 3. Opening sentence. * value.
 -- stdout
 One sentence. * two words. * three words.
 Last sentence.
@@ -83,6 +85,9 @@ Opening sentence. (b) value.
 HTML *<!-- \> -->*. Opening sentence. * value.
 
 Em *x * y*.
+Opening sentence. * value.
+
+Math 2 * 3.
 Opening sentence. * value.
 -- stderr
 -- status

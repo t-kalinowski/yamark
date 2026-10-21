@@ -12,6 +12,8 @@ Literal \* $x * y$
 Literal \* $$x * y$$
 
 Literal \* *x*.
+
+Math 2 * 3. Opening sentence. * value.
 -- stdout
 Literal \*
 star \*
@@ -34,6 +36,10 @@ Literal
 
 Literal \*
 *x*.
+
+Math 2 * 3.
+Opening
+sentence. * value.
 -- stderr
 -- status
 0

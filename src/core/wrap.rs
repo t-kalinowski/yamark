@@ -1587,8 +1587,16 @@ fn markdown_block_start_line(line: &str) -> bool {
             || trimmed.starts_with(':')
             || trimmed.starts_with("<!--")
             || markdown_html_block_start_line(trimmed)
-            || trimmed.starts_with("[") && trimmed.contains("]:")
+            || markdown_reference_definition_start(trimmed)
             || markdown_list_marker(trimmed).is_some())
+}
+
+pub(crate) fn markdown_reference_definition_start(text: &str) -> bool {
+    // Parsing and wrap safety must agree: the colon follows the label's
+    // matching bracket, not a later `]:` in ordinary prose.
+    text.starts_with('[')
+        && find_balanced_square_close(text, 1)
+            .is_some_and(|close| text.as_bytes().get(close + 1) == Some(&b':'))
 }
 
 fn setext_underline_line(line: &str) -> bool {
@@ -1771,7 +1779,7 @@ fn thematic_break_line(trimmed: &str) -> bool {
 fn footnote_definition(source: &str) -> bool {
     let trimmed = source.trim_start();
     let indent = source.len() - trimmed.len();
-    indent <= 3 && trimmed.starts_with("[^") && trimmed.contains("]:")
+    indent <= 3 && trimmed.starts_with("[^") && markdown_reference_definition_start(trimmed)
 }
 
 fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
@@ -2986,6 +2994,8 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, b
             {
                 emphasis_end = span.end;
             }
+            // Count spaced stars too: Pandoc can pair them after column reflow
+            // puts a newline after one. Both modes need the same roundtrip guard.
             if text.as_bytes()[index] == b'*'
                 && index >= emphasis_end
                 && (!escaped_at(text, index)
