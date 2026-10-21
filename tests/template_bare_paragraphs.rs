@@ -134,10 +134,10 @@ fn source_and_planned_template_only_lines_follow_wrapping_mode() {
         ("none", "Before\n{{ foo }}\nafter [real](target).\n"),
         ("paragraph", "Before {{ foo }} after [real](target).\n"),
         ("sentence", "Before {{ foo }} after [real](target).\n"),
-        ("12", "Before\n{{ foo }}\nafter\n[real](\n  target\n).\n"),
+        ("12", "Before\n{{ foo }}\nafter\n[real](\n  target).\n"),
         (
             "sentence:12",
-            "Before\n{{ foo }}\nafter\n[real](\n  target\n).\n",
+            "Before\n{{ foo }}\nafter\n[real](\n  target).\n",
         ),
     ] {
         assert_format(
