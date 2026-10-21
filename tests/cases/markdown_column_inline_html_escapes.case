@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+Before <span \> after.
+
+Before <span title="sample" \> after.
+
+Before </span \> after.
+
+- Before <span \> after.
+
+> Before <span \> after.
+
+Before. \> literal blockquote marker.
+-- stdout
+Before <span \> after.
+
+Before <span title="sample" \> after.
+
+Before </span \> after.
+
+- Before <span \> after.
+
+> Before <span \> after.
+
+Before. > literal blockquote marker.
+-- stderr
+-- status
+0

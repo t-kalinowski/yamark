@@ -1,0 +1,20 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+- First sentence. - More prose.
+
+- First sentence.
+  \- More prose.
+-- stdout
+- First
+  sentence.
+  \- More
+  prose.
+
+- First
+  sentence.
+  \- More
+  prose.
+-- stderr
+-- status
+0

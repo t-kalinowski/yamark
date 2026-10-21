@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:72
+-- stdin
+Before. *** *word*
+
+Opening. Safe sentence. *** *word*
+-- stdout
+Before. *** *word*
+
+Opening.
+Safe
+sentence. *** *word*
+-- stderr
+-- status
+0

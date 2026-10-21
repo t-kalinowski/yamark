@@ -1,0 +1,34 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+Literal \* star \* here.
+
+One sentence. * two words. * three words. Last sentence.
+
+Literal \* \(x * y\)
+
+Literal \* $x * y$
+
+Literal \* $$x * y$$
+-- stdout
+Literal \*
+star \*
+here.
+
+One
+sentence. * two
+words. * three
+words. Last
+sentence.
+
+Literal \*
+\(x * y\)
+
+Literal \*
+$x * y$
+
+Literal
+\* $$x * y$$
+-- stderr
+-- status
+0

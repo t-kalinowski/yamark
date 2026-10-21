@@ -115,7 +115,7 @@ fn link_normalization_keeps_escaped_and_unsupported_controls() {
         ),
         (
             "Before $$[x](  url  )$$ after [r](  t  ).",
-            "Before $$[x](url)$$ after [r](t).",
+            "Before $$[x](  url  )$$ after [r](t).",
         ),
     ] {
         for wrap in ["none", "paragraph", "sentence", "240", "sentence:240"] {

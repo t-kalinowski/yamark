@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:12
+-- stdin
+Opening. $$x + y$$ remains math.
+
+Text \(a\\) + b\) end.
+-- stdout
+Opening. $$x + y$$
+remains
+math.
+
+Text
+\(a\\) + b\)
+end.
+-- stderr
+-- status
+0

@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+Text \begin{math}a \# b\end{math} end.
+
+Text \begin{math}a + b \begin{nested}\#\end{nested}\end{math} end.
+-- stdout
+Text \begin{math}a \# b\end{math} end.
+
+Text \begin{math}a + b \begin{nested}\#\end{nested}\end{math} end.
+-- stderr
+-- status
+0

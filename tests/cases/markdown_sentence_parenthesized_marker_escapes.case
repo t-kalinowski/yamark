@@ -1,0 +1,212 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Opening. (b) value \) remains prose.
+
+Opening. (ii) value \) remains prose.
+
+- Opening. (2) value \) remains prose.
+
+> Opening. (B) value \) remains prose.
+
+Keep \(b) + y\) as math. Last sentence.
+
+Keep \(a (b\) as math. Last sentence.
+
+Opening \( remains prose. (b) value. Last sentence.
+
+Opening \( remains prose. 2) value. Last sentence.
+
+Code `\(`. Opening sentence. (b) value.
+
+Code `\\(`. Opening sentence. 2) value.
+
+Closed \(x + y\). Opening sentence. (b) value.
+
+Closed \(x + y\). Opening sentence. 2) value.
+
+Escaped \\( remains prose. (b) value.
+
+Opening sentence. (b) value. Later \( remains open.
+
+*Code `\(`*. Opening sentence. (b) value.
+
+Code `\(`.\
+Opening sentence. (b) value.
+
+Closed \(x + y\).\
+Opening sentence. (b) value.
+
+Unmatched \( stays open.\
+Opening sentence. (b) value. Last sentence.
+
+HTML <span title="\(">x</span>. Opening sentence. (b) value.
+
+Link [text][\(]. Opening sentence. (b) value.
+
+Attribute [text]{title="\("}. Opening sentence. (b) value.
+
+Command \text{\(}. Opening sentence. (b) value.
+
+Autolink <https://example.com/\(>. Opening sentence. (b) value.
+
+*HTML <span title="\(">x</span>*. Opening sentence. (b) value.
+
+HTML <span>\(</span>. Opening sentence. (b) value.
+
+*Unmatched \(*. Opening sentence. (b) value.
+
+~~Unmatched \(~~. Opening sentence. (b) value.
+
+Braces {\(}. Opening sentence. (b) value.
+
+HTML <span title="\(">x</span>.\
+Opening sentence. (b) value.
+
+HTML <span title="\(">x</span>. Unmatched \( stays open. (b) value. Last sentence.
+
+Braces [text]{not an=attribute \(}. Opening sentence. (b) value.
+
+Bracket [unmatched \(]. Opening sentence. (b) value.
+
+Bracket [unmatched \(][missing]. Opening sentence. (b) value.
+
+Bracket [escaped \\(]. Opening sentence. (b) value.
+
+Link [text](https://example.com "\("). Opening sentence. (b) value.
+
+Link [x](a). Opening sentence. (b) value.
+
+Citation [@key]. Opening sentence. (b) value.
+-- stdout
+Opening.
+(b\) value \) remains prose.
+
+Opening.
+(ii\) value \) remains prose.
+
+- Opening.
+  (2\) value \) remains prose.
+
+> Opening.
+> (B\) value \) remains prose.
+
+Keep \(b) + y\) as math.
+Last sentence.
+
+Keep \(a (b\) as math.
+Last sentence.
+
+Opening \( remains prose. (b) value.
+Last sentence.
+
+Opening \( remains prose. 2) value.
+Last sentence.
+
+Code `\(`.
+Opening sentence.
+(b\) value.
+
+Code `\\(`.
+Opening sentence.
+2\) value.
+
+Closed \(x + y\).
+Opening sentence.
+(b\) value.
+
+Closed \(x + y\).
+Opening sentence.
+2\) value.
+
+Escaped \\( remains prose.
+(b\) value.
+
+Opening sentence.
+(b\) value.
+Later \( remains open.
+
+*Code `\(`*.
+Opening sentence.
+(b\) value.
+
+Code `\(`.\
+Opening sentence.
+(b\) value.
+
+Closed \(x + y\).\
+Opening sentence.
+(b\) value.
+
+Unmatched \( stays open.\
+Opening sentence. (b) value.
+Last sentence.
+
+HTML <span title="\(">x</span>.
+Opening sentence.
+(b\) value.
+
+Link [text][\(].
+Opening sentence. (b) value.
+
+Attribute [text]{title="\("}.
+Opening sentence.
+(b\) value.
+
+Command \text{\(}.
+Opening sentence.
+(b\) value.
+
+Autolink <https://example.com/\(>.
+Opening sentence.
+(b\) value.
+
+*HTML <span title="\(">x</span>*.
+Opening sentence.
+(b\) value.
+
+HTML <span>\(</span>.
+Opening sentence. (b) value.
+
+*Unmatched \(*.
+Opening sentence. (b) value.
+
+~~Unmatched \(~~.
+Opening sentence. (b) value.
+
+Braces {\(}.
+Opening sentence. (b) value.
+
+HTML <span title="\(">x</span>.\
+Opening sentence.
+(b\) value.
+
+HTML <span title="\(">x</span>.
+Unmatched \( stays open. (b) value.
+Last sentence.
+
+Braces [text]{not an=attribute \(}.
+Opening sentence. (b) value.
+
+Bracket [unmatched \(].
+Opening sentence. (b) value.
+
+Bracket [unmatched \(][missing].
+Opening sentence. (b) value.
+
+Bracket [escaped \\(].
+Opening sentence.
+(b\) value.
+
+Link [text](https://example.com "\("). Opening sentence. (b) value.
+
+Link [x](a).
+Opening sentence.
+(b\) value.
+
+Citation [@key].
+Opening sentence.
+(b\) value.
+-- stderr
+-- status
+0

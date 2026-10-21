@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:12
+-- stdin
+Opening {{< foo "\(" >}}. First. (b) value.
+-- stdout
+Opening
+{{< foo "\(" >}}.
+First.
+(b\) value.
+-- stderr
+-- status
+0
