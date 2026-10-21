@@ -1590,6 +1590,19 @@ fn markdown_block_start_line(line: &str) -> bool {
             || markdown_list_marker(trimmed).is_some())
 }
 
+// ASCII words can start blocks only as list markers or Table: captions. Keep
+// every other prefix on the full recognizer's path, including punctuation.
+fn token_may_start_markdown_block(token: &str) -> bool {
+    let token = token.trim_start_matches([' ', '\t']);
+    let word_len = token.bytes().take_while(u8::is_ascii_alphabetic).count();
+    word_len == 0
+        || token.starts_with("Table:")
+        || token
+            .as_bytes()
+            .get(word_len)
+            .is_some_and(|byte| matches!(byte, b'.' | b')'))
+}
+
 /// These markers are literal punctuation in prose. Escaping HTML, math, or
 /// other inline constructs can change their meaning, so they stay joined.
 fn literal_block_marker_escape(line: &str) -> Option<usize> {
@@ -2822,11 +2835,7 @@ impl<'a> TokenLine<'a> {
     }
 
     fn markdown_block_start(&self, scratch: &mut String, include_marker_only: bool) -> bool {
-        token_slice_markdown_block_start(&self.tokens, scratch)
-            || include_marker_only && {
-                scratch.push(' ');
-                markdown_block_start_line(scratch)
-            }
+        token_slice_markdown_block_start(&self.tokens, scratch, include_marker_only)
     }
 }
 
@@ -2888,7 +2897,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
     ) -> Option<()> {
         if self.check_block_starts
             && self.line_count > 0
-            && token_slice_markdown_block_start(tokens, &mut self.safety_line)
+            && token_slice_markdown_block_start(tokens, &mut self.safety_line, false)
         {
             return None;
         }
@@ -3119,22 +3128,28 @@ fn write_wrapped_tokens_with_first_width(
                     && !token_is_sentence_abbreviation(previous.text())
             })
         {
-            let start = tokens.measured[index].0.start();
-            let end = tokens.measured[index..]
-                .iter()
-                .find(|(span, _)| {
-                    let text = span.span().slice(tokens.text);
-                    token_ends_sentence(text) && !token_is_sentence_abbreviation(text)
-                })
-                .unwrap_or(&tokens.measured[tokens.len() - 1])
-                .0
-                .end();
-            writer.safety_line.clear();
-            writer.safety_line.push_str(&tokens.text[start..end]);
-            // Recognize a standalone ordered marker at the end, too.
-            writer.safety_line.push(' ');
-            let escape = literal_block_marker_escape(&writer.safety_line);
-            if !markdown_block_start_line(&writer.safety_line) || escape.is_some() {
+            let mut escape = None;
+            let safe_break = if token_may_start_markdown_block(token.text()) {
+                let start = tokens.measured[index].0.start();
+                let end = tokens.measured[index..]
+                    .iter()
+                    .find(|(span, _)| {
+                        let text = span.span().slice(tokens.text);
+                        token_ends_sentence(text) && !token_is_sentence_abbreviation(text)
+                    })
+                    .unwrap_or(&tokens.measured[tokens.len() - 1])
+                    .0
+                    .end();
+                writer.safety_line.clear();
+                writer.safety_line.push_str(&tokens.text[start..end]);
+                // Recognize a standalone ordered marker at the end, too.
+                writer.safety_line.push(' ');
+                escape = literal_block_marker_escape(&writer.safety_line);
+                !markdown_block_start_line(&writer.safety_line) || escape.is_some()
+            } else {
+                true
+            };
+            if safe_break {
                 lines.commit_current(writer)?;
                 if let Some(offset) = escape {
                     token.escape_marker(offset);
@@ -3202,11 +3217,24 @@ fn token_slice_width(tokens: &[InlineToken<'_>]) -> usize {
     tokens.iter().map(|token| token.width).sum::<usize>() + tokens.len().saturating_sub(1)
 }
 
-fn token_slice_markdown_block_start(tokens: &[InlineToken<'_>], scratch: &mut String) -> bool {
+fn token_slice_markdown_block_start(
+    tokens: &[InlineToken<'_>],
+    scratch: &mut String,
+    include_marker_only: bool,
+) -> bool {
+    if !tokens
+        .first()
+        .is_some_and(|token| token_may_start_markdown_block(token.text()))
+    {
+        return false;
+    }
     // Layout checks growing candidate lines repeatedly. Reuse their temporary
     // storage while keeping the existing recognition input and rules unchanged.
     scratch.clear();
     write_joined_tokens(scratch, tokens);
+    if include_marker_only {
+        scratch.push(' ');
+    }
     markdown_block_start_line(scratch)
 }
 

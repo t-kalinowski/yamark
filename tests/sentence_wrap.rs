@@ -119,6 +119,10 @@ fn sentence_wrapping_escapes_literal_block_markers() {
 fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
     for (case, wrap) in [
         (
+            include_str!("cases/markdown_sentence_column_block_candidates.case"),
+            MarkdownWrap::SentenceAndColumn(32),
+        ),
+        (
             include_str!("cases/markdown_sentence_block_starts.case"),
             MarkdownWrap::Sentence,
         ),

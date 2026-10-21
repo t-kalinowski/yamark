@@ -1,0 +1,51 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:32
+-- stdin
+Opening. Table: caption text. Finish.
+
+Opening. [label]: target. Finish.
+
+Opening. : definition text. Finish.
+
+Opening. | table text. Finish.
+
+Opening. ~~~ literal fence. Finish.
+
+Opening. ___ literal rule. Finish.
+
+Opening. \[ literal math. Finish.
+
+Opening. Ordinary words stay prose. Finish.
+
+Opening. Élan stays prose. Finish.
+-- stdout
+Opening. Table: caption text.
+Finish.
+
+Opening. [label]: target.
+Finish.
+
+Opening. : definition text.
+Finish.
+
+Opening. | table text.
+Finish.
+
+Opening. ~~~ literal fence. Finish.
+
+Opening. ___
+literal rule.
+Finish.
+
+Opening. \[ literal math. Finish.
+
+Opening.
+Ordinary words stay prose.
+Finish.
+
+Opening.
+Élan stays prose.
+Finish.
+-- stderr
+-- status
+0
