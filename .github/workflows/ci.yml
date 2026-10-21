@@ -58,8 +58,6 @@ jobs:
 
       - name: Install Quarto
         uses: quarto-dev/quarto-actions/setup@v2
-        with:
-          version: 1.10.18
 
       - name: Run checks
         run: scripts/check.sh

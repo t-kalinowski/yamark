@@ -1,0 +1,26 @@
+-- args
+format --stdin-file-path input.md --wrap 8
+-- stdin
+- First prose. 2) More prose.
+
+- First prose. (b) More prose.
+
+Last div.
+-- stdout
+- First
+  prose.
+  2\)
+  More
+  prose.
+
+- First
+  prose.
+  (b\)
+  More
+  prose.
+
+Last
+div.
+-- stderr
+-- status
+0

@@ -2819,7 +2819,9 @@ fn blockquote_plain_body(text: &str) -> Option<&str> {
 
 fn footnote_definition_at(text: &str) -> bool {
     let trimmed = text.trim_start();
-    text.len() - trimmed.len() <= 3 && trimmed.starts_with("[^") && trimmed.contains("]:")
+    text.len() - trimmed.len() <= 3
+        && trimmed.starts_with("[^")
+        && crate::core::wrap::markdown_reference_definition_start(trimmed)
 }
 
 fn footnote_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
@@ -3128,7 +3130,7 @@ fn shortcode_token_end(source: &SourceBuffer, start: usize, end: usize) -> usize
 }
 
 fn link_definition_start(trimmed: &str) -> bool {
-    trimmed.starts_with('[') && trimmed.contains("]:")
+    crate::core::wrap::markdown_reference_definition_start(trimmed)
 }
 
 fn pandoc_table_at(source: &SourceBuffer, line: usize, end: usize) -> bool {

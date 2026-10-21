@@ -97,6 +97,11 @@ impl InlineSource {
                 index += 1;
                 continue;
             }
+            // Raw TeX environments have their own escaping and nesting rules.
+            // Preserve this inline block instead of repairing Markdown in it.
+            if rest.starts_with("\\begin{") {
+                return None;
+            }
             let atom = if let Some(end) = scan.literal_span_end(index) {
                 Some((end, Kind::Literal))
             } else if byte == b'`' {

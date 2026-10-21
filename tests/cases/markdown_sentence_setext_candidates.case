@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Opening. - word. --
+
+Opening. - word. ==
+-- stdout
+Opening.
+\- word. --
+
+Opening.
+\- word. ==
+-- stderr
+-- status
+0

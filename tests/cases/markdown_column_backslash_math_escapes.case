@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+Keep \(b) + y\) as math.
+
+Keep \(a (b\) as math.
+-- stdout
+Keep
+\(b) + y\)
+as math.
+
+Keep
+\(a (b\) as
+math.
+-- stderr
+-- status
+0

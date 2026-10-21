@@ -45,7 +45,7 @@ Before *```` unmatched `[x](  url  )`* after [r](t).
 
 Before `code`` [x](url) tail` after [r](t).
 
-Before $$[x](url)$$ after *outside* [r](t).
+Before $$[x](  url  )$$ after *outside* [r](t).
 
 # Before ``unmatched _word_` after *outside*
 

@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+something * *** |
+-- stdout
+something * *** |
+-- stderr
+-- status
+0

@@ -794,7 +794,7 @@ impl Draft {
                         &input.literals,
                         inline.first_prefix.get(source),
                         inline.continuation_prefix.get(source),
-                    );
+                    )?;
                     let mut start = 0;
                     for &(end, hard_break) in &input.breaks {
                         write_markdown_token_lines(

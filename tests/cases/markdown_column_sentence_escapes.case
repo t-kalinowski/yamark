@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+Opening sentence.
+Pick one.
+\- unfinished
+
+> Options: (a) keep it.
+> (b\) drop it.
+
+- Version 1.12 ships now.
+  2\. Later.
+
+\- Literal marker at paragraph start.
+
+Keep \*literal emphasis\* and `\- literal code` unchanged.
+-- stdout
+Opening sentence. Pick one. - unfinished
+
+> Options: (a) keep it. (b) drop it.
+
+- Version 1.12 ships now. 2. Later.
+
+\- Literal marker at paragraph start.
+
+Keep \*literal emphasis\* and `\- literal code` unchanged.
+-- stderr
+-- status
+0

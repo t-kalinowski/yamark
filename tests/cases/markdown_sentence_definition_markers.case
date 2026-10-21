@@ -1,0 +1,22 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Term sentence. ~ definition-looking prose. Last sentence.
+
+Term sentence. ~word stays prose. Last sentence.
+
+Term sentence. ~~struck text~~ stays prose. Last sentence.
+-- stdout
+Term sentence. ~ definition-looking prose.
+Last sentence.
+
+Term sentence.
+~word stays prose.
+Last sentence.
+
+Term sentence.
+~~struck text~~ stays prose.
+Last sentence.
+-- stderr
+-- status
+0
