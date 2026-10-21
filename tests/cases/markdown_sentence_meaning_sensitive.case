@@ -8,6 +8,13 @@ Opening sentence. <div>inline HTML.</div> More prose. Last sentence.
 Opening sentence. $$x + y$$ remains math. Last sentence.
 
 Opening sentence. `- literal marker`. Last sentence.
+
+The operator <! means mismatch. Next sentence.
+
+The operator <? means a query. Next sentence.
+
+Term
+~ Definition sentence. Another sentence.
 -- stdout
 Opening sentence. <!-- hidden --> More prose. Last sentence.
 
@@ -20,6 +27,14 @@ Last sentence.
 Opening sentence.
 `- literal marker`.
 Last sentence.
+
+The operator <! means mismatch. Next sentence.
+
+The operator <? means a query. Next sentence.
+
+Term
+~ Definition sentence.
+  Another sentence.
 -- stderr
 -- status
 0

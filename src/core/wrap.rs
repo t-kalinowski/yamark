@@ -1585,6 +1585,11 @@ fn markdown_block_start_line(line: &str) -> bool {
             || trimmed.starts_with('|')
             || trimmed.starts_with("Table:")
             || trimmed.starts_with(':')
+            || trimmed.starts_with('~')
+                && trimmed
+                    .as_bytes()
+                    .get(1)
+                    .is_some_and(u8::is_ascii_whitespace)
             || trimmed.starts_with("<!--")
             || markdown_html_block_start_line(trimmed)
             || markdown_reference_definition_start(trimmed)
@@ -2939,9 +2944,9 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, b
         } else if !escaped_at(text, index)
             && (text[index..].starts_with("<!") || text[index..].starts_with("<?"))
         {
-            // Raw HTML comments, declarations, CDATA and processing
-            // instructions have no Markdown escapes. Preserve this block
-            // rather than extend the existing inline parser into their bodies.
+            // Preserve raw HTML openers, including incomplete or prose uses.
+            // Distinguishing these from comments, declarations, CDATA and
+            // processing instructions is outside marker repair's scope.
             return None;
         } else if !escaped_at(text, index)
             && let Some(end) = commonmark_autolink_span_end(text, index)

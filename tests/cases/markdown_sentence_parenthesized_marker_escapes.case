@@ -46,6 +46,8 @@ Link [text][\(]. Opening sentence. (b) value.
 
 Attribute [text]{title="\("}. Opening sentence. (b) value.
 
+Span [unmatched \(]{.class}. Opening sentence. (b) value.
+
 Command \text{\(}. Opening sentence. (b) value.
 
 Autolink <https://example.com/\(>. Opening sentence. (b) value.
@@ -152,6 +154,10 @@ Link [text][\(].
 Opening sentence. (b) value.
 
 Attribute [text]{title="\("}.
+Opening sentence.
+(b\) value.
+
+Span [unmatched \(]{.class}.
 Opening sentence.
 (b\) value.
 
