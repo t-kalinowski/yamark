@@ -1,0 +1,49 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Intro line
+continues. Pick one. - other thing.
+
+> Options: (a) keep it. (b) drop it.
+
+[^note]: Steps: first. - second.
+
+Intro line
+continues. > still prose.
+
+Intro line
+continues. # still prose.
+
+Before break.\
+More prose. - still prose.
+
+Ordinary first. `- literal marker`. Next sentence.
+
+<!-- fmt: skip -->
+- Preserve   spacing. - still prose.
+-- stdout
+Intro line
+continues. Pick one. - other thing.
+
+> Options: (a) keep it. (b) drop it.
+
+[^note]: Steps: first. - second.
+
+Intro line
+continues. > still prose.
+
+Intro line
+continues. # still prose.
+
+Before break.\
+More prose. - still prose.
+
+Ordinary first.
+`- literal marker`.
+Next sentence.
+
+<!-- fmt: skip -->
+- Preserve   spacing. - still prose.
+-- stderr
+-- status
+0

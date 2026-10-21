@@ -1939,12 +1939,28 @@ fn write_sentence_token_slices<'token>(
     suffix: &'static str,
     mut write: impl FnMut(TokenSlice<'token>, &'static str) -> Option<()>,
 ) -> Option<()> {
+    let mut safety_line = String::new();
+    let mut write_sentence = |from: usize, to: usize, sentence_suffix| {
+        if from > 0 {
+            let start = tokens.measured[from].0.start();
+            let end = tokens.measured[to - 1].0.end();
+            safety_line.clear();
+            safety_line.push_str(&tokens.text[start..end]);
+            // A sentence may be just an ordered marker, such as `2.`. Include
+            // the whitespace required by the shared list-marker recognizer.
+            safety_line.push(' ');
+            if markdown_block_start_line(&safety_line) {
+                return None;
+            }
+        }
+        write(tokens.slice(from..to), sentence_suffix)
+    };
     let mut start = 0usize;
     let mut pending = None::<(usize, usize)>;
     for (index, token) in tokens.iter().enumerate() {
         if token_ends_sentence(token.text()) && !token_is_sentence_abbreviation(token.text()) {
             if let Some((from, to)) = pending.take() {
-                write(tokens.slice(from..to), "")?;
+                write_sentence(from, to, "")?;
             }
             pending = Some((start, index + 1));
             start = index + 1;
@@ -1952,12 +1968,12 @@ fn write_sentence_token_slices<'token>(
     }
     if start < tokens.len() {
         if let Some((from, to)) = pending.take() {
-            write(tokens.slice(from..to), "")?;
+            write_sentence(from, to, "")?;
         }
         pending = Some((start, tokens.len()));
     }
     if let Some((from, to)) = pending {
-        write(tokens.slice(from..to), suffix)?;
+        write_sentence(from, to, suffix)?;
     }
     Some(())
 }
