@@ -9,13 +9,16 @@ format --stdin-file-path input.md --wrap sentence:32
 
 Safe first. This second sentence contains enough words to wrap.
 -- stdout
-- Version 1.12 ships now. 2.
+- Version 1.12 ships now.
+  2\.
   Later.
 
-- Choose first. b.
+- Choose first.
+  b\.
   Later.
 
-- Choose first. ii.
+- Choose first.
+  ii\.
   Later.
 
 Safe first.

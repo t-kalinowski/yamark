@@ -25,23 +25,30 @@ Ordinary first. `- literal marker`. Next sentence.
 - Preserve   spacing. - still prose.
 -- stdout
 Intro line continues.
-Pick one. - other thing.
+Pick one.
+\- other thing.
 
-> Options: (a) keep it. (b) drop it.
+> Options: (a) keep it.
+> \(b) drop it.
 
-[^note]: Steps: first. - second.
+[^note]: Steps: first.
+  \- second.
 
-Intro line continues. > still prose.
+Intro line continues.
+\> still prose.
 
-Intro line continues. # still prose.
+Intro line continues.
+\# still prose.
 
 Before break.
 Safe sentence.\
-More prose. - still prose.
+More prose.
+\- still prose.
 Last sentence.
 
 Opening sentence.
-Pick one. - unfinished
+Pick one.
+\- unfinished
 
 Ordinary first.
 `- literal marker`.

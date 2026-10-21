@@ -1,0 +1,26 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Opening sentence. <!-- hidden --> More prose. Last sentence.
+
+Opening sentence. <div>inline HTML.</div> More prose. Last sentence.
+
+Opening sentence. $$x + y$$ remains math. Last sentence.
+
+Opening sentence. `- literal marker`. Last sentence.
+-- stdout
+Opening sentence. <!-- hidden --> More prose.
+Last sentence.
+
+Opening sentence. <div>inline HTML.</div> More prose.
+Last sentence.
+
+Opening sentence. $$x + y$$ remains math.
+Last sentence.
+
+Opening sentence.
+`- literal marker`.
+Last sentence.
+-- stderr
+-- status
+0

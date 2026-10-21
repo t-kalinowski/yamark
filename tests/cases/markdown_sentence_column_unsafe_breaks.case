@@ -10,7 +10,8 @@ format --stdin-file-path input.md --wrap sentence:12
 - Opening
   sentence.
   First
-  sentence. 2.
+  sentence.
+  2\.
   More
   prose.
   Last
@@ -19,7 +20,8 @@ format --stdin-file-path input.md --wrap sentence:12
 - Opening
   sentence.
   First
-  sentence. ii.
+  sentence.
+  ii\.
   More
   prose.
   Last
@@ -27,8 +29,8 @@ format --stdin-file-path input.md --wrap sentence:12
 
 - Opening.
   Next
-  words. -
-  more.
+  words.
+  \- more.
   Finish.
 -- stderr
 -- status

@@ -1590,6 +1590,20 @@ fn markdown_block_start_line(line: &str) -> bool {
             || markdown_list_marker(trimmed).is_some())
 }
 
+/// These markers are literal punctuation in prose. Escaping HTML, math, or
+/// other inline constructs can change their meaning, so they stay joined.
+fn literal_block_marker_escape(line: &str) -> Option<usize> {
+    if atx_heading_start(line) || line.starts_with('>') {
+        return Some(0);
+    }
+    let (marker, _) = markdown_list_marker(line)?;
+    Some(if marker.as_bytes()[0].is_ascii_alphanumeric() {
+        marker.len() - 1
+    } else {
+        0
+    })
+}
+
 pub(crate) fn markdown_html_block_start_line(trimmed: &str) -> bool {
     if trimmed.starts_with("<!") || trimmed.starts_with("<?") {
         return true;
@@ -1869,6 +1883,24 @@ impl<'a> InlineToken<'a> {
     fn text(&self) -> &str {
         &self.text
     }
+
+    fn escape_marker(&mut self, offset: usize) {
+        self.text.to_mut().insert(offset, '\\');
+        self.width += 1;
+    }
+
+    fn remove_literal_marker_escape(&mut self) {
+        let Some(offset) = self.text.find('\\') else {
+            return;
+        };
+        let mut candidate = self.text.to_string();
+        candidate.remove(offset);
+        candidate.push(' ');
+        if literal_block_marker_escape(&candidate) == Some(offset) {
+            candidate.pop();
+            *self = Self::owned(candidate);
+        }
+    }
 }
 
 /// A borrowed view of measured tokens. Layout reads it without rebuilding a
@@ -1904,8 +1936,20 @@ fn write_sentence_token_lines(
     tokens: TokenSlice<'_>,
     suffix: &'static str,
 ) -> Option<()> {
-    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
-        out.write_retained_slice(sentence, sentence_suffix)
+    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix, escape| {
+        let mut tokens = sentence.iter();
+        let mut first = tokens.next()?;
+        if let Some(offset) = escape {
+            first.escape_marker(offset);
+        }
+        out.record_tokens(
+            std::iter::once(first.text()).chain(
+                sentence.measured[1..]
+                    .iter()
+                    .map(|(span, _)| span.span().slice(sentence.text)),
+            ),
+            sentence_suffix,
+        )
     })
 }
 
@@ -1917,7 +1961,7 @@ fn write_wrapped_sentence_token_lines(
     suffix: &'static str,
 ) -> Option<()> {
     let mut first_sentence = true;
-    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix| {
+    write_sentence_token_slices(tokens, suffix, |sentence, sentence_suffix, escape| {
         let sentence_first_width = if first_sentence {
             first_width
         } else {
@@ -1931,6 +1975,7 @@ fn write_wrapped_sentence_token_lines(
             continuation_width,
             sentence_suffix,
             true,
+            escape,
         )
     })
 }
@@ -1938,12 +1983,13 @@ fn write_wrapped_sentence_token_lines(
 fn write_sentence_token_slices<'token>(
     tokens: TokenSlice<'token>,
     suffix: &'static str,
-    mut write: impl FnMut(TokenSlice<'token>, &'static str) -> Option<()>,
+    mut write: impl FnMut(TokenSlice<'token>, &'static str, Option<usize>) -> Option<()>,
 ) -> Option<()> {
     let mut safety_line = String::new();
-    let mut pending = None::<(usize, usize)>;
+    let mut pending = None::<(usize, usize, Option<usize>)>;
     let mut push_sentence = |from: usize, to: usize| {
-        if let Some((previous_from, previous_to)) = pending {
+        let mut escape = None;
+        if let Some((previous_from, previous_to, previous_escape)) = pending {
             let start = tokens.measured[from].0.start();
             let end = tokens.measured[to - 1].0.end();
             safety_line.clear();
@@ -1951,13 +1997,18 @@ fn write_sentence_token_slices<'token>(
             // A sentence may be just an ordered marker, such as `2.`. Include
             // the whitespace required by the shared list-marker recognizer.
             safety_line.push(' ');
-            if markdown_block_start_line(&safety_line) {
-                pending = Some((previous_from, to));
+            escape = literal_block_marker_escape(&safety_line);
+            if markdown_block_start_line(&safety_line) && escape.is_none() {
+                pending = Some((previous_from, to, previous_escape));
                 return Some(());
             }
-            write(tokens.slice(previous_from..previous_to), "")?;
+            write(
+                tokens.slice(previous_from..previous_to),
+                "",
+                previous_escape,
+            )?;
         }
-        pending = Some((from, to));
+        pending = Some((from, to, escape));
         Some(())
     };
     let mut start = 0usize;
@@ -1970,8 +2021,8 @@ fn write_sentence_token_slices<'token>(
     if start < tokens.len() {
         push_sentence(start, tokens.len())?;
     }
-    if let Some((from, to)) = pending {
-        write(tokens.slice(from..to), suffix)?;
+    if let Some((from, to, escape)) = pending {
+        write(tokens.slice(from..to), suffix, escape)?;
     }
     Some(())
 }
@@ -2914,17 +2965,17 @@ struct WrapLineBuffer<'a> {
     current: TokenLine<'a>,
     width: usize,
     continuation_width: usize,
-    keep_unsafe_breaks_joined: bool,
+    sentence_wrap: bool,
 }
 
 impl<'a> WrapLineBuffer<'a> {
-    fn new(first_width: usize, continuation_width: usize, keep_unsafe_breaks_joined: bool) -> Self {
+    fn new(first_width: usize, continuation_width: usize, sentence_wrap: bool) -> Self {
         Self {
             pending: None,
             current: TokenLine::default(),
             width: first_width.max(1),
             continuation_width: continuation_width.max(1),
-            keep_unsafe_breaks_joined,
+            sentence_wrap,
         }
     }
 
@@ -2941,6 +2992,9 @@ impl<'a> WrapLineBuffer<'a> {
     }
 
     fn commit_current(&mut self, writer: &mut TokenLineWriter<'_, '_>) -> Option<()> {
+        // A bare ordered marker can introduce a list when more text follows
+        // on the next line. A final word such as `div.` needs no such repair.
+        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line, true)?;
         if self.current.is_empty() {
             return Some(());
         }
@@ -2978,7 +3032,10 @@ impl<'a> WrapLineBuffer<'a> {
             self.commit_current(writer)?;
             self.current.push(first);
         }
-        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
+        self.repair_current_line_if_markdown_block_start(
+            &mut writer.safety_line,
+            self.sentence_wrap,
+        )?;
 
         let mut rest = split.map(InlineToken::owned).collect::<Vec<_>>();
         if rest.is_empty() {
@@ -2997,37 +3054,57 @@ impl<'a> WrapLineBuffer<'a> {
         if self.current.width > self.continuation_width {
             self.commit_current(writer)?;
         }
-        self.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
+        self.repair_current_line_if_markdown_block_start(
+            &mut writer.safety_line,
+            self.sentence_wrap,
+        )?;
         Some(())
     }
 
-    fn repair_current_line_if_markdown_block_start(&mut self, scratch: &mut String) -> Option<()> {
+    fn repair_current_line_if_markdown_block_start(
+        &mut self,
+        scratch: &mut String,
+        include_marker_only: bool,
+    ) -> Option<()> {
         if self.pending.is_none()
             || self.current.is_empty()
             || !self
                 .current
-                .markdown_block_start(scratch, self.keep_unsafe_breaks_joined)
+                .markdown_block_start(scratch, include_marker_only)
         {
+            return Some(());
+        }
+        let escape = literal_block_marker_escape(scratch);
+        if self.sentence_wrap
+            && let Some(offset) = escape
+        {
+            self.current.tokens[0].escape_marker(offset);
+            self.current.width += 1;
             return Some(());
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
             let suffix_width = previous.suffix_width(split);
             let candidate_width = suffix_width + 1 + self.current.width;
-            if candidate_width > self.continuation_width && !self.keep_unsafe_breaks_joined {
+            if candidate_width > self.continuation_width && !self.sentence_wrap {
                 continue;
             }
             let mut candidate = TokenLine::default();
             candidate.extend_from_slice(&previous.tokens[split..]);
             candidate.extend_from_slice(&self.current.tokens);
-            if !candidate.markdown_block_start(scratch, self.keep_unsafe_breaks_joined) {
+            if !candidate.markdown_block_start(scratch, include_marker_only) {
                 let mut moved = previous.split_off(split);
                 moved.append(std::mem::take(&mut self.current));
                 self.current = moved;
                 return Some(());
             }
         }
-        if self.keep_unsafe_breaks_joined {
+        if let Some(offset) = escape {
+            self.current.tokens[0].escape_marker(offset);
+            self.current.width += 1;
+            return Some(());
+        }
+        if self.sentence_wrap {
             // A narrow column must not restore an unsafe sentence break. Keep
             // the marker attached even when the joined text exceeds the width.
             previous.append(std::mem::take(&mut self.current));
@@ -3043,12 +3120,25 @@ fn write_wrapped_tokens_with_first_width(
     first_width: usize,
     continuation_width: usize,
     suffix: &'static str,
-    keep_unsafe_breaks_joined: bool,
+    sentence_wrap: bool,
+    escape_first: Option<usize>,
 ) -> Option<()> {
-    let mut lines = WrapLineBuffer::new(first_width, continuation_width, keep_unsafe_breaks_joined);
-    for token in tokens.iter() {
+    let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
+    for (index, mut token) in tokens.iter().enumerate() {
+        let literal = writer.overlaps_literal(token.text());
+        if index == 0
+            && let Some(offset) = escape_first
+        {
+            token.escape_marker(offset);
+        }
+        // Column layout can remove a sentence-start escape once the marker is
+        // back inside prose. Keep escapes at the start of a paragraph or hard
+        // break, and let the existing column repair avoid new block starts.
+        if !sentence_wrap && index > 0 && !literal {
+            token.remove_literal_marker_escape();
+        }
         if token.width > lines.width
-            && !writer.overlaps_literal(token.text())
+            && !literal
             && let Some(split) = split_long_link_token(token.text(), lines.width)
         {
             lines.push_split_token_lines(writer, split)?;
@@ -3061,7 +3151,8 @@ fn write_wrapped_tokens_with_first_width(
             lines.commit_current(writer)?;
             lines.current.push(token);
         }
-        lines.repair_current_line_if_markdown_block_start(&mut writer.safety_line)?;
+        lines
+            .repair_current_line_if_markdown_block_start(&mut writer.safety_line, sentence_wrap)?;
     }
     lines.finish(writer, suffix)
 }
@@ -3092,6 +3183,7 @@ fn write_markdown_token_lines(
                 continuation_width,
                 suffix,
                 false,
+                None,
             )
         }
         MarkdownWrap::SentenceAndColumn(_) => {
