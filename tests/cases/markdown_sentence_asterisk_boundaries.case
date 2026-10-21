@@ -6,6 +6,14 @@ One sentence. * two words. * three words. Last sentence.
 Code `*`. Opening sentence. * More prose.
 
 HTML <span title="*">x</span>. Opening sentence. * value.
+
+Literal \*. Opening sentence. * value.
+
+Literal \* here. Opening sentence. * value.
+
+Escaped \\*. Opening sentence. * value.
+
+Math \(x \* y\). Opening sentence. * value.
 -- stdout
 One sentence. * two words. * three words.
 Last sentence.
@@ -15,6 +23,20 @@ Opening sentence.
 \* More prose.
 
 HTML <span title="*">x</span>.
+Opening sentence.
+\* value.
+
+Literal \*.
+Opening sentence.
+\* value.
+
+Literal \* here.
+Opening sentence. * value.
+
+Escaped \\*.
+Opening sentence. * value.
+
+Math \(x \* y\).
 Opening sentence.
 \* value.
 -- stderr

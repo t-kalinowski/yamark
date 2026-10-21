@@ -2919,6 +2919,7 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
             if text[span.start..].starts_with('$') || text[span.start..].starts_with("\\(") {
                 asterisks += text[span.start..span.end]
                     .match_indices('*')
+                    .filter(|(offset, _)| !escaped_at(text, span.start + offset))
                     .take(2 - asterisks)
                     .count();
             }
@@ -2927,7 +2928,27 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
             && let Some(end) = commonmark_autolink_span_end(text, index)
                 .or_else(|| inline_html_tag_span_end(text, index))
                 .or_else(|| match text.as_bytes()[index] {
-                    b'[' | b'!' | b'\\' => protected_inline_token_end(&mut scan, index),
+                    b'[' | b'!'
+                        if text[index..].starts_with('[') || text[index..].starts_with("![") =>
+                    {
+                        let label_start = index + 1 + usize::from(text.as_bytes()[index] == b'!');
+                        let end = scan.square_close(label_start)? + 1;
+                        if let Some(attribute_end) = balanced_brace_span_end(text, end)
+                            && normalize_heading_attribute_block(&text[end..attribute_end])
+                                .is_some()
+                        {
+                            Some(attribute_end)
+                        } else if text.as_bytes().get(end) == Some(&b'(')
+                            || reference_bracket_token_at(&mut scan, index)
+                        {
+                            link_or_bracket_token_end(&mut scan, index)
+                        } else {
+                            // Reference-shaped brackets may be ordinary prose.
+                            // Without resolved definitions, scan their contents.
+                            None
+                        }
+                    }
+                    b'\\' => protected_inline_token_end(&mut scan, index),
                     b'{' if text[index..].starts_with("{{<")
                         || text[index..].starts_with("{{%") =>
                     {
@@ -2937,19 +2958,19 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
                 })
         {
             index = end;
-            if text[..end].ends_with(']')
-                && let Some(attribute_end) = balanced_brace_span_end(text, end)
-                && normalize_heading_attribute_block(&text[end..attribute_end]).is_some()
-            {
-                index = attribute_end;
-            }
         } else if text[index..].starts_with("\\(") && !escaped_at(text, index) {
             unmatched_math_opener.get_or_insert(index);
             index += 2;
         } else if text.as_bytes()[index] == b'`' {
             index += delimiter_run_len_at(text, index, b'`');
         } else {
-            if text.as_bytes()[index] == b'*' {
+            if text.as_bytes()[index] == b'*'
+                && (!escaped_at(text, index)
+                    // Column reflow may unescape a standalone `\*`. Count it
+                    // in both modes to preserve roundtrips, but not `\*.`.
+                    || (index == 1 || text.as_bytes()[index - 2].is_ascii_whitespace())
+                        && text.as_bytes().get(index + 1).is_none_or(u8::is_ascii_whitespace))
+            {
                 asterisks = (asterisks + 1).min(2);
             }
             index += 1;

@@ -66,6 +66,18 @@ Opening sentence. (b) value.
 HTML <span title="\(">x</span>. Unmatched \( stays open. (b) value. Last sentence.
 
 Braces [text]{not an=attribute \(}. Opening sentence. (b) value.
+
+Bracket [unmatched \(]. Opening sentence. (b) value.
+
+Bracket [unmatched \(][missing]. Opening sentence. (b) value.
+
+Bracket [escaped \\(]. Opening sentence. (b) value.
+
+Link [text](https://example.com "\("). Opening sentence. (b) value.
+
+Link [x](a). Opening sentence. (b) value.
+
+Citation [@key]. Opening sentence. (b) value.
 -- stdout
 Opening.
 (b\) value \) remains prose.
@@ -135,8 +147,7 @@ Opening sentence.
 (b\) value.
 
 Link [text][\(].
-Opening sentence.
-(b\) value.
+Opening sentence. (b) value.
 
 Attribute [text]{title="\("}.
 Opening sentence.
@@ -176,6 +187,26 @@ Last sentence.
 
 Braces [text]{not an=attribute \(}.
 Opening sentence. (b) value.
+
+Bracket [unmatched \(].
+Opening sentence. (b) value.
+
+Bracket [unmatched \(][missing].
+Opening sentence. (b) value.
+
+Bracket [escaped \\(].
+Opening sentence.
+(b\) value.
+
+Link [text](https://example.com "\("). Opening sentence. (b) value.
+
+Link [x](a).
+Opening sentence.
+(b\) value.
+
+Citation [@key].
+Opening sentence.
+(b\) value.
 -- stderr
 -- status
 0
