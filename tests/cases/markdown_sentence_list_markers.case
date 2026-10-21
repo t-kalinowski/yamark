@@ -1,12 +1,12 @@
 -- args
 format --stdin-file-path input.md --wrap sentence
 -- stdin
-- Options: (a) keep it. (b) drop it.
-- Steps: first. - second.
+- Options: (a) keep it. (b) drop it. Next option.
+- Steps: first. - second. + third. Finish.
 - Version 1.12 ships now. 2. Later.
 
 - Parent
-  - First choice. (ii) Second choice.
+  - First choice. (ii) Second choice. Last choice.
 
 - First sentence. Second sentence.
   - Actual nested item. Another sentence.
@@ -14,11 +14,15 @@ format --stdin-file-path input.md --wrap sentence
 - Escaped markers. \- still prose. \(b) still prose.
 -- stdout
 - Options: (a) keep it. (b) drop it.
-- Steps: first. - second.
-- Version 1.12 ships now. 2. Later.
+  Next option.
+- Steps: first. - second. + third.
+  Finish.
+- Version 1.12 ships now. 2.
+  Later.
 
 - Parent
   - First choice. (ii) Second choice.
+    Last choice.
 
 - First sentence.
   Second sentence.

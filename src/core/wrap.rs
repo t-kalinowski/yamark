@@ -1930,6 +1930,7 @@ fn write_wrapped_sentence_token_lines(
             sentence_first_width,
             continuation_width,
             sentence_suffix,
+            true,
         )
     })
 }
@@ -1940,8 +1941,9 @@ fn write_sentence_token_slices<'token>(
     mut write: impl FnMut(TokenSlice<'token>, &'static str) -> Option<()>,
 ) -> Option<()> {
     let mut safety_line = String::new();
-    let mut write_sentence = |from: usize, to: usize, sentence_suffix| {
-        if from > 0 {
+    let mut pending = None::<(usize, usize)>;
+    let mut push_sentence = |from: usize, to: usize| {
+        if let Some((previous_from, previous_to)) = pending {
             let start = tokens.measured[from].0.start();
             let end = tokens.measured[to - 1].0.end();
             safety_line.clear();
@@ -1950,30 +1952,26 @@ fn write_sentence_token_slices<'token>(
             // the whitespace required by the shared list-marker recognizer.
             safety_line.push(' ');
             if markdown_block_start_line(&safety_line) {
-                return None;
+                pending = Some((previous_from, to));
+                return Some(());
             }
+            write(tokens.slice(previous_from..previous_to), "")?;
         }
-        write(tokens.slice(from..to), sentence_suffix)
+        pending = Some((from, to));
+        Some(())
     };
     let mut start = 0usize;
-    let mut pending = None::<(usize, usize)>;
     for (index, token) in tokens.iter().enumerate() {
         if token_ends_sentence(token.text()) && !token_is_sentence_abbreviation(token.text()) {
-            if let Some((from, to)) = pending.take() {
-                write_sentence(from, to, "")?;
-            }
-            pending = Some((start, index + 1));
+            push_sentence(start, index + 1)?;
             start = index + 1;
         }
     }
     if start < tokens.len() {
-        if let Some((from, to)) = pending.take() {
-            write_sentence(from, to, "")?;
-        }
-        pending = Some((start, tokens.len()));
+        push_sentence(start, tokens.len())?;
     }
     if let Some((from, to)) = pending {
-        write_sentence(from, to, suffix)?;
+        write(tokens.slice(from..to), suffix)?;
     }
     Some(())
 }
@@ -2789,8 +2787,12 @@ impl<'a> TokenLine<'a> {
         token_slice_width(&self.tokens[at..])
     }
 
-    fn markdown_block_start(&self, scratch: &mut String) -> bool {
+    fn markdown_block_start(&self, scratch: &mut String, include_marker_only: bool) -> bool {
         token_slice_markdown_block_start(&self.tokens, scratch)
+            || include_marker_only && {
+                scratch.push(' ');
+                markdown_block_start_line(scratch)
+            }
     }
 }
 
@@ -2912,15 +2914,17 @@ struct WrapLineBuffer<'a> {
     current: TokenLine<'a>,
     width: usize,
     continuation_width: usize,
+    keep_unsafe_breaks_joined: bool,
 }
 
 impl<'a> WrapLineBuffer<'a> {
-    fn new(first_width: usize, continuation_width: usize) -> Self {
+    fn new(first_width: usize, continuation_width: usize, keep_unsafe_breaks_joined: bool) -> Self {
         Self {
             pending: None,
             current: TokenLine::default(),
             width: first_width.max(1),
             continuation_width: continuation_width.max(1),
+            keep_unsafe_breaks_joined,
         }
     }
 
@@ -3000,7 +3004,9 @@ impl<'a> WrapLineBuffer<'a> {
     fn repair_current_line_if_markdown_block_start(&mut self, scratch: &mut String) -> Option<()> {
         if self.pending.is_none()
             || self.current.is_empty()
-            || !self.current.markdown_block_start(scratch)
+            || !self
+                .current
+                .markdown_block_start(scratch, self.keep_unsafe_breaks_joined)
         {
             return Some(());
         }
@@ -3008,18 +3014,24 @@ impl<'a> WrapLineBuffer<'a> {
         for split in (1..previous.len()).rev() {
             let suffix_width = previous.suffix_width(split);
             let candidate_width = suffix_width + 1 + self.current.width;
-            if candidate_width > self.continuation_width {
+            if candidate_width > self.continuation_width && !self.keep_unsafe_breaks_joined {
                 continue;
             }
             let mut candidate = TokenLine::default();
             candidate.extend_from_slice(&previous.tokens[split..]);
             candidate.extend_from_slice(&self.current.tokens);
-            if !candidate.markdown_block_start(scratch) {
+            if !candidate.markdown_block_start(scratch, self.keep_unsafe_breaks_joined) {
                 let mut moved = previous.split_off(split);
                 moved.append(std::mem::take(&mut self.current));
                 self.current = moved;
                 return Some(());
             }
+        }
+        if self.keep_unsafe_breaks_joined {
+            // A narrow column must not restore an unsafe sentence break. Keep
+            // the marker attached even when the joined text exceeds the width.
+            previous.append(std::mem::take(&mut self.current));
+            return Some(());
         }
         None
     }
@@ -3031,8 +3043,9 @@ fn write_wrapped_tokens_with_first_width(
     first_width: usize,
     continuation_width: usize,
     suffix: &'static str,
+    keep_unsafe_breaks_joined: bool,
 ) -> Option<()> {
-    let mut lines = WrapLineBuffer::new(first_width, continuation_width);
+    let mut lines = WrapLineBuffer::new(first_width, continuation_width, keep_unsafe_breaks_joined);
     for token in tokens.iter() {
         if token.width > lines.width
             && !writer.overlaps_literal(token.text())
@@ -3078,6 +3091,7 @@ fn write_markdown_token_lines(
                 first_width,
                 continuation_width,
                 suffix,
+                false,
             )
         }
         MarkdownWrap::SentenceAndColumn(_) => {
