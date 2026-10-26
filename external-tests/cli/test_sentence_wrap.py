@@ -113,6 +113,9 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(
 @pytest.mark.parametrize(
     ("case_name", "wrap"),
     [
+        ("markdown_column_emphasis_math_escapes.case", "72"),
+        ("markdown_column_emphasis_math_escapes.case", "12"),
+        ("markdown_column_emphasis_math_escapes.case", "sentence:12"),
         ("markdown_column_hard_break_marker_escapes.case", "12"),
         ("markdown_column_hard_break_asterisk_escapes.case", "72"),
         ("markdown_column_trailing_asterisk_repairs.case", "23"),

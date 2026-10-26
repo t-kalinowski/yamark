@@ -4396,7 +4396,9 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
     let mut opaque_end = search;
     while search < text.len() {
         let byte = text.as_bytes()[search];
-        if search >= opaque_end && matches!(byte, b'`' | b'$') {
+        // Keep matched math opaque while searching for the emphasis closer,
+        // including Pandoc's backslash math.
+        if search >= opaque_end && matches!(byte, b'`' | b'$' | b'\\') {
             if let Some(end) = scan.literal_span_end(search) {
                 search = end;
                 continue;

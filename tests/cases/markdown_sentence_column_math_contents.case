@@ -4,6 +4,8 @@ format --stdin-file-path input.md --wrap sentence:12
 Opening. $$x + y$$ remains math.
 
 Text \(a\\) + b\) end.
+
+Text *use \(x^* + 2\) here*.
 -- stdout
 Opening. $$x + y$$
 remains
@@ -12,6 +14,9 @@ math.
 Text
 \(a\\) + b\)
 end.
+
+Text
+*use \(x^* + 2\) here*.
 -- stderr
 -- status
 0
