@@ -32,6 +32,10 @@ whose partial rewrites change item membership. Empty-item indentation can parse
 differently in GFM and Pandoc; preserving these layouts keeps both interpretations
 intact.
 
+The `markdown_list_following_raw_blocks` and `markdown_list_child_raw_blocks`
+transcripts distinguish blocks outside a list from child blocks and lazy prose.
+They also preserve block-like lines inside multiline code spans and links.
+
 `markdown_shortcode_nested_skip_file.case` verifies that `fmt: skip file`
 preserves a nested Markdown fence/div body exactly, including trailing spaces in
 shortcode arguments and ordinary prose. The `markdown_preserved_*.case`

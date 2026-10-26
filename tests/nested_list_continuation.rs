@@ -74,3 +74,34 @@ fn ambiguous_list_continuations_are_preserved_across_wrap_modes() {
         }
     }
 }
+
+#[test]
+fn list_boundaries_preserve_block_and_inline_contents() {
+    let cases: &[(&str, &[&str])] = &[
+        (
+            include_str!("cases/markdown_list_following_raw_blocks.case"),
+            &["sentence", "72", "none"],
+        ),
+        (
+            include_str!("cases/markdown_list_child_raw_blocks.case"),
+            &["sentence"],
+        ),
+    ];
+    for (case, wraps) in cases {
+        let expected = case
+            .split("-- stdout\n")
+            .nth(1)
+            .unwrap()
+            .split("-- stderr\n")
+            .next()
+            .unwrap();
+        for newline in ["\n", "\r\n", "\r"] {
+            let expected = expected.replace('\n', newline);
+            for wrap in *wraps {
+                let output = format(&expected, wrap, "input.qmd");
+                assert_eq!(output, expected, "{wrap}, {newline:?}");
+                assert_eq!(format(&output, wrap, "input.qmd"), expected, "second pass");
+            }
+        }
+    }
+}

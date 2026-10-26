@@ -2584,12 +2584,14 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
     let first = source.line_text(start);
     let mut base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_marker_content_indent(first);
+    let mut block_openers = Vec::new();
     let mut line = start + 1;
     while line < end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
             let Some(next) = next_nonblank_line(source, line + 1, end) else {
-                return end;
+                line = end;
+                break;
             };
             if blank_line_continues_list_item(source.line_text(next), item_content_indent) {
                 line = next;
@@ -2611,12 +2613,39 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
         }
         let indent = text.len() - text.trim_start().len();
         if indent > base_indent {
+            if item_content_indent.is_some_and(|content_indent| indent < content_indent)
+                && !markdown_indented_code_at(text)
+                && !grid_table_separator(text)
+                && (code_fence_at(text).is_some() || raw_sensitive_at(text))
+            {
+                block_openers.push(line);
+            }
             line += 1;
             continue;
         }
         break;
     }
-    line
+    if block_openers.is_empty() {
+        return line;
+    }
+
+    // Fences and raw blocks cannot lazily continue a list paragraph. Recognize
+    // inline literals and links within the tentative list first: their lines
+    // can look like openers. Do not scan later document blocks for delimiters.
+    let block_start = source.lines[start].full.start();
+    let block = source.slice(Span::new(block_start, source.lines[line - 1].full.end()));
+    let multiline_inlines = crate::core::wrap::markdown_multiline_link_destination_spans(block)
+        .chain(crate::core::wrap::markdown_multiline_literal_spans(block))
+        .collect::<Vec<_>>();
+    block_openers
+        .into_iter()
+        .find(|opener| {
+            let offset = source.lines[*opener].text.start() - block_start;
+            !multiline_inlines
+                .iter()
+                .any(|span| span.start < offset && span.contains(&offset))
+        })
+        .unwrap_or(line)
 }
 
 fn next_nonblank_line(source: &SourceBuffer, mut line: usize, end: usize) -> Option<usize> {
@@ -2639,6 +2668,7 @@ fn blank_line_continues_list_item(text: &str, item_content_indent: Option<usize>
 
 fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool {
     let first = source.line_text(start);
+    let mut previous_item = first;
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
@@ -2649,6 +2679,17 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
             continue;
         }
         if list_item_at(text) {
+            let indent = text.len() - text.trim_start().len();
+            let previous_indent = previous_item.len() - previous_item.trim_start().len();
+            if indent > previous_indent
+                && list_marker_content_indent(previous_item)
+                    .is_some_and(|content_indent| indent < content_indent)
+            {
+                // The rich-list formatter can mistake a shifted sibling for
+                // a child when it normalizes the preceding marker's spacing.
+                return false;
+            }
+            previous_item = text;
             item_content_indent = list_item_content_indent(text);
             task_continuation = task_list_continuation_range(text);
             continue;
