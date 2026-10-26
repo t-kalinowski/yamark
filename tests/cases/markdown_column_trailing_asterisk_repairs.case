@@ -1,0 +1,22 @@
+-- args
+format --stdin-file-path input.md --wrap 23
+-- stdin
+Costs* *include taxes* (b) details.
+
+Costs\* *include taxes* (b) details.
+
+*Costs* *include taxes* (b) details.
+-- stdout
+Costs* *include taxes*
+(b\) details.
+
+Costs\*
+*include taxes* (b)
+details.
+
+*Costs*
+*include taxes* (b)
+details.
+-- stderr
+-- status
+0

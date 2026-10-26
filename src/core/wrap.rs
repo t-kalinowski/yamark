@@ -1935,12 +1935,12 @@ impl<'a> InlineToken<'a> {
         self.width += 1;
     }
 
-    fn remove_literal_marker_escape(&mut self, preserve_asterisk_escapes: bool) {
+    fn remove_literal_marker_escape(&mut self, preserve_asterisk_escapes: bool) -> bool {
         if preserve_asterisk_escapes && self.text == r"\*" {
-            return;
+            return false;
         }
         let Some(offset) = self.text.find('\\') else {
-            return;
+            return false;
         };
         let mut candidate = self.text.to_string();
         candidate.remove(offset);
@@ -1953,7 +1953,9 @@ impl<'a> InlineToken<'a> {
         {
             candidate.pop();
             *self = Self::owned(candidate, self.preserve_math_closers);
+            return true;
         }
+        false
     }
 }
 
@@ -3004,10 +3006,14 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, b
             if text.as_bytes()[index] == b'*'
                 && index >= emphasis_end
                 && (!escaped_at(text, index)
-                    // Column reflow may unescape a standalone `\*`. Count it
-                    // in both modes to preserve roundtrips, but not `\*.`.
+                    // Column reflow may unescape a standalone `\*`, including
+                    // one before a compact hard break. Count it in both modes
+                    // for roundtrips, but not punctuation such as `\*.`.
                     || (index == 1 || text.as_bytes()[index - 2].is_ascii_whitespace())
-                        && text.as_bytes().get(index + 1).is_none_or(u8::is_ascii_whitespace))
+                        && (text.as_bytes().get(index + 1).is_none_or(u8::is_ascii_whitespace)
+                            || text[index + 1..]
+                                .strip_prefix('\\')
+                                .is_some_and(|rest| rest.starts_with(['\r', '\n']))))
             {
                 asterisks = (asterisks + 1).min(2);
             }
@@ -3140,6 +3146,14 @@ fn asterisk_run(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|byte| byte == b'*')
 }
 
+fn trailing_asterisk_may_open(text: &str) -> bool {
+    // Matched emphasis can end a line; a literal trailing star can become an
+    // opener in Pandoc when its following space becomes a newline.
+    text.ends_with('*')
+        && !escaped_at(text, text.len() - 1)
+        && emphasis_span_end(&mut InlineScan::new(text), 0) != Some(text.len())
+}
+
 struct WrapLineBuffer<'a> {
     pending: Option<TokenLine<'a>>,
     current: TokenLine<'a>,
@@ -3172,14 +3186,14 @@ impl<'a> WrapLineBuffer<'a> {
     }
 
     fn commit_current(&mut self, writer: &mut TokenLineWriter<'_, '_>) -> Option<()> {
-        // Pandoc can treat an asterisk before a newline as an emphasis opener.
-        // Keep a bare asterisk with the following word when another can pair.
+        // Pandoc can pair a trailing literal asterisk across a newline. Keep
+        // it with the following text when another asterisk could pair.
         if writer.preserve_asterisk_escapes
             && self
                 .current
                 .tokens
                 .last()
-                .is_some_and(|token| asterisk_run(token.text()))
+                .is_some_and(|token| trailing_asterisk_may_open(token.text()))
         {
             return Some(());
         }
@@ -3199,7 +3213,21 @@ impl<'a> WrapLineBuffer<'a> {
         Some(())
     }
 
-    fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &'static str) -> Option<()> {
+    fn finish(
+        mut self,
+        writer: &mut TokenLineWriter<'_, '_>,
+        suffix: &'static str,
+        final_marker_unescaped: bool,
+    ) -> Option<()> {
+        // The last token has no next iteration to check a bare marker. A spaced
+        // hard break can complete a list prefix; a compact backslash cannot.
+        // Also recheck a removed final escape before accepting the last line.
+        let include_marker_only = suffix == " \\" || suffix.is_empty() && final_marker_unescaped;
+        self.repair_current_line_if_markdown_block_start(
+            &mut writer.safety_line,
+            include_marker_only,
+            writer.preserve_asterisk_escapes,
+        )?;
         if !self.current.is_empty() {
             if let Some(pending) = self.pending.take() {
                 writer.write_line(&pending, "")?;
@@ -3289,7 +3317,9 @@ impl<'a> WrapLineBuffer<'a> {
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
-            if preserve_asterisk_escapes && asterisk_run(previous.tokens[split - 1].text()) {
+            if preserve_asterisk_escapes
+                && trailing_asterisk_may_open(previous.tokens[split - 1].text())
+            {
                 continue;
             }
             let suffix_width = previous.suffix_width(split);
@@ -3335,6 +3365,7 @@ fn write_wrapped_tokens_with_first_width(
     sentence_wrap: bool,
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
+    let mut final_marker_unescaped = false;
     for (index, mut token) in tokens.iter(writer.unmatched_math_opener).enumerate() {
         // Sentence layout already checked bare markers after the last token.
         // Column layout needs this check before measuring the next token.
@@ -3389,11 +3420,12 @@ fn write_wrapped_tokens_with_first_width(
         // Column layout can remove a sentence-start escape once the marker is
         // back inside prose. Keep escapes at the start of a paragraph or hard
         // break, and let the existing column repair avoid new block starts.
-        if !sentence_wrap && index > 0 && !literal {
-            // Reflow can make spaced asterisks form emphasis across a newline.
-            // Retain their escapes when another asterisk could pair with them.
-            token.remove_literal_marker_escape(writer.preserve_asterisk_escapes);
-        }
+        // Reflow can make spaced asterisks form emphasis across a newline.
+        // Retain their escapes when another asterisk could pair with them.
+        final_marker_unescaped = !sentence_wrap
+            && index > 0
+            && !literal
+            && token.remove_literal_marker_escape(writer.preserve_asterisk_escapes);
         if token.width > lines.width
             && !literal
             && let Some(split) = split_long_link_token(token.text(), lines.width)
@@ -3414,7 +3446,7 @@ fn write_wrapped_tokens_with_first_width(
             writer.preserve_asterisk_escapes,
         )?;
     }
-    lines.finish(writer, suffix)
+    lines.finish(writer, suffix, final_marker_unescaped)
 }
 
 fn write_markdown_token_lines(
