@@ -63,8 +63,8 @@ x = y
 
 This paragraph is intentionally long
 enough to be considered for wrapping by
-the markdown formatter inside a fenced
-div.
+the markdown formatter inside a
+fenced div.
 :::
 
 :::: columns
@@ -77,8 +77,8 @@ div.
 ::: {.column width="50%"}
 This paragraph is intentionally long
 enough to be considered for wrapping by
-the markdown formatter inside a nested
-div.
+the markdown formatter inside a
+nested div.
 :::
 ::::
 

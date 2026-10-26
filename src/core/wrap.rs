@@ -1935,12 +1935,12 @@ impl<'a> InlineToken<'a> {
         self.width += 1;
     }
 
-    fn remove_literal_marker_escape(&mut self, preserve_asterisk_escapes: bool) -> bool {
+    fn remove_literal_marker_escape(&mut self, preserve_asterisk_escapes: bool) {
         if preserve_asterisk_escapes && self.text == r"\*" {
-            return false;
+            return;
         }
         let Some(offset) = self.text.find('\\') else {
-            return false;
+            return;
         };
         let mut candidate = self.text.to_string();
         candidate.remove(offset);
@@ -1953,9 +1953,7 @@ impl<'a> InlineToken<'a> {
         {
             candidate.pop();
             *self = Self::owned(candidate, self.preserve_math_closers);
-            return true;
         }
-        false
     }
 }
 
@@ -2906,7 +2904,9 @@ impl<'a> TokenLine<'a> {
 fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, bool)> {
     let check_math = text.contains("\\(");
     let check_asterisks = text.match_indices('*').nth(1).is_some();
-    let check_html = text.contains("<!") || text.contains("<?");
+    let check_html = text.contains("<!")
+        || text.contains("<?")
+        || text.contains('<') && text.contains(['"', '\'']);
     if !check_math && !check_asterisks && !check_html {
         return Some((None, false));
     }
@@ -2943,12 +2943,15 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, b
                     .count();
             }
             index = span.end;
-        } else if !escaped_at(text, index)
-            && (text[index..].starts_with("<!") || text[index..].starts_with("<?"))
+        } else if check_html
+            && !escaped_at(text, index)
+            && (text[index..].starts_with("<!")
+                || text[index..].starts_with("<?")
+                || inline_html_tag_has_quoted_gt(text, index))
         {
-            // Preserve raw HTML openers, including incomplete or prose uses.
-            // Distinguishing these from comments, declarations, CDATA and
-            // processing instructions is outside marker repair's scope.
+            // Preserve raw HTML openers, including incomplete or prose uses,
+            // and ambiguous tags with a quoted `>`. Their contents cannot
+            // safely use Markdown marker unescaping.
             return None;
         } else if !escaped_at(text, index)
             && let Some(end) = commonmark_autolink_span_end(text, index)
@@ -3198,7 +3201,7 @@ impl<'a> WrapLineBuffer<'a> {
             return Some(());
         }
         // A bare ordered marker can introduce a list when more text follows
-        // on the next line. A final word such as `div.` needs no such repair.
+        // on the next line.
         self.repair_current_line_if_markdown_block_start(
             &mut writer.safety_line,
             true,
@@ -3213,16 +3216,11 @@ impl<'a> WrapLineBuffer<'a> {
         Some(())
     }
 
-    fn finish(
-        mut self,
-        writer: &mut TokenLineWriter<'_, '_>,
-        suffix: &'static str,
-        final_marker_unescaped: bool,
-    ) -> Option<()> {
-        // The last token has no next iteration to check a bare marker. A spaced
-        // hard break can complete a list prefix; a compact backslash cannot.
-        // Also recheck a removed final escape before accepting the last line.
-        let include_marker_only = suffix == " \\" || suffix.is_empty() && final_marker_unescaped;
+    fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &'static str) -> Option<()> {
+        // The last token has no next iteration to check a bare marker. Apply
+        // the same check to escaped and unescaped inputs, including at EOF.
+        // A compact backslash cannot complete a list prefix.
+        let include_marker_only = suffix != "\\";
         self.repair_current_line_if_markdown_block_start(
             &mut writer.safety_line,
             include_marker_only,
@@ -3365,7 +3363,6 @@ fn write_wrapped_tokens_with_first_width(
     sentence_wrap: bool,
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
-    let mut final_marker_unescaped = false;
     for (index, mut token) in tokens.iter(writer.unmatched_math_opener).enumerate() {
         // Sentence layout already checked bare markers after the last token.
         // Column layout needs this check before measuring the next token.
@@ -3422,10 +3419,9 @@ fn write_wrapped_tokens_with_first_width(
         // break, and let the existing column repair avoid new block starts.
         // Reflow can make spaced asterisks form emphasis across a newline.
         // Retain their escapes when another asterisk could pair with them.
-        final_marker_unescaped = !sentence_wrap
-            && index > 0
-            && !literal
-            && token.remove_literal_marker_escape(writer.preserve_asterisk_escapes);
+        if !sentence_wrap && index > 0 && !literal {
+            token.remove_literal_marker_escape(writer.preserve_asterisk_escapes);
+        }
         if token.width > lines.width
             && !literal
             && let Some(split) = split_long_link_token(token.text(), lines.width)
@@ -3446,7 +3442,7 @@ fn write_wrapped_tokens_with_first_width(
             writer.preserve_asterisk_escapes,
         )?;
     }
-    lines.finish(writer, suffix, final_marker_unescaped)
+    lines.finish(writer, suffix)
 }
 
 fn write_markdown_token_lines(
@@ -3925,6 +3921,24 @@ fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
         return None;
     }
     text[index..].find('>').map(|close| index + close + 1)
+}
+
+fn inline_html_tag_has_quoted_gt(text: &str, index: usize) -> bool {
+    let Some(end) = inline_html_tag_span_end(text, index) else {
+        return false;
+    };
+    // Existing tag recognition stops at the first `>`. An open quote there
+    // makes the boundary ambiguous; preserve the paragraph instead of editing
+    // attribute contents as prose.
+    let mut quote = None;
+    for byte in text[index..end].bytes() {
+        match (quote, byte) {
+            (None, b'\'' | b'"') => quote = Some(byte),
+            (Some(open), close) if open == close => quote = None,
+            _ => {}
+        }
+    }
+    quote.is_some()
 }
 
 fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {

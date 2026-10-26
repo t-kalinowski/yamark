@@ -264,7 +264,13 @@ fn review_examples_preserve_ambiguous_links() {
     ] {
         for wrap in ["none", "paragraph", "sentence:240"] {
             for canonical in [false, true] {
-                let expected = if wrap == "none" { source } else { expected };
+                // Wrapped layouts preserve ambiguous HTML paragraphs; paragraph
+                // mode keeps its existing link normalization.
+                let expected = if wrap == "paragraph" {
+                    expected
+                } else {
+                    source
+                };
                 assert_format(source, expected, wrap, canonical);
             }
         }
