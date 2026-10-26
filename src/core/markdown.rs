@@ -2582,8 +2582,8 @@ fn list_item_at(text: &str) -> bool {
 
 fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
     let first = source.line_text(start);
-    let base_indent = first.len() - first.trim_start().len();
-    let mut item_content_indent = list_item_content_indent(first);
+    let mut base_indent = first.len() - first.trim_start().len();
+    let mut item_content_indent = list_marker_content_indent(first);
     let mut line = start + 1;
     while line < end {
         let text = source.line_text(line);
@@ -2591,9 +2591,6 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
             let Some(next) = next_nonblank_line(source, line + 1, end) else {
                 return end;
             };
-            if list_item_at(source.line_text(next)) {
-                break;
-            }
             if blank_line_continues_list_item(source.line_text(next), item_content_indent) {
                 line = next;
                 continue;
@@ -2601,7 +2598,13 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
             break;
         }
         if list_item_at(text) {
-            item_content_indent = list_item_content_indent(text);
+            let indent = text.len() - text.trim_start().len();
+            // Nested items do not change where the outer item can resume
+            // after a blank line. Only a sibling starts a new boundary.
+            if item_content_indent.is_some_and(|content_indent| indent < content_indent) {
+                base_indent = indent;
+                item_content_indent = list_marker_content_indent(text);
+            }
             line += 1;
             continue;
         }
@@ -2727,14 +2730,19 @@ fn rich_child_block_start(text: &str) -> bool {
         || list_item_at(trimmed)
 }
 
-fn list_item_content_indent(text: &str) -> Option<usize> {
+fn list_marker_content_indent(text: &str) -> Option<usize> {
     let trimmed = text.trim_start();
     let indent = text.len() - trimmed.len();
     let marker_len = markdown_list_marker_len(trimmed)?;
     let after_marker = &trimmed[marker_len..];
     let marker_gap = after_marker.len() - after_marker.trim_start().len();
-    let mut content_indent = indent + marker_len + marker_gap;
-    let rest = &after_marker[marker_gap..];
+    Some(indent + marker_len + marker_gap.max(1))
+}
+
+fn list_item_content_indent(text: &str) -> Option<usize> {
+    // An empty marker has a structural gap but no source content to skip.
+    let mut content_indent = list_marker_content_indent(text)?.min(text.len());
+    let rest = &text[content_indent..];
     if let Some(checkbox) = task_list_checkbox(rest) {
         let after_checkbox = &rest[checkbox.len()..];
         let checkbox_gap = after_checkbox.len() - after_checkbox.trim_start().len();

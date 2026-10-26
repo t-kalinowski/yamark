@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+- Item with a nested list:
+  - nested one
+  - nested two
+
+  Paragraph that continues the outer item.
+- Next item.
+-- stdout
+- Item with a nested list:
+  - nested one
+  - nested two
+
+  Paragraph that continues the outer item.
+- Next item.
+-- stderr
+-- status
+0

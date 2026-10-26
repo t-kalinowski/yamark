@@ -1,0 +1,131 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- Parent.
+
+  - Child.
+
+  Outer first. Outer second.
+- Next.
+
+- Parent.
+  - Child one.
+
+  - Child two.
+
+  Outer first. Outer second.
+- Next.
+
+- Parent.
+  - Child.
+    - Grandchild.
+
+  Outer first. Outer second.
+
+Outside first. Outside second.
+
+- Parent.
+  - [ ] Child.
+
+  Outer first. Outer second.
+
+- [ ] Parent.
+  - [ ] Child.
+
+      Outer first. Outer second.
+
+  - Indented first.
+- Parent.
+  - Child.
+
+  Outer first. Outer second.
+
+- First.
+ - Second.
+
+  Outside first. Outside second.
+
+-
+ - Second.
+
+  Outside first. Outside second.
+
+- First.
+  - Child.
+10. Second.
+
+  Outside first. Outside second.
+
+10. First.
+- Second.
+  - Child.
+
+  Outer first. Outer second.
+-- stdout
+- Parent.
+
+  - Child.
+
+  Outer first. Outer second.
+- Next.
+
+- Parent.
+  - Child one.
+
+  - Child two.
+
+  Outer first. Outer second.
+- Next.
+
+- Parent.
+  - Child.
+    - Grandchild.
+
+  Outer first. Outer second.
+
+Outside first.
+Outside second.
+
+- Parent.
+  - [ ] Child.
+
+  Outer first. Outer second.
+
+- [ ] Parent.
+  - [ ] Child.
+
+      Outer first. Outer second.
+
+  - Indented first.
+- Parent.
+  - Child.
+
+  Outer first. Outer second.
+
+- First.
+ - Second.
+
+Outside first.
+Outside second.
+
+-
+ - Second.
+
+Outside first.
+Outside second.
+
+- First.
+  - Child.
+10. Second.
+
+Outside first.
+Outside second.
+
+10. First.
+- Second.
+  - Child.
+
+  Outer first. Outer second.
+-- stderr
+-- status
+0

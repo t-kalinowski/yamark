@@ -19,6 +19,13 @@ The test harness intentionally avoids calling library internals. This keeps the
 public CLI contract readable and prevents implementation details from becoming
 part of the test API.
 
+The `markdown_nested_list_continuation_*` transcripts keep paragraphs after
+nested lists inside their outer items. These layouts use the existing list
+preservation behavior when they cannot be safely reflowed. The boundary case
+also checks that sibling markers and top-level paragraphs still delimit list
+items. `tests/nested_list_continuation.rs` checks line endings, wrap modes, and
+second passes through the CLI.
+
 `markdown_shortcode_nested_skip_file.case` verifies that `fmt: skip file`
 preserves a nested Markdown fence/div body exactly, including trailing spaces in
 shortcode arguments and ordinary prose. The `markdown_preserved_*.case`
