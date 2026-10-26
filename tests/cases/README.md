@@ -26,6 +26,12 @@ also checks that sibling markers and top-level paragraphs still delimit list
 items. `tests/nested_list_continuation.rs` checks line endings, wrap modes, and
 second passes through the CLI.
 
+The `markdown_list_shifted_sibling_lazy_continuation` and
+`markdown_list_empty_item_pandoc_continuation` transcripts preserve layouts
+whose partial rewrites change item membership. Empty-item indentation can parse
+differently in GFM and Pandoc; preserving these layouts keeps both interpretations
+intact.
+
 `markdown_shortcode_nested_skip_file.case` verifies that `fmt: skip file`
 preserves a nested Markdown fence/div body exactly, including trailing spaces in
 shortcode arguments and ordinary prose. The `markdown_preserved_*.case`

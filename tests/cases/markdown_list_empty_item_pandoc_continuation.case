@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.qmd --wrap sentence
+-- stdin
+-
+
+ First.
+
+-
+
+ - Second.
+
+  Continuation first. Continuation second.
+-- stdout
+-
+
+ First.
+
+-
+
+ - Second.
+
+  Continuation first. Continuation second.
+-- stderr
+-- status
+0

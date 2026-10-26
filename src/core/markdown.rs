@@ -2602,7 +2602,8 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
             // Nested items do not change where the outer item can resume
             // after a blank line. Only a sibling starts a new boundary.
             if item_content_indent.is_some_and(|content_indent| indent < content_indent) {
-                base_indent = indent;
+                // Keep the list's lowest indentation for lazy continuations.
+                base_indent = base_indent.min(indent);
                 item_content_indent = list_marker_content_indent(text);
             }
             line += 1;
@@ -2736,12 +2737,12 @@ fn list_marker_content_indent(text: &str) -> Option<usize> {
     let marker_len = markdown_list_marker_len(trimmed)?;
     let after_marker = &trimmed[marker_len..];
     let marker_gap = after_marker.len() - after_marker.trim_start().len();
-    Some(indent + marker_len + marker_gap.max(1))
+    // Pandoc permits a paragraph at the source end of an empty marker.
+    Some(indent + marker_len + marker_gap)
 }
 
 fn list_item_content_indent(text: &str) -> Option<usize> {
-    // An empty marker has a structural gap but no source content to skip.
-    let mut content_indent = list_marker_content_indent(text)?.min(text.len());
+    let mut content_indent = list_marker_content_indent(text)?;
     let rest = &text[content_indent..];
     if let Some(checkbox) = task_list_checkbox(rest) {
         let after_checkbox = &rest[checkbox.len()..];
