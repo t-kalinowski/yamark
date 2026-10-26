@@ -393,35 +393,102 @@ pub(crate) fn markdown_multiline_link_destination_spans(
 pub(crate) fn markdown_multiline_literal_spans(
     source: &str,
 ) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
-    let mut scan = InlineScan::new(source);
-    let mut index = 0;
-    std::iter::from_fn(move || {
-        while index < source.len() {
-            let byte = source.as_bytes()[index];
-            if escaped_at(source, index) {
+    let mut scan = MarkdownMultilineInlineScan::new(source);
+    std::iter::from_fn(move || scan.next_literal_before(source.len()))
+}
+
+// Query in source order and skip confirmed raw blocks so their delimiters
+// cannot pair with inline content in later list items.
+pub(crate) struct MarkdownMultilineInlineScan<'a> {
+    scan: InlineScan<'a>,
+    index: usize,
+    literal_end: usize,
+    link_index: usize,
+    link_end: usize,
+}
+
+impl<'a> MarkdownMultilineInlineScan<'a> {
+    pub(crate) fn new(source: &'a str) -> Self {
+        Self {
+            scan: InlineScan::new(source),
+            index: 0,
+            literal_end: 0,
+            link_index: 0,
+            link_end: 0,
+        }
+    }
+
+    pub(crate) fn covers(&mut self, offset: usize) -> bool {
+        assert!(offset <= self.scan.text.len());
+        if offset < self.literal_end {
+            return true;
+        }
+        while let Some(span) = self.next_literal_before(offset) {
+            if span.contains(&offset) {
+                self.literal_end = span.end;
+                return true;
+            }
+        }
+
+        let source = self.scan.text;
+        if offset < self.link_end {
+            return true;
+        }
+        while self.link_index + 2 < offset {
+            let index = self.link_index;
+            self.link_index += 1;
+            if source.as_bytes()[index..].starts_with(b"](") {
+                let start = index + 2;
+                if let Some(end) = find_simple_destination_close(source, start)
+                    && source[start..end].contains(['\n', '\r'])
+                {
+                    self.link_end = self.link_end.max(end);
+                    if offset < self.link_end {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub(crate) fn skip_to(&mut self, offset: usize) {
+        assert!(offset <= self.scan.text.len());
+        self.index = offset;
+        self.literal_end = offset;
+        self.link_index = offset;
+        self.link_end = offset;
+    }
+
+    fn next_literal_before(&mut self, limit: usize) -> Option<std::ops::Range<usize>> {
+        let source = self.scan.text;
+        while self.index < limit {
+            let byte = source.as_bytes()[self.index];
+            if escaped_at(source, self.index) {
                 // An escaped run cannot become an opener partway through it.
-                index += if byte == b'`' {
-                    delimiter_run_len_at(source, index, b'`')
+                self.index += if byte == b'`' {
+                    delimiter_run_len_at(source, self.index, b'`')
                 } else {
-                    source[index..].chars().next().unwrap().len_utf8()
+                    source[self.index..].chars().next().unwrap().len_utf8()
                 };
                 continue;
             }
-            if let Some(end) = scan.literal_span_end(index) {
-                let start = index;
-                index = end;
+            if let Some(end) = self.scan.literal_span_end(self.index) {
+                let start = self.index;
+                self.index = end;
                 if byte == b'`' {
-                    index += delimiter_run_len_at(source, index, b'`');
+                    self.index += delimiter_run_len_at(source, self.index, b'`');
                 }
                 if source[start..end].contains(['\n', '\r']) {
                     return Some(start..end);
                 }
             } else if byte == b'`' {
-                index += delimiter_run_len_at(source, index, b'`');
-            } else if let Some(end) = raw_semantics_protected_token_end(&mut scan, index) {
-                index = end;
+                self.index += delimiter_run_len_at(source, self.index, b'`');
+            } else if let Some(end) = raw_semantics_protected_token_end(&mut self.scan, self.index)
+            {
+                self.index = end;
             } else {
-                index += source[index..]
+                self.index += source[self.index..]
                     .chars()
                     .next()
                     .expect("source character")
@@ -429,7 +496,7 @@ pub(crate) fn markdown_multiline_literal_spans(
             }
         }
         None
-    })
+    }
 }
 
 pub fn normalize_heading_content(source: &str) -> String {

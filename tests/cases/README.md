@@ -36,6 +36,15 @@ The `markdown_list_following_raw_blocks` and `markdown_list_child_raw_blocks`
 transcripts distinguish blocks outside a list from child blocks and lazy prose.
 They also preserve block-like lines inside multiline code spans and links.
 
+The `markdown_list_wide_marker_raw_boundary`, `markdown_list_child_headings`,
+and `markdown_list_mixed_region_boundary` transcripts cover marker spacing,
+child headings, and adjacent mixed list/raw regions. These ambiguous regions
+remain unchanged, including marker padding; following outside prose can still be
+formatted. `external-tests/corpus/test_scaling.py` checks that alternating lists
+and fences do not repeatedly scan the remaining document.
+`markdown_list_heading_literal_controls` keeps embedded formatting and inline
+prose wrapping active around heading-like code content.
+
 `markdown_shortcode_nested_skip_file.case` verifies that `fmt: skip file`
 preserves a nested Markdown fence/div body exactly, including trailing spaces in
 shortcode arguments and ordinary prose. The `markdown_preserved_*.case`

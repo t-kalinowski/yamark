@@ -1,0 +1,49 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- Item.
+ ~~~text
+ `
+ ~~~
+- `First.    Second.
+ <pre>
+ alpha    beta
+ end`
+
+Outside first. Outside second.
+
+- Item.
+ ~~~text
+ alpha    beta
+ ~~~
+- Next.
+ <pre>
+ gamma    delta
+ </pre>
+Outside third. Outside fourth.
+-- stdout
+- Item.
+ ~~~text
+ `
+ ~~~
+- `First.    Second.
+ <pre>
+ alpha    beta
+ end`
+
+Outside first.
+Outside second.
+
+- Item.
+ ~~~text
+ alpha    beta
+ ~~~
+- Next.
+ <pre>
+ gamma    delta
+ </pre>
+Outside third.
+Outside fourth.
+-- stderr
+-- status
+0

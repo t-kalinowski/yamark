@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+-   Item.
+  ~~~text
+  code
+  ~~~
+
+-   Item.
+  <pre>
+  alpha    beta
+  </pre>
+-- stdout
+-   Item.
+  ~~~text
+  code
+  ~~~
+
+-   Item.
+  <pre>
+  alpha    beta
+  </pre>
+-- stderr
+-- status
+0

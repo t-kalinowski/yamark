@@ -1,0 +1,50 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- Item.
+  ~~~yaml
+  # comment
+  x: [1,2]
+  ~~~
+
+- Item.
+  ~~~markdown
+  Title
+  ===
+  ~~~
+
+- First. Second. `code
+  # heading
+  end`
+
+- First. Second. `code
+  Title
+  ===
+  end`
+-- stdout
+- Item.
+  ~~~yaml
+  # comment
+  x: [1, 2]
+  ~~~
+
+- Item.
+  ~~~markdown
+  # Title
+  ~~~
+
+- First.
+  Second.
+  `code
+  # heading
+  end`
+
+- First.
+  Second.
+  `code
+  Title
+  ===
+  end`
+-- stderr
+-- status
+0

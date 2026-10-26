@@ -57,6 +57,8 @@ fn ambiguous_list_continuations_are_preserved_across_wrap_modes() {
     for case in [
         include_str!("cases/markdown_list_shifted_sibling_lazy_continuation.case"),
         include_str!("cases/markdown_list_empty_item_pandoc_continuation.case"),
+        include_str!("cases/markdown_list_wide_marker_raw_boundary.case"),
+        include_str!("cases/markdown_list_child_headings.case"),
     ] {
         let expected = case
             .split("-- stdout\n")
@@ -72,6 +74,21 @@ fn ambiguous_list_continuations_are_preserved_across_wrap_modes() {
                 assert_eq!(format(&output, wrap, path), expected, "second pass");
             }
         }
+    }
+}
+
+#[test]
+fn mixed_list_regions_leave_outside_prose_formattable() {
+    let case = include_str!("cases/markdown_list_mixed_region_boundary.case");
+    let input = case.split("-- stdin\n").nth(1).unwrap();
+    let (input, rest) = input.split_once("-- stdout\n").unwrap();
+    let expected = rest.split("-- stderr\n").next().unwrap();
+    for newline in ["\n", "\r\n", "\r"] {
+        let input = input.replace('\n', newline);
+        let expected = expected.replace('\n', newline);
+        let output = format(&input, "sentence", "input.qmd");
+        assert_eq!(output, expected);
+        assert_eq!(format(&output, "sentence", "input.qmd"), expected);
     }
 }
 
