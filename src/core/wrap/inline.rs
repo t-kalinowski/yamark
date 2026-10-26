@@ -172,6 +172,14 @@ impl InlineSource {
         })
     }
 
+    pub(super) fn literal_spans(&self) -> Box<[Span]> {
+        self.atoms
+            .iter()
+            .filter(|atom| matches!(atom.kind, Kind::Literal))
+            .map(|atom| atom.span.span())
+            .collect()
+    }
+
     pub(super) fn normalize(
         &self,
         source: &str,

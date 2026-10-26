@@ -745,7 +745,7 @@ impl Draft {
                     } else {
                         Gaps::Reflow
                     };
-                    let input = inline
+                    let recognition = inline
                         .recognition
                         .get_or_insert_with(|| {
                             InlineSource::recognize_with_templates(
@@ -753,13 +753,13 @@ impl Draft {
                                 delimiters,
                             )
                         })
-                        .as_ref()?
-                        .normalize(
-                            inline.source.get(source),
-                            gaps,
-                            options.markdown_canonical,
-                            !unwrapped,
-                        )?;
+                        .as_ref()?;
+                    let input = recognition.normalize(
+                        inline.source.get(source),
+                        gaps,
+                        options.markdown_canonical,
+                        !unwrapped,
+                    )?;
                     let text = input.text.as_str();
                     // Both handles use the enclosing source; token and literal
                     // spans below still use coordinates in the inline text.
@@ -787,14 +787,26 @@ impl Draft {
                     }
                     let mut lines = Vec::new();
                     let mut planned_tokens = Vec::new();
-                    let mut writer = TokenLineWriter::new(
+                    let Some(mut writer) = TokenLineWriter::new(
                         &mut lines,
                         &mut planned_tokens,
                         text,
                         &input.literals,
                         inline.first_prefix.get(source),
                         inline.continuation_prefix.get(source),
-                    )?;
+                    ) else {
+                        // Declining reflow must retain recognized literals so
+                        // output cleanup touches only the surrounding gaps.
+                        plan.items.push(Item::Unwrapped(UnwrappedPlan {
+                            text: inline.source.clone(),
+                            literals: recognition.literal_spans(),
+                            first_prefix: inline.first_prefix.clone(),
+                            continuation_prefix: inline.continuation_prefix.clone(),
+                            final_newline: inline.newline,
+                            escape_first: false,
+                        }));
+                        continue;
+                    };
                     let mut start = 0;
                     for &(end, hard_break) in &input.breaks {
                         write_markdown_token_lines(

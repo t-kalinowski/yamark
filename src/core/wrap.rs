@@ -3150,11 +3150,16 @@ fn asterisk_run(text: &str) -> bool {
 }
 
 fn trailing_asterisk_may_open(text: &str) -> bool {
-    // Matched emphasis can end a line; a literal trailing star can become an
-    // opener in Pandoc when its following space becomes a newline.
-    text.ends_with('*')
-        && !escaped_at(text, text.len() - 1)
-        && emphasis_span_end(&mut InlineScan::new(text), 0) != Some(text.len())
+    if !text.ends_with('*') || escaped_at(text, text.len() - 1) {
+        return false;
+    }
+    // A closer must be valid with and without backslash math. Otherwise a
+    // newline can turn its literal star into an opener in Pandoc Markdown.
+    let mut scan = InlineScan::new(text);
+    emphasis_span_end(&mut scan, 0) != Some(text.len())
+        || text.contains("\\(")
+            && emphasis_span_at_with_math(&mut scan, 0, false)
+                .is_none_or(|span| span.end != text.len())
 }
 
 struct WrapLineBuffer<'a> {
@@ -4385,6 +4390,14 @@ fn emphasis_span_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
 }
 
 fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisSpan> {
+    emphasis_span_at_with_math(scan, start, true)
+}
+
+fn emphasis_span_at_with_math(
+    scan: &mut InlineScan<'_>,
+    start: usize,
+    backslash_math: bool,
+) -> Option<EmphasisSpan> {
     let text = scan.text;
     if escaped_at(text, start) {
         return None;
@@ -4412,7 +4425,8 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
         let byte = text.as_bytes()[search];
         // Keep matched math opaque while searching for the emphasis closer,
         // including Pandoc's backslash math.
-        if search >= opaque_end && matches!(byte, b'`' | b'$' | b'\\') {
+        if search >= opaque_end && (matches!(byte, b'`' | b'$') || backslash_math && byte == b'\\')
+        {
             if let Some(end) = scan.literal_span_end(search) {
                 search = end;
                 continue;
