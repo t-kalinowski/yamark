@@ -3764,6 +3764,22 @@ fn prepare_prefixed_markdown_lines(
     continuation_prefix: &str,
     preserve_lines: bool,
 ) -> Draft {
+    // Preserve authored headings in container bodies before inline normalization
+    // or marker repair can remove an escape or join an underline to its title.
+    if lines.iter().any(|(body, _)| {
+        let trimmed = body.trim_start();
+        atx_heading_start(trimmed) || setext_underline_line(trimmed)
+    }) {
+        let mut draft = Draft::new();
+        let mut prefix = first_prefix;
+        for (body, newline) in lines {
+            draft.push_str(source, prefix);
+            draft.push_str(source, body);
+            draft.push_str(source, newline);
+            prefix = continuation_prefix;
+        }
+        return draft;
+    }
     let mut content = String::with_capacity(
         lines
             .iter()
