@@ -468,6 +468,152 @@ fn yaml_benchmark_default_path_is_yamark_per_file() {
     assert_eq!(rows[0]["invocation"], "per-file");
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_batch_formatters_preserve_paths_and_exit_status() {
+    let dir = tempdir().unwrap();
+    let bin = dir.path().join("formatter&%YAMARK_BATCH_TEST%!^bin");
+    fs::create_dir(&bin).unwrap();
+    fs::write(
+        bin.join("capture.py"),
+        "import json, sys\nprint(json.dumps(sys.argv[1:]))\nsys.exit(17)\n",
+    )
+    .unwrap();
+    for extension in ["cmd", "bat"] {
+        fs::write(
+            bin.join(format!("capture.{extension}")),
+            "@echo off\r\npython \"%~dp0capture.py\" %*\r\nexit /b %errorlevel%\r\n",
+        )
+        .unwrap();
+    }
+    let harness = r#"import json, pathlib, runpy, subprocess, sys
+module = runpy.run_path(sys.argv[1])
+arguments = [str(pathlib.Path(sys.argv[2]) / name) for name in [
+    'with space.md', 'with&mark.md', 'with%YAMARK_BATCH_TEST%mark.md',
+    'with!YAMARK_BATCH_TEST!mark.md', 'with^mark.md', 'trailing\\',
+]] + ['']
+for extension in ['cmd', 'bat']:
+    command = [str(pathlib.Path(sys.argv[2]) / ('capture.' + extension)), *arguments]
+    result = subprocess.run(**module['command_invocation'](command), capture_output=True, text=True)
+    assert result.returncode == 17, (result.returncode, result.stdout, result.stderr)
+    assert json.loads(result.stdout) == arguments, (result.stdout, arguments)
+"#;
+    for script in [
+        "tools/bench/run.py",
+        "tools/bench/big.py",
+        "tools/bench/run-all.py",
+    ] {
+        let output = Command::new(python())
+            .args(["-c", harness, script])
+            .arg(&bin)
+            .env("YAMARK_BATCH_TEST", "must-not-expand")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_benchmarks_run_cmd_formatters_from_path() {
+    let dir = tempdir().unwrap();
+    let bin = dir.path().join("formatter bin");
+    fs::create_dir(&bin).unwrap();
+    fs::write(
+        bin.join("prettier.cmd"),
+        "@echo off\r\npython \"%~dp0prettier.py\" %*\r\n",
+    )
+    .unwrap();
+    fs::write(
+        bin.join("prettier.py"),
+        r#"import pathlib, sys
+if sys.argv[1:] == ['--version']:
+    print('3.0.0')
+else:
+    data = bytearray(32 * 1024 * 1024)
+    sum(range(500000))
+    path = pathlib.Path(sys.argv[-1])
+    path.write_bytes(path.read_bytes() + b'\n# formatted\n')
+"#,
+    )
+    .unwrap();
+    let mut paths = vec![bin];
+    paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap()));
+    let path = std::env::join_paths(paths).unwrap();
+    let version = Command::new(python())
+        .args(["-c", "import runpy; print(runpy.run_path('tools/bench/run-all.py')['command_version'](['prettier', '--version']))"])
+        .env("PATH", &path)
+        .output().unwrap();
+    assert!(
+        version.status.success(),
+        "{}",
+        String::from_utf8_lossy(&version.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "3.0.0");
+    for (name, script, options) in [
+        (
+            "yaml",
+            "tools/bench/run.py",
+            vec!["--files", "1", "--items", "1"],
+        ),
+        ("big", "tools/bench/big.py", vec!["--target-bytes", "1200"]),
+    ] {
+        let artifact_dir = dir.path().join(name).join("artifacts");
+        let output = Command::new(python())
+            .arg(script)
+            .args(options)
+            .args(["--tools", "prettier", "--reps", "1", "--warmups", "0"])
+            .arg("--out-dir")
+            .arg(dir.path().join(name).join("raw"))
+            .arg("--artifact-dir")
+            .arg(&artifact_dir)
+            .env("PATH", &path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let artifact = fs::read_dir(artifact_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let data: Value = serde_json::from_str(&fs::read_to_string(artifact).unwrap()).unwrap();
+        assert_eq!(
+            data["tool_versions"]["prettier"], "3.0.0",
+            "{script}: {data}"
+        );
+        for row in data["results"].as_array().unwrap() {
+            assert_eq!(row["status"], "ok", "{script}: {row}");
+            assert_eq!(row["formatter"], "prettier");
+            assert!(row["median_seconds"].as_f64().unwrap() > 0.0);
+            assert_eq!(row["resource_metrics"]["status"], "unavailable");
+            assert!(
+                row["resource_metrics"]["reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("CPU")
+            );
+            for field in ["user_seconds", "sys_seconds"] {
+                assert_eq!(row[field], serde_json::json!([null]));
+                assert!(row[format!("median_{field}")].is_null());
+            }
+            if name == "big" {
+                assert_eq!(row["peak_rss_bytes"], serde_json::json!([null]));
+                assert!(row["median_peak_rss_bytes"].is_null());
+                assert!(String::from_utf8_lossy(&output.stdout).contains("unavailable"));
+            }
+        }
+    }
+}
+
 #[test]
 fn big_benchmark_defaults_to_stable_repetitions() {
     let dir = tempdir().unwrap();
@@ -877,7 +1023,12 @@ fn big_benchmark_prints_table_and_json_artifact() {
     assert_eq!(rows[0]["formatter"], "yamark");
     assert_eq!(rows[0]["status"], "ok");
     assert!(rows[0]["median_seconds"].as_f64().unwrap() > 0.0);
-    assert!(rows[0]["median_peak_rss_bytes"].as_u64().unwrap() > 0);
+    if cfg!(windows) {
+        assert!(rows[0]["median_peak_rss_bytes"].is_null());
+        assert_eq!(rows[0]["resource_metrics"]["status"], "unavailable");
+    } else {
+        assert!(rows[0]["median_peak_rss_bytes"].as_u64().unwrap() > 0);
+    }
 }
 
 #[cfg(unix)]

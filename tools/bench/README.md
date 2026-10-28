@@ -80,10 +80,14 @@ fail the complete run instead of producing a partial result. The runner
 does not copy results into `docs/benchmarks`; publishing remains a
 separate, reviewed step.
 
-Big-file measurements use `resource`/`os.wait4` on Unix and native process CPU
-and peak working-set counters on Windows. Run the Python scripts with `python`
-on Windows; executable paths include the `.exe` suffix automatically. Tests
-that install fake Unix shell executables run only on Unix.
+Unix measurements use `resource`/`os.wait4`. Windows runs report elapsed time,
+throughput, and output checks; process-tree CPU and peak RSS measurements are
+unavailable, recorded as `null` samples and medians with an explanatory
+`resource_metrics` status. Launcher-only counters would miss work performed by
+Node or other child processes. Run the Python scripts with `python` on Windows;
+executable paths include the `.exe` suffix automatically and npm `.cmd` shims
+are resolved from `PATH`. Tests that install fake Unix shell executables run
+only on Unix.
 
 ## Big single-file benchmark
 

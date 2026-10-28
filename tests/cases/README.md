@@ -44,6 +44,9 @@ formatted. `external-tests/corpus/test_scaling.py` checks that alternating lists
 and fences do not repeatedly scan the remaining document.
 `markdown_list_heading_literal_controls` keeps embedded formatting and inline
 prose wrapping active around heading-like code content.
+`markdown_container_inline_html` distinguishes inline tags inside list and
+blockquote paragraphs from raw HTML blocks that start a paragraph or interrupt
+one, preserving sentence wrapping where the tags remain inline.
 
 `markdown_shortcode_nested_skip_file.case` verifies that `fmt: skip file`
 preserves a nested Markdown fence/div body exactly, including trailing spaces in
@@ -80,3 +83,9 @@ path. An optional `-- git-status` section records the expected subsequent
 `git status --porcelain` output. `git_filter_join_crlf.case` verifies that joining
 the filter keeps a CRLF checkout clean when `core.autocrlf=true`. The LF and
 explicit `eol=lf` companion cases cover the corresponding compatibility boundaries.
+
+The `git_filter_adopt_*.case` transcripts cover adoption with automatic CRLF
+conversion, LF checkouts, and explicit `eol` attributes overriding `core.autocrlf`.
+They record the staged status and use `-- git-index` and `-- git-worktree` JSON
+file mappings to check exact staged and checkout bytes. JSON newline escapes make
+the expected CRLF/LF distinction visible in the transcript.

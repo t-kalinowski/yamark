@@ -340,7 +340,7 @@ def run_step(label: str, command: list[str], log_path: Path) -> None:
         log.write(f"$ {shlex.join(command)}\n")
         log.flush()
         process = subprocess.Popen(
-            command,
+            **command_invocation(command),
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -733,9 +733,44 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def command_invocation(
+    command: list[str],
+    env: dict[str, str] | None = None,
+) -> dict[str, object]:
+    if os.name != "nt":
+        return {"args": command, "env": env}
+    # CreateProcess does not search PATHEXT for npm's .cmd launchers.
+    executable = shutil.which(command[0])
+    if executable is None:
+        return {"args": command, "env": env}
+    command = [executable, *command[1:]]
+    if Path(executable).suffix.lower() not in {".cmd", ".bat"}:
+        return {"args": command, "env": env}
+    # Expanding a single environment variable does not recursively expand % in
+    # its value. Quote every switch/path and disable delayed expansion so cmd
+    # also preserves &, ! and ^. Batch arguments cannot contain quotes/newlines.
+    if any(any(char in argument for char in '"\r\n') for argument in command):
+        raise ValueError("batch command arguments cannot contain quotes or newlines")
+    quoted = []
+    for argument in command:
+        trailing_slashes = len(argument) - len(argument.rstrip("\\"))
+        quoted.append('"' + argument + "\\" * trailing_slashes + '"')
+    child_env = dict(os.environ if env is None else env)
+    child_env["YAMARK_BENCH_COMMAND"] = " ".join(quoted)
+    shell = os.environ.get("COMSPEC") or str(
+        Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe"
+    )
+    if not Path(shell).is_absolute() or any(char in shell for char in '"\r\n'):
+        raise ValueError("COMSPEC must name an absolute command interpreter path")
+    return {
+        "args": f'"{shell}" /d /v:off /s /c "%YAMARK_BENCH_COMMAND%"',
+        "env": child_env,
+    }
+
+
 def command_version(command: list[str]) -> str:
     proc = subprocess.run(
-        command,
+        **command_invocation(command),
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,

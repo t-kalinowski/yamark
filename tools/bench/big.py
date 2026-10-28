@@ -84,9 +84,9 @@ class Tool:
 @dataclass(frozen=True)
 class MeasuredProcess:
     proc: subprocess.CompletedProcess[str]
-    user_seconds: float
-    sys_seconds: float
-    max_rss_bytes: int
+    user_seconds: float | None
+    sys_seconds: float | None
+    max_rss_bytes: int | None
 
 
 def main() -> int:
@@ -409,9 +409,44 @@ def generate_corpus(args: argparse.Namespace, corpus_dir: Path) -> None:
     run_checked(command, cwd=ROOT)
 
 
+def command_invocation(
+    command: list[str],
+    env: dict[str, str] | None = None,
+) -> dict[str, object]:
+    if os.name != "nt":
+        return {"args": command, "env": env}
+    # CreateProcess does not search PATHEXT for npm's .cmd launchers.
+    executable = shutil.which(command[0])
+    if executable is None:
+        return {"args": command, "env": env}
+    command = [executable, *command[1:]]
+    if Path(executable).suffix.lower() not in {".cmd", ".bat"}:
+        return {"args": command, "env": env}
+    # Expanding a single environment variable does not recursively expand % in
+    # its value. Quote every switch/path and disable delayed expansion so cmd
+    # also preserves &, ! and ^. Batch arguments cannot contain quotes/newlines.
+    if any(any(char in argument for char in '"\r\n') for argument in command):
+        raise ValueError("batch command arguments cannot contain quotes or newlines")
+    quoted = []
+    for argument in command:
+        trailing_slashes = len(argument) - len(argument.rstrip("\\"))
+        quoted.append('"' + argument + "\\" * trailing_slashes + '"')
+    child_env = dict(os.environ if env is None else env)
+    child_env["YAMARK_BENCH_COMMAND"] = " ".join(quoted)
+    shell = os.environ.get("COMSPEC") or str(
+        Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe"
+    )
+    if not Path(shell).is_absolute() or any(char in shell for char in '"\r\n'):
+        raise ValueError("COMSPEC must name an absolute command interpreter path")
+    return {
+        "args": f'"{shell}" /d /v:off /s /c "%YAMARK_BENCH_COMMAND%"',
+        "env": child_env,
+    }
+
+
 def run_checked(command: list[str], *, cwd: Path) -> None:
     proc = subprocess.run(
-        command,
+        **command_invocation(command),
         cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
@@ -476,7 +511,7 @@ def unavailable_reason(tool: Tool) -> str | None:
 def command_available(command: list[str]) -> bool:
     try:
         proc = subprocess.run(
-            command,
+            **command_invocation(command),
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -494,7 +529,7 @@ def tool_version(tool: Tool) -> str | None:
         return None
     try:
         proc = subprocess.run(
-            tool.version_command,
+            **command_invocation(tool.version_command),
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -536,9 +571,8 @@ def prepare_tool(tool: Tool, work_root: Path) -> str | None:
 
     try:
         proc = subprocess.run(
-            tool.prepare_command,
+            **command_invocation(tool.prepare_command, env=tool_env(tool, work_root)),
             cwd=ROOT,
-            env=tool_env(tool, work_root),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -631,9 +665,8 @@ def run_probe(tool: Tool, work_root: Path) -> str | None:
     command = materialize_command(tool.command, target=path)
     try:
         proc = subprocess.run(
-            command,
+            **command_invocation(command, env=tool_env(tool, work_root)),
             cwd=probe_root if tool.cwd == "work" else ROOT,
-            env=tool_env(tool, work_root),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -676,9 +709,9 @@ def run_tool_on_file(
         }
 
     repetitions: list[float] = []
-    user_repetitions: list[float] = []
-    sys_repetitions: list[float] = []
-    peak_rss_repetitions: list[int] = []
+    user_repetitions: list[float | None] = []
+    sys_repetitions: list[float | None] = []
+    peak_rss_repetitions: list[int | None] = []
     metrics = None
 
     for run_idx in range(warmups + reps):
@@ -729,7 +762,9 @@ def run_tool_on_file(
 
     assert metrics is not None
     median_seconds = statistics.median(repetitions)
-    median_peak_rss_bytes = int(statistics.median(peak_rss_repetitions))
+    median_peak_rss_bytes = (
+        int(statistics.median(peak_rss_repetitions)) if os.name != "nt" else None
+    )
     input_bytes = int(base["bytes"])
     front_matter = (
         {"front_matter": metrics["front_matter"]}
@@ -752,9 +787,20 @@ def run_tool_on_file(
         "peak_rss_bytes": peak_rss_repetitions,
         "median_seconds": median_seconds,
         "mean_seconds": statistics.fmean(repetitions),
-        "median_user_seconds": statistics.median(user_repetitions),
-        "median_sys_seconds": statistics.median(sys_repetitions),
+        "median_user_seconds": (
+            statistics.median(user_repetitions) if os.name != "nt" else None
+        ),
+        "median_sys_seconds": (
+            statistics.median(sys_repetitions) if os.name != "nt" else None
+        ),
         "median_peak_rss_bytes": median_peak_rss_bytes,
+        "resource_metrics": (
+            {
+                "status": "unavailable",
+                "reason": "Windows process-tree CPU and peak RSS accounting is unavailable",
+            }
+            if os.name == "nt" else {"status": "available"}
+        ),
         "mb_per_second": input_bytes / 1_000_000 / median_seconds,
     }
 
@@ -778,14 +824,16 @@ def run_measured(
         stopifnot(hasattr(os, "wait4"), "os.wait4 is required for benchmark RSS")
     with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
         process = subprocess.Popen(
-            command,
+            **command_invocation(command, env=env),
             cwd=cwd,
-            env=env,
             stdout=stdout_file,
             stderr=stderr_file,
         )
         if os.name == "nt":
-            user_seconds, sys_seconds, peak_rss = wait_windows_usage(process)
+            process.wait()
+            # Native process counters omit descendants such as Node behind npm
+            # shims. Report missing data rather than misleading launcher metrics.
+            user_seconds = sys_seconds = peak_rss = None
         else:
             _pid, status, usage = os.wait4(process.pid, 0)
             process.returncode = os.waitstatus_to_exitcode(status)
@@ -806,62 +854,6 @@ def run_measured(
         sys_seconds=sys_seconds,
         max_rss_bytes=peak_rss,
     )
-
-
-def wait_windows_usage(process: subprocess.Popen) -> tuple[float, float, int]:
-    """Read lifetime CPU and peak working-set counters, including short runs."""
-    import ctypes
-    from ctypes import wintypes
-
-    class MemoryCounters(ctypes.Structure):
-        # PROCESS_MEMORY_COUNTERS, whose PeakWorkingSetSize is already in bytes.
-        _fields_ = [
-            ("cb", wintypes.DWORD),
-            ("PageFaultCount", wintypes.DWORD),
-            ("PeakWorkingSetSize", ctypes.c_size_t),
-            ("WorkingSetSize", ctypes.c_size_t),
-            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-            ("PagefileUsage", ctypes.c_size_t),
-            ("PeakPagefileUsage", ctypes.c_size_t),
-        ]
-
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    kernel.OpenProcess.restype = wintypes.HANDLE
-    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-    kernel.CloseHandle.restype = wintypes.BOOL
-    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [
-        ctypes.POINTER(wintypes.FILETIME)
-    ] * 4
-    kernel.GetProcessTimes.restype = wintypes.BOOL
-    kernel.K32GetProcessMemoryInfo.argtypes = [
-        wintypes.HANDLE, ctypes.POINTER(MemoryCounters), wintypes.DWORD,
-    ]
-    kernel.K32GetProcessMemoryInfo.restype = wintypes.BOOL
-    # Keep a query handle alive after exit so the peak counters remain available.
-    handle = kernel.OpenProcess(0x1000, False, process.pid)  # QUERY_LIMITED_INFORMATION
-    if not handle:
-        error = ctypes.WinError(ctypes.get_last_error())
-        process.wait()
-        raise error
-    try:
-        process.wait()
-        created, exited, system, user = (wintypes.FILETIME() for _ in range(4))
-        if not kernel.GetProcessTimes(handle, created, exited, system, user):
-            raise ctypes.WinError(ctypes.get_last_error())
-        memory = MemoryCounters(cb=ctypes.sizeof(MemoryCounters))
-        if not kernel.K32GetProcessMemoryInfo(handle, memory, memory.cb):
-            raise ctypes.WinError(ctypes.get_last_error())
-
-        def seconds(value: wintypes.FILETIME) -> float:
-            return ((value.dwHighDateTime << 32) | value.dwLowDateTime) / 10_000_000
-
-        return seconds(user), seconds(system), memory.PeakWorkingSetSize
-    finally:
-        kernel.CloseHandle(handle)
 
 
 def max_rss_bytes(usage: object) -> int:
@@ -953,6 +945,8 @@ def table_value(row: dict[str, object], header: str) -> str:
         return "" if value is None else f"{float(value):.4f}"
     if header == "peak_rss_mb":
         value = row.get("median_peak_rss_bytes")
+        if value is None and row.get("status") == "ok":
+            return "unavailable"
         return "" if value is None else f"{float(value) / 1_000_000:.1f}"
     if header == "mb_per_second":
         value = row.get(header)

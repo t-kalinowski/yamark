@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -12,6 +13,8 @@ struct Case {
     status: i32,
     git_fixture: Option<serde_json::Value>,
     git_status: Option<String>,
+    git_index: Option<BTreeMap<String, String>>,
+    git_worktree: Option<BTreeMap<String, String>>,
 }
 
 #[test]
@@ -55,6 +58,30 @@ fn cli_cases() {
                 .success()
                 .stdout(expected)
                 .stderr("");
+        }
+        if let Some(files) = case.git_index {
+            let repo = repo.as_ref().expect("git-index needs git-fixture");
+            for (name, expected) in files {
+                Command::new("git")
+                    .current_dir(repo.path())
+                    .arg("show")
+                    .arg(format!(":{name}"))
+                    .assert()
+                    .success()
+                    .stdout(expected)
+                    .stderr("");
+            }
+        }
+        if let Some(files) = case.git_worktree {
+            let repo = repo.as_ref().expect("git-worktree needs git-fixture");
+            for (name, expected) in files {
+                assert_eq!(
+                    fs::read(repo.path().join(&name)).unwrap(),
+                    expected.as_bytes(),
+                    "working-tree bytes mismatch in {} for {name}",
+                    path.display()
+                );
+            }
         }
     }
 }
@@ -126,6 +153,8 @@ fn flush(case: &mut Case, section: &str, body: &str) {
         "status" => case.status = value.trim().parse().unwrap(),
         "git-fixture" => case.git_fixture = Some(serde_json::from_str(value).unwrap()),
         "git-status" => case.git_status = Some(body.to_owned()),
+        "git-index" => case.git_index = Some(serde_json::from_str(value).unwrap()),
+        "git-worktree" => case.git_worktree = Some(serde_json::from_str(value).unwrap()),
         "" => {}
         other => panic!("unknown case section {other}"),
     }
