@@ -113,6 +113,12 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(
 @pytest.mark.parametrize(
     ("case_name", "wrap"),
     [
+        ("markdown_container_raw_html_boundaries.case", "sentence"),
+        ("markdown_container_raw_html_boundaries.case", "72"),
+        ("markdown_container_raw_html_boundaries.case", "sentence:12"),
+        ("markdown_container_literal_block_markers.case", "sentence"),
+        ("markdown_container_literal_block_markers.case", "72"),
+        ("markdown_container_literal_block_markers.case", "sentence:12"),
         ("markdown_column_preserved_html_literals.case", "72"),
         ("markdown_column_preserved_html_literals.case", "12"),
         ("markdown_column_preserved_html_literals.case", "sentence:12"),
@@ -204,6 +210,7 @@ def test_formatted_transcripts_are_stable_and_pass_check(
             wrap,
             str(path),
         ],
+        check=False,
         capture_output=True,
         text=True,
     )

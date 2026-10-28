@@ -1,0 +1,30 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- First. Second.
+  <pre>
+  alpha    beta
+  </pre>
+
+> First. Second.
+> <pre>
+> alpha    beta
+> </pre>
+
+Outside. Another sentence.
+-- stdout
+- First. Second.
+  <pre>
+  alpha    beta
+  </pre>
+
+> First. Second.
+> <pre>
+> alpha    beta
+> </pre>
+
+Outside.
+Another sentence.
+-- stderr
+-- status
+0
