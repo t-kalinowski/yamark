@@ -1867,7 +1867,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         &mut self,
         mut span: Span,
         mut value: Span,
-        trailing_comment: Option<Span>,
+        mut trailing_comment: Option<Span>,
         continuation: PlainScalarContinuation,
     ) -> Result<YamlNodeId> {
         let mut metadata = scalar_metadata(self.source, value);
@@ -1913,6 +1913,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             span.end = extension.span_end;
             value.end = extension.value_end;
             metadata.content.end = extension.value_end;
+            trailing_comment = extension.trailing_comment;
+            self.reject_same_line_yaml_directive(trailing_comment)?;
         }
         let source = self.source.slice(metadata.content).trim_ascii();
         Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
@@ -1950,6 +1952,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let mut final_line = self.line;
         let mut span_end = None;
         let mut value_end = None;
+        let mut trailing_comment = None;
 
         while scan < self.end {
             let line = self.source.lines[scan];
@@ -1964,6 +1967,21 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
             final_line = scan + 1;
             span_end = Some(line.full.end());
+            // Quotes and flow delimiters inside a plain continuation are text;
+            // a separated hash still starts a comment and ends the scalar.
+            if let Some(comment_start) = text
+                .as_bytes()
+                .windows(2)
+                .position(|pair| matches!(pair[0], b' ' | b'\t') && pair[1] == b'#')
+                .map(|offset| offset + 1)
+            {
+                value_end = Some(line.text.start() + text[..comment_start].trim_ascii_end().len());
+                trailing_comment = Some(Span::new(
+                    line.text.start() + comment_start,
+                    line.text.end(),
+                ));
+                break;
+            }
             value_end = Some(line.text.end());
             scan += 1;
         }
@@ -1976,6 +1994,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         Some(PlainScalarExtension {
             span_end: span_end.expect("continuation has a final line"),
             value_end: value_end.expect("continuation has a final line"),
+            trailing_comment,
         })
     }
 

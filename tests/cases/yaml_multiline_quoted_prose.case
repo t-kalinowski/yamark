@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.yaml --prose-width 40 --verify
+-- stdin
+# Lorem ipsum
+lorem: 'Lorem ipsum dolor sit amet,
+  consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+ipsum:
+  - "Lorem ipsum dolor
+    sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+dolor: [lorem,ipsum] # Dolor sit amet.
+sit: 'Lorem
+  ipsum' # Sit amet.
+-- stdout
+# Lorem ipsum
+lorem: >-
+  Lorem ipsum dolor sit amet, consectetur
+  adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna
+  aliqua.
+ipsum:
+  - >-
+    Lorem ipsum dolor sit amet, consectetur
+    adipiscing elit, sed do eiusmod tempor
+    incididunt ut labore et dolore magna
+    aliqua.
+dolor: [lorem, ipsum] # Dolor sit amet.
+sit: 'Lorem
+  ipsum' # Sit amet.
+-- stderr
+-- status
+0

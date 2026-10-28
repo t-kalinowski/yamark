@@ -7,7 +7,7 @@ use crate::core::source::{SourceBuffer, Span};
 use crate::core::yaml_model::{YamlBlockChomp, YamlBlockScalarHeader, YamlScalarStyle};
 use crate::core::yaml_scan::YamlLineScan;
 use crate::diagnostic::YamarkError;
-use memchr::{memchr, memchr2};
+use memchr::memchr2;
 
 pub(super) fn yaml_scan_has_active_fmt_directive(
     source: &SourceBuffer,
@@ -50,7 +50,7 @@ pub(super) fn yaml_scan_has_unsupported_preserve_syntax(
             line = source.line_at_byte(block.full.end.saturating_sub(1)) + 1;
             continue;
         }
-        let quoted_block = escaped_double_quoted_scalar_block_at(source, line, scan.end_line);
+        let quoted_block = supported_quoted_scalar_block_at(source, line, scan.end_line);
         if unsupported_yaml_line_syntax(source, line, scan.end_line, quoted_block.is_some()) {
             return true;
         }
@@ -67,7 +67,7 @@ fn unsupported_yaml_line_syntax(
     source: &SourceBuffer,
     line: usize,
     end: usize,
-    escaped_multiline_quote: bool,
+    supported_multiline_quote: bool,
 ) -> bool {
     let text = source.line_text(line);
     let (body, _) = strip_newline(text);
@@ -84,7 +84,7 @@ fn unsupported_yaml_line_syntax(
     if trimmed.starts_with('%') || unsupported_multiline_flow_collection(source, line, end) {
         return true;
     }
-    if !escaped_multiline_quote && line_starts_unclosed_quoted_scalar(text) {
+    if !supported_multiline_quote && line_starts_unclosed_quoted_scalar(text) {
         return true;
     }
 
@@ -394,6 +394,7 @@ pub(super) enum PlainScalarContinuation {
 pub(super) struct PlainScalarExtension {
     pub(super) span_end: usize,
     pub(super) value_end: usize,
+    pub(super) trailing_comment: Option<Span>,
 }
 
 pub(super) fn plain_scalar_continuation_line(
@@ -898,17 +899,16 @@ pub(super) struct QuotedScalarBlock {
     pub(super) trailing_comment: Option<Span>,
 }
 
-fn escaped_double_quoted_scalar_block_at(
+fn supported_quoted_scalar_block_at(
     source: &SourceBuffer,
     line: usize,
     end: usize,
 ) -> Option<QuotedScalarBlock> {
     let line_info = source.lines.get(line)?;
     let text = source.line_text(line);
-    // A supported multiline double-quoted scalar must escape its first newline.
-    memchr(b'\\', text.as_bytes())?;
+    memchr2(b'\'', b'"', text.as_bytes())?;
     let value_start = yaml_line_value_content_start(text)?;
-    if let Some(block) = escaped_double_quoted_scalar_block_from_value(
+    if let Some(block) = supported_quoted_scalar_block_from_value(
         source,
         line,
         end,
@@ -923,16 +923,10 @@ fn escaped_double_quoted_scalar_block_at(
     let key_start = skip_ascii_whitespace(text, marker + 1);
     let colon = mapping_colon_from(text, key_start)?;
     let value_start = skip_ascii_whitespace(text, colon + 1);
-    escaped_double_quoted_scalar_block_from_value(
-        source,
-        line,
-        end,
-        value_start,
-        line_info.full.start(),
-    )
+    supported_quoted_scalar_block_from_value(source, line, end, value_start, line_info.full.start())
 }
 
-fn escaped_double_quoted_scalar_block_from_value(
+fn supported_quoted_scalar_block_from_value(
     source: &SourceBuffer,
     line: usize,
     end: usize,

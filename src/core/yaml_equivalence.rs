@@ -725,7 +725,7 @@ fn comparable_scalar_value<'a>(
                 if raw.contains('\u{feff}') {
                     return None;
                 }
-                decode_plain_scalar(raw)
+                yaml_scalar::decode_plain(raw)
             }
             YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
                 decode_quoted_scalar(raw)?
@@ -742,40 +742,6 @@ fn comparable_scalar_value<'a>(
         YamlScalarSemantic::Float => ComparableScalar::Float(decoded),
         YamlScalarSemantic::Unknown => ComparableScalar::Unknown(decoded),
     })
-}
-
-fn decode_plain_scalar(raw: &str) -> Cow<'_, str> {
-    if !raw.contains(['\r', '\n']) {
-        return Cow::Borrowed(raw);
-    }
-    Cow::Owned(decode_multiline_plain_scalar(raw))
-}
-
-fn decode_multiline_plain_scalar(raw: &str) -> String {
-    let normalized = normalize_line_endings(raw);
-    let mut out = String::new();
-    let mut blank_lines = 0usize;
-    let mut has_content = false;
-    for line in normalized.lines().map(str::trim_ascii) {
-        if line.is_empty() {
-            if has_content {
-                blank_lines += 1;
-            }
-            continue;
-        }
-        if has_content {
-            if blank_lines == 0 {
-                out.push(' ');
-            } else {
-                out.extend(std::iter::repeat_n('\n', blank_lines));
-            }
-        } else {
-            has_content = true;
-        }
-        out.push_str(line);
-        blank_lines = 0;
-    }
-    out
 }
 
 fn decode_quoted_scalar(raw: &str) -> Option<Cow<'_, str>> {

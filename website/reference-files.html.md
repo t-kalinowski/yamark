@@ -119,7 +119,7 @@ languages Yamark preserves safely: `bash`, `sh`, `shell`, `zsh`, `ojs`, `text`,
 | Block mappings and sequences | Formats | Normalizes indentation and spacing. Does not reorder keys. |
 | Flow mappings and sequences | Formats | Normalizes spacing. Expands multiline or over-width collections to block style when safe. |
 | Compact collections | Formats when enabled | Collapses eligible block collections to flow style with `--compact`, `[format].compact`, or `fmt: compact`. |
-| Scalar folding | Formats when safe | Can emit and rewrap folded prose scalars at the active prose width. |
+| Scalar folding | Formats when safe | Can emit and rewrap folded prose scalars at the active prose width, including prose already split across plain or quoted continuation lines. Preserves decoded whitespace and comments. |
 | Literal scalars | Preserves by default | Changes a literal scalar only when it is explicitly marked as Markdown or an embedded formatter target. |
 | Quoted scalars with hard newlines | Formats when safe | Can emit literal block style when the YAML value stays unchanged. |
 | Unsafe plain scalars | Quotes | Quotes scalars whose meaning would change in block or flow context. |

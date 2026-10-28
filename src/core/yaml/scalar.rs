@@ -480,9 +480,6 @@ pub(super) fn render_quoted_literal_scalar_with_layout(
     }
     let metadata = scalar_metadata(source, scalar.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    if scalar.style == YamlScalarStyle::SingleQuoted && raw.contains(['\n', '\r']) {
-        return None;
-    }
     let decoded = decode_quoted_scalar(raw)?;
     if decoded == "\n" {
         return None;
@@ -616,10 +613,11 @@ pub(super) fn render_folded_prose_scalar_with_layout(
             if scalar.semantic != YamlScalarSemantic::String {
                 return None;
             }
-            if !foldable_yaml_prose(raw) {
+            let decoded = yaml_scalar::decode_plain(raw);
+            if !foldable_yaml_prose(&decoded) {
                 return None;
             }
-            Cow::Borrowed(raw)
+            decoded
         }
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
             if let Some(decoded) = simple_quoted_scalar_inner(raw) {
@@ -1052,6 +1050,8 @@ fn normalize_core_scalar_width(
         return normalize_core_scalar(source, scalar, flow_context)
             .map(|value| value.chars().count());
     }
+    let decoded = yaml_scalar::decode_plain(content);
+    let content = decoded.as_ref();
     match tag {
         Some("!!bool") => normalized_yaml_bool_width(content)
             .map(|width| explicit_core_scalar_width(source, scalar, metadata, width)),
@@ -1116,7 +1116,7 @@ pub(super) fn simple_quoted_scalar_inner(raw: &str) -> Option<&str> {
         .strip_prefix('\'')
         .and_then(|raw| raw.strip_suffix('\''))
     {
-        return (!inner.contains('\'')).then_some(inner);
+        return (!inner.contains(['\'', '\n', '\r'])).then_some(inner);
     }
     let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
     (!inner.contains(['\\', '\n', '\r'])).then_some(inner)
@@ -1923,7 +1923,7 @@ fn scalar_value_for_core_tag(value: &str) -> Option<String> {
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
             decode_quoted_scalar(trimmed)
         }
-        YamlScalarStyle::Plain => Some(trimmed.to_owned()),
+        YamlScalarStyle::Plain => Some(yaml_scalar::decode_plain(trimmed).into_owned()),
         YamlScalarStyle::LiteralBlock | YamlScalarStyle::FoldedBlock => None,
     }
 }

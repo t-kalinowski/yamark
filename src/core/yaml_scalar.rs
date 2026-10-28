@@ -1,6 +1,9 @@
-/// Preserve each caller's supported multiline subset. The formatter retains
-/// literal single-quoted line breaks; semantic validation leaves their folding
-/// opaque. Width planning declines escaped continuations.
+use std::borrow::Cow;
+use std::iter::Peekable;
+use std::str::Chars;
+
+/// All callers share flow-scalar folding. Width planning continues to decline
+/// escaped physical line continuations.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DecodePolicy {
     Format,
@@ -27,7 +30,34 @@ pub(crate) fn decode_quoted_chars(
     let inner = raw.strip_prefix(quote)?.strip_suffix(quote)?;
     let mut chars = inner.chars().peekable();
     while let Some(ch) = chars.next() {
-        if quote == '\'' && ch == '\'' {
+        if matches!(ch, ' ' | '\t' | '\r' | '\n') {
+            let whitespace = std::iter::once(ch).chain(chars.clone());
+            let line_break = if matches!(ch, '\r' | '\n') {
+                Some(ch)
+            } else {
+                while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+                    chars.next();
+                }
+                match chars.peek() {
+                    Some('\r' | '\n') => chars.next(),
+                    _ => None,
+                }
+            };
+            if let Some(line_break) = line_break {
+                let breaks = consume_flow_line_breaks(line_break, &mut chars);
+                if breaks == 1 {
+                    push(' ');
+                } else {
+                    for _ in 1..breaks {
+                        push('\n');
+                    }
+                }
+            } else {
+                for ch in whitespace.take_while(|ch| matches!(ch, ' ' | '\t')) {
+                    push(ch);
+                }
+            }
+        } else if quote == '\'' && ch == '\'' {
             if chars.next()? != '\'' {
                 return None;
             }
@@ -51,11 +81,8 @@ pub(crate) fn decode_quoted_chars(
                 'u' => decode_hex_escape(&mut chars, 4)?,
                 'U' => decode_hex_escape(&mut chars, 8)?,
                 '\r' | '\n' if policy != DecodePolicy::Width => {
-                    if escaped == '\r' && chars.peek() == Some(&'\n') {
-                        chars.next();
-                    }
-                    while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
-                        chars.next();
+                    for _ in 1..consume_flow_line_breaks(escaped, &mut chars) {
+                        push('\n');
                     }
                     continue;
                 }
@@ -63,13 +90,62 @@ pub(crate) fn decode_quoted_chars(
             };
             push(decoded);
         } else {
-            if matches!(ch, '\r' | '\n') && (quote == '"' || policy == DecodePolicy::Validation) {
-                return None;
-            }
             push(ch);
         }
     }
     Some(())
+}
+
+// Flow scalars discard physical whitespace around ordinary breaks, but escaped
+// whitespace has already been emitted and remains significant.
+fn consume_flow_line_breaks(first: char, chars: &mut Peekable<Chars<'_>>) -> usize {
+    let mut line_break = first;
+    let mut breaks = 0;
+    loop {
+        breaks += 1;
+        if line_break == '\r' && chars.peek() == Some(&'\n') {
+            chars.next();
+        }
+        while chars.peek().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+            chars.next();
+        }
+        match chars.peek() {
+            Some('\r' | '\n') => {
+                line_break = chars.next().expect("line break was just observed");
+            }
+            _ => return breaks,
+        }
+    }
+}
+
+pub(crate) fn decode_plain(raw: &str) -> Cow<'_, str> {
+    if !raw.contains(['\r', '\n']) {
+        return Cow::Borrowed(raw);
+    }
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let mut out = String::new();
+    let mut blank_lines = 0usize;
+    let mut has_content = false;
+    for line in normalized.lines().map(str::trim_ascii) {
+        if line.is_empty() {
+            if has_content {
+                blank_lines += 1;
+            }
+            continue;
+        }
+        if has_content {
+            if blank_lines == 0 {
+                out.push(' ');
+            } else {
+                out.extend(std::iter::repeat_n('\n', blank_lines));
+            }
+        } else {
+            has_content = true;
+        }
+        out.push_str(line);
+        blank_lines = 0;
+    }
+    Cow::Owned(out)
 }
 
 fn decode_hex_escape(chars: &mut impl Iterator<Item = char>, digits: usize) -> Option<char> {
