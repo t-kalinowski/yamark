@@ -792,7 +792,7 @@ fn adopt_git_filter_inner(
     )?;
     run_git_with_paths(repo_root, &["add", "--renormalize", "--"], &targets)?;
     verify_index_roundtrip(repo_root, &targets, width)?;
-    write_smudged_worktree(repo_root, &targets, BlobSource::Index, width)?;
+    write_smudged_worktree(repo_root, &targets)?;
     ensure_no_unstaged_changes(repo_root)?;
 
     Ok(format!(
@@ -818,7 +818,7 @@ fn join_git_filter(
         return Err("no tracked Markdown files match filter=yamark-md".to_owned());
     }
     verify_head_roundtrip(&repo_root, &targets, width)?;
-    write_smudged_worktree(&repo_root, &targets, BlobSource::Head, width)?;
+    write_smudged_worktree(&repo_root, &targets)?;
     ensure_clean_worktree(&repo_root)?;
 
     Ok(format!(
@@ -1035,15 +1035,18 @@ fn verify_roundtrip(
     }
 }
 
-fn write_smudged_worktree(
-    repo_root: &Path,
-    paths: &[String],
-    source: BlobSource,
-    width: usize,
-) -> Result<(), String> {
+fn write_smudged_worktree(repo_root: &Path, paths: &[String]) -> Result<(), String> {
+    // Let Git apply text/eol attributes and core.autocrlf before the configured
+    // smudge filter. Writing formatted blob bytes directly bypasses that step.
     for path in paths {
-        let blob = git_blob(repo_root, source, path)?;
-        let smudged = format_git_filter_text(path, blob, MarkdownWrap::Column(width))?;
+        let smudged = git_stdout_os(
+            repo_root,
+            &[
+                OsString::from("cat-file"),
+                OsString::from("--filters"),
+                OsString::from(format!(":{path}")),
+            ],
+        )?;
         let worktree_path = repo_root.join(path);
         fs::write(&worktree_path, smudged).map_err(|err| {
             format!(
@@ -1052,7 +1055,13 @@ fn write_smudged_worktree(
             )
         })?;
     }
-    Ok(())
+    // Refresh Git's cached file metadata as part of checkout. A plain write can
+    // leave a CRLF file marked dirty even when its cleaned blob is unchanged.
+    run_git_with_paths(
+        repo_root,
+        &["checkout-index", "--force", "--index", "--"],
+        paths,
+    )
 }
 
 fn git_blob(repo_root: &Path, source: BlobSource, path: &str) -> Result<String, String> {

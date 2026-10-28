@@ -3317,7 +3317,7 @@ fn markdown_quarto_chunk_headers_are_promoted_to_option_lines() {
         &config,
         "\
 [embedded.r]
-formatter = { command = [\"/bin/sh\", \"-c\", \"cat\", \"{path}\"], path_suffix = \".R\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())\", \"{path}\"], path_suffix = \".R\" }
 ",
     )
     .unwrap();
@@ -3359,7 +3359,7 @@ fn markdown_quarto_chunk_header_promotion_preserves_document_line_endings() {
         &config,
         "\
 [embedded.r]
-formatter = { command = [\"/bin/sh\", \"-c\", \"cat\", \"{path}\"], path_suffix = \".R\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())\", \"{path}\"], path_suffix = \".R\" }
 ",
     )
     .unwrap();
@@ -7816,7 +7816,7 @@ fn source_files_run_external_formatter_directives_for_string_targets() {
         &config,
         "\
 [embedded.r]
-formatter = { command = [\"/bin/sh\", \"-c\", \"sed 's/function(x)x+1/function(x) x + 1/'\", \"{path}\"], path_suffix = \".R\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'function(x)x+1', b'function(x) x + 1'))\", \"{path}\"], path_suffix = \".R\" }
 ",
     )
     .unwrap();
@@ -8659,7 +8659,9 @@ fn explicit_symlink_targets_are_deduplicated_by_canonical_path() {
     let path = dir.path().join("a.md");
     let link = dir.path().join("link.md");
     fs::write(&path, "#   Title ##\n").unwrap();
-    make_symlink(&path, &link);
+    if !make_symlink(&path, &link) {
+        return;
+    }
 
     let output = yamark()
         .args(["format", path.to_str().unwrap(), link.to_str().unwrap()])
@@ -8828,12 +8830,16 @@ fn path_specific_template_config_applies_during_relative_directory_scan() {
 fn directory_formatting_starts_before_later_config_discovery_fails() {
     let dir = tempdir().unwrap();
     let marker = dir.path().join("formatter-ran");
-    let formatter = dir.path().join("formatter.sh");
-    fs::write(&formatter, "#!/bin/sh\ntouch \"$1\"\ncat\n").unwrap();
+    let formatter = dir.path().join("formatter.py");
+    fs::write(
+        &formatter,
+        "import pathlib, sys\npathlib.Path(sys.argv[1]).touch()\nsys.stdout.buffer.write(sys.stdin.buffer.read())\n",
+    )
+    .unwrap();
     fs::write(
         dir.path().join("yamark.toml"),
         format!(
-            "[embedded.txt]\nformatter = {{ command = [\"/bin/sh\", {:?}, {:?}, \"{{path}}\"], path_suffix = \".txt\" }}\n",
+            "[embedded.txt]\nformatter = {{ command = [\"python\", {:?}, {:?}, \"{{path}}\"], path_suffix = \".txt\" }}\n",
             formatter.to_str().unwrap(),
             marker.to_str().unwrap(),
         ),
@@ -9038,10 +9044,10 @@ fn explicit_embedded_formatters_run_for_yaml_scalars_and_code_fences() {
         &config,
         "\
 [embedded.upper]
-formatter = { command = [\"/bin/sh\", \"-c\", \"tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().upper())\", \"{path}\"], path_suffix = \".txt\" }
 
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().upper())\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9099,7 +9105,7 @@ fn yaml_embedded_formatter_directive_accepts_explicit_scope_next() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().upper())\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9129,7 +9135,7 @@ fn external_yaml_scalar_formatter_output_is_reindented() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'x\\\\n')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9188,7 +9194,7 @@ fn yaml_verify_rejects_invalid_embedded_formatter_output() {
         &config,
         r#"
 [embedded.invalid]
-formatter = { command = ["/bin/sh", "-c", "printf '\\001'", "{path}"], path_suffix = ".txt" }
+formatter = { command = ["python", "-c", "import sys; sys.stdout.buffer.write(bytes([1]))", "{path}"], path_suffix = ".txt" }
 "#,
     )
     .unwrap();
@@ -9230,7 +9236,7 @@ formatter = { command = ["/bin/sh", "-c", "printf '\\001'", "{path}"], path_suff
 
 #[test]
 fn yaml_verify_rejects_non_printable_unicode() {
-    for octal in [r"\\357\\273\\277", r"\\357\\277\\276", r"\\357\\277\\277"] {
+    for codepoint in [0xfeff, 0xfffe, 0xffff] {
         let dir = tempdir().unwrap();
         let config = dir.path().join("yamark.toml");
         fs::write(
@@ -9238,7 +9244,7 @@ fn yaml_verify_rejects_non_printable_unicode() {
             format!(
                 r#"
 [embedded.invalid]
-formatter = {{ command = ["/bin/sh", "-c", "printf '{octal}'", "{{path}}"], path_suffix = ".txt" }}
+formatter = {{ command = ["python", "-c", "import sys; sys.stdout.buffer.write(chr({codepoint}).encode())", "{{path}}"], path_suffix = ".txt" }}
 "#
             ),
         )
@@ -9273,7 +9279,7 @@ fn yaml_verify_rejects_over_indented_leading_blank_line() {
         &config,
         r#"
 [embedded.invalid]
-formatter = { command = ["/bin/sh", "-c", "printf '   \na\n'", "{path}"], path_suffix = ".txt" }
+formatter = { command = ["python", "-c", "import sys; sys.stdout.buffer.write(b'   \\na\\n')", "{path}"], path_suffix = ".txt" }
 "#,
     )
     .unwrap();
@@ -9342,7 +9348,7 @@ fn external_yaml_scalar_formatter_preserves_block_header_comments() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'x\\\\n')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9372,7 +9378,7 @@ fn external_yaml_scalar_formatter_output_updates_strip_chomp_for_final_newline()
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'x\\\\n')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9402,7 +9408,7 @@ fn external_yaml_scalar_formatter_output_uses_explicit_block_indent_indicator() 
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf 'x\\n'\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'x\\\\n')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9432,7 +9438,7 @@ fn external_formatter_output_without_trailing_newline_stays_line_delimited() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf X\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'X')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9476,7 +9482,7 @@ fn external_yaml_scalar_formatter_receives_dedented_block_content() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"sed 's/^/seen:/'\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b''.join(b'seen:' + line for line in sys.stdin.buffer.read().splitlines(keepends=True)))\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9506,7 +9512,7 @@ fn external_yaml_scalar_formatter_preserves_renderer_preamble() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf '%s\\n' \\\"$0\\\"; tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.argv[1].encode() + b'\\\\n' + sys.stdin.buffer.read().upper())\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9620,7 +9626,7 @@ fn external_formatter_receives_source_based_virtual_path_and_not_renderer_preamb
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf '%s\\n' \\\"$0\\\"; tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.argv[1].encode() + b'\\\\n' + sys.stdin.buffer.read().upper())\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9649,7 +9655,7 @@ fn external_formatter_preamble_split_supports_cr_only_code_fences() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf '%s\\n' \\\"$0\\\"; tr a-z A-Z\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(sys.argv[1].encode() + b'\\\\n' + sys.stdin.buffer.read().upper())\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9678,7 +9684,7 @@ fn code_fence_formatter_output_cannot_close_the_original_fence() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf '```\\\\n'\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'```\\\\n')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9966,7 +9972,7 @@ fn embedded_formatter_stderr_on_success_is_an_error() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"printf formatted; printf warning >&2\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.write(b'formatted'); sys.stderr.buffer.write(b'warning')\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -9995,7 +10001,7 @@ fn embedded_formatter_nonzero_with_empty_stderr_reports_context() {
         &config,
         "\
 [embedded.txt]
-formatter = { command = [\"/bin/sh\", \"-c\", \"exit 7\", \"{path}\"], path_suffix = \".txt\" }
+formatter = { command = [\"python\", \"-c\", \"import sys; sys.exit(7)\", \"{path}\"], path_suffix = \".txt\" }
 ",
     )
     .unwrap();
@@ -10013,17 +10019,25 @@ formatter = { command = [\"/bin/sh\", \"-c\", \"exit 7\", \"{path}\"], path_suff
     assert_eq!(status, 1);
     assert_eq!(stdout, "");
     assert!(stderr.contains("embedded formatter failed"), "{stderr}");
-    assert!(stderr.contains("/bin/sh"), "{stderr}");
+    assert!(stderr.contains("python"), "{stderr}");
     assert!(stderr.contains("exit status 7"), "{stderr}");
     assert!(stderr.contains("input.md.embedded.2.txt"), "{stderr}");
 }
 
 #[cfg(unix)]
-fn make_symlink(path: &Path, link: &Path) {
+fn make_symlink(path: &Path, link: &Path) -> bool {
     std::os::unix::fs::symlink(path, link).unwrap();
+    true
 }
 
 #[cfg(windows)]
-fn make_symlink(path: &Path, link: &Path) {
-    std::os::windows::fs::symlink_file(path, link).unwrap();
+fn make_symlink(path: &Path, link: &Path) -> bool {
+    match std::os::windows::fs::symlink_file(path, link) {
+        Ok(()) => true,
+        Err(err) if err.raw_os_error() == Some(1314) => {
+            eprintln!("symlink test requires Windows Developer Mode or symlink privileges: {err}");
+            false
+        }
+        Err(err) => panic!("failed to create symlink: {err}"),
+    }
 }

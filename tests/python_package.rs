@@ -18,10 +18,10 @@ fn uv_tool_install_from_wheel_exposes_yamark() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let temp = tempdir().unwrap();
     let wheel_dir = temp.path().join("wheels");
-    let home_dir = temp.path().join("home");
+    let tool_dir = temp.path().join("tools");
+    let tool_bin_dir = temp.path().join("bin");
     let cache_dir = temp.path().join("uv-cache");
     fs::create_dir(&wheel_dir).unwrap();
-    fs::create_dir(&home_dir).unwrap();
     fs::create_dir(&cache_dir).unwrap();
 
     let build = Command::new("uv")
@@ -42,8 +42,8 @@ fn uv_tool_install_from_wheel_exposes_yamark() {
         .arg("--no-index")
         .arg("--force")
         .arg("yamark")
-        .env("HOME", &home_dir)
-        .env("USERPROFILE", &home_dir)
+        .env("UV_TOOL_DIR", &tool_dir)
+        .env("UV_TOOL_BIN_DIR", &tool_bin_dir)
         .env("UV_CACHE_DIR", &cache_dir)
         .output()
         .unwrap_or_else(|err| panic!("failed to run uv tool install: {err}"));
@@ -53,8 +53,8 @@ fn uv_tool_install_from_wheel_exposes_yamark() {
         .arg("tool")
         .arg("dir")
         .arg("--bin")
-        .env("HOME", &home_dir)
-        .env("USERPROFILE", &home_dir)
+        .env("UV_TOOL_DIR", &tool_dir)
+        .env("UV_TOOL_BIN_DIR", &tool_bin_dir)
         .env("UV_CACHE_DIR", &cache_dir)
         .output()
         .unwrap_or_else(|err| panic!("failed to run uv tool dir: {err}"));

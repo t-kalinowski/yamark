@@ -1,0 +1,5 @@
+# fmt: python
+code: |
+  x = 1
+  x
+other: 1

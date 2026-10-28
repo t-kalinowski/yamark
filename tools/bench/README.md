@@ -73,13 +73,21 @@ tools/bench/run-all.py --result-dir /path/to/results
 tools/bench/run-all.py --dry-run --result-dir /path/to/results
 ```
 
-The full comparison requires a Unix-like Python runtime with the
-`resource` module and `os.wait4`, `Rscript` with the `stringi` and
+The full comparison requires Python, `Rscript` with the `stringi` and
 `yaml12` packages, plus `panache`, `mdformat`, `prettier`, `dprint`,
 `deno`, `yamlfmt`, and `yamlfix` on `PATH`. Missing comparison tools
 fail the complete run instead of producing a partial result. The runner
 does not copy results into `docs/benchmarks`; publishing remains a
 separate, reviewed step.
+
+Unix measurements use `resource`/`os.wait4`. Windows runs report elapsed time,
+throughput, and output checks; process-tree CPU and peak RSS measurements are
+unavailable, recorded as `null` samples and medians with an explanatory
+`resource_metrics` status. Launcher-only counters would miss work performed by
+Node or other child processes. Run the Python scripts with `python` on Windows;
+executable paths include the `.exe` suffix automatically and npm `.cmd` shims
+are resolved from `PATH`. Tests that install fake Unix shell executables run
+only on Unix.
 
 ## Big single-file benchmark
 

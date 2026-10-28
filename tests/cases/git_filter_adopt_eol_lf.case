@@ -1,0 +1,32 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "true"},
+  "files": {
+    ".gitattributes": "*.md text eol=lf\n",
+    "post.md": "First sentence. Second sentence?\n"
+  }
+}
+-- args
+git-filter adopt --markdown-wrap-at-column 32
+-- stdin
+-- stdout
+Adopted yamark Git filter in {{repo}}
+Updated .gitattributes with 4 new attribute pattern(s)
+Staged .gitattributes and 1 normalized Markdown file(s).
+
+Review and commit with:
+  git diff --cached
+  git commit -m "Normalize Markdown with yamark Git filter"
+-- stderr
+-- git-status
+M  .gitattributes
+M  post.md
+-- git-index
+{
+  ".gitattributes": "*.md text eol=lf\n*.md filter=yamark-md\n*.qmd filter=yamark-md\n*.Rmd filter=yamark-md\n*.rmd filter=yamark-md\n",
+  "post.md": "First sentence.\nSecond sentence?\n"
+}
+-- git-worktree
+{"post.md": "First sentence. Second sentence?\n"}
+-- status
+0

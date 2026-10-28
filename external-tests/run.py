@@ -44,6 +44,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -68,7 +69,7 @@ def main(argv: list[str]) -> int:
 
     if args.yamark_bin is None:
         build_debug_binary(repo_root)
-        yamark_bin = repo_root / "target" / "debug" / "yamark"
+        yamark_bin = repo_root / "target" / "debug" / executable_name("yamark")
     else:
         yamark_bin = args.yamark_bin
 
@@ -98,7 +99,12 @@ def main(argv: list[str]) -> int:
     if not args.serial:
         command = ["-n", "auto", *command]
 
-    return pytest.main(command)
+    # Isolate concurrent runs from each other and from stale per-user pytest
+    # directories, which can have incompatible permissions on Windows.
+    if any(arg == "--basetemp" or arg.startswith("--basetemp=") for arg in pytest_args):
+        return pytest.main(command)
+    with TemporaryDirectory(prefix="yamark-pytest-") as temp:
+        return pytest.main(["--basetemp", str(Path(temp) / "pytest"), *command])
 
 
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:

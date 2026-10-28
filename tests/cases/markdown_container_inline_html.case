@@ -1,0 +1,64 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- First. Second.
+  <span>
+  Third. Fourth.
+
+> First. Second.
+> <img src="x">
+> Third. Fourth.
+
+- First. Second.
+  </span>
+  Third. Fourth.
+
+- <span>
+  Alpha. Beta.
+
+> <span>
+> Alpha. Beta.
+
+- First. Second.
+  <pre>
+  alpha    beta
+  </pre>
+
+> First. Second.
+> <pre>
+> alpha    beta
+> </pre>
+-- stdout
+- First.
+  Second.
+  <span> Third.
+  Fourth.
+
+> First.
+> Second.
+> <img src="x"> Third.
+> Fourth.
+
+- First.
+  Second.
+  </span> Third.
+  Fourth.
+
+- <span>
+  Alpha. Beta.
+
+> <span>
+> Alpha. Beta.
+
+- First. Second.
+  <pre>
+  alpha    beta
+  </pre>
+
+> First. Second.
+> <pre>
+> alpha    beta
+> </pre>
+-- stderr
+-- status
+0

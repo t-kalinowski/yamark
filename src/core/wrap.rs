@@ -1716,13 +1716,17 @@ fn literal_block_marker_escape(
 }
 
 pub(crate) fn markdown_html_block_start_line(trimmed: &str) -> bool {
+    markdown_html_block_start(trimmed, true)
+}
+
+fn markdown_html_block_start(trimmed: &str, paragraph_start: bool) -> bool {
     if trimmed.starts_with("<!") || trimmed.starts_with("<?") {
         return true;
     }
     let Some((name, tag_end)) = markdown_html_tag_name(trimmed) else {
         return false;
     };
-    commonmark_block_html_tag(name) || trimmed[tag_end..].trim_ascii().is_empty()
+    commonmark_block_html_tag(name) || paragraph_start && trimmed[tag_end..].trim_ascii().is_empty()
 }
 
 fn markdown_html_tag_name(source: &str) -> Option<(&str, usize)> {
@@ -3879,19 +3883,21 @@ fn prepare_prefixed_markdown_lines(
         content.push_str(body);
         content.push_str(newline);
     }
-    // Preserve authored headings and HTML blocks before inline reflow can
-    // change their boundaries. Markers inside multiline literals are not block
-    // starts, so they must not prevent wrapping the surrounding sentences.
+    // Preserve authored block boundaries in containers, but allow prose around
+    // heading-like text inside multiline literals and links to wrap normally.
     let mut inlines = MarkdownMultilineInlineScan::new(&content);
     let mut offset = 0;
+    let mut paragraph_start = true;
     if lines.iter().any(|(body, newline)| {
         let trimmed = body.trim_start();
-        let start = offset + body.len() - trimmed.len();
+        let content_offset = offset + body.len() - trimmed.len();
         offset += body.len() + newline.len();
-        (atx_heading_start(trimmed)
-            || setext_underline_line(trimmed)
-            || markdown_html_block_start_line(trimmed))
-            && !inlines.covers(start)
+        // Type-7 HTML blocks cannot interrupt an existing paragraph. A lone
+        // inline tag on a continuation line must not disable prose wrapping.
+        let html_block_start = markdown_html_block_start(trimmed, paragraph_start);
+        paragraph_start = trimmed.is_empty();
+        (atx_heading_start(trimmed) || setext_underline_line(trimmed) || html_block_start)
+            && !inlines.covers(content_offset)
     }) {
         let mut draft = Draft::new();
         let mut prefix = first_prefix;

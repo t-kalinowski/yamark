@@ -1,0 +1,4 @@
+[embedded.python]
+# Mimic Ruff's notebook output: remove only the final LF, leaving any CR.
+# Use binary streams so Python does not translate newlines on Windows.
+formatter = { command = ["python", "-c", 'import sys; source = sys.stdin.buffer.read(); sys.stdout.buffer.write(source.replace(b"x=1", b"x = 1").removesuffix(b"\n"))', "{path}"], path_suffix = ".py" }

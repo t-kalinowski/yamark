@@ -28,6 +28,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[2]
 BENCH_DIR = Path(__file__).resolve().parent
+EXE_SUFFIX = ".exe" if os.name == "nt" else ""
 DEFAULT_TOOLS = "yamark"
 DEFAULT_FILES = 400
 DEFAULT_ITEMS = 80
@@ -127,7 +128,7 @@ def main() -> int:
     parser.add_argument(
         "--yamark-bin",
         type=Path,
-        default=ROOT / "target" / "release" / "yamark",
+        default=ROOT / "target" / "release" / f"yamark{EXE_SUFFIX}",
     )
     parser.add_argument("--skip-yamark-build", action="store_true")
     parser.add_argument("--keep-workdirs", action="store_true")
@@ -173,7 +174,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
 
     try:
         work_root = Path(
-            tempfile.mkdtemp(prefix=f"yamark-yaml-bench-{run_id}-", dir="/tmp")
+            tempfile.mkdtemp(prefix=f"yamark-yaml-bench-{run_id}-")
         ).resolve()
         results = []
         for name in selected:
@@ -390,9 +391,44 @@ def yamark_width_options(width_profile: str) -> list[str]:
     raise AssertionError(f"unsupported width profile: {width_profile}")
 
 
+def command_invocation(
+    command: list[str],
+    env: dict[str, str] | None = None,
+) -> dict[str, object]:
+    if os.name != "nt":
+        return {"args": command, "env": env}
+    # CreateProcess does not search PATHEXT for npm's .cmd launchers.
+    executable = shutil.which(command[0])
+    if executable is None:
+        return {"args": command, "env": env}
+    command = [executable, *command[1:]]
+    if Path(executable).suffix.lower() not in {".cmd", ".bat"}:
+        return {"args": command, "env": env}
+    # Expanding a single environment variable does not recursively expand % in
+    # its value. Quote every switch/path and disable delayed expansion so cmd
+    # also preserves &, ! and ^. Batch arguments cannot contain quotes/newlines.
+    if any(any(char in argument for char in '"\r\n') for argument in command):
+        raise ValueError("batch command arguments cannot contain quotes or newlines")
+    quoted = []
+    for argument in command:
+        trailing_slashes = len(argument) - len(argument.rstrip("\\"))
+        quoted.append('"' + argument + "\\" * trailing_slashes + '"')
+    child_env = dict(os.environ if env is None else env)
+    child_env["YAMARK_BENCH_COMMAND"] = " ".join(quoted)
+    shell = os.environ.get("COMSPEC") or str(
+        Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe"
+    )
+    if not Path(shell).is_absolute() or any(char in shell for char in '"\r\n'):
+        raise ValueError("COMSPEC must name an absolute command interpreter path")
+    return {
+        "args": f'"{shell}" /d /v:off /s /c "%YAMARK_BENCH_COMMAND%"',
+        "env": child_env,
+    }
+
+
 def run_checked(command: list[str], *, cwd: Path) -> None:
     proc = subprocess.run(
-        command,
+        **command_invocation(command),
         cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
@@ -404,9 +440,9 @@ def run_checked(command: list[str], *, cwd: Path) -> None:
         )
 
 
-def child_usage() -> tuple[float, float]:
+def child_usage() -> tuple[float, float] | None:
     if resource is None:
-        return (0.0, 0.0)
+        return None
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     return (usage.ru_utime, usage.ru_stime)
 
@@ -663,8 +699,14 @@ def run_tool(
                     ),
                 }
             repetitions.append(elapsed)
-            user_repetitions.append(usage_after[0] - usage_before[0])
-            sys_repetitions.append(usage_after[1] - usage_before[1])
+            user_repetitions.append(
+                usage_after[0] - usage_before[0]
+                if usage_before is not None and usage_after is not None else None
+            )
+            sys_repetitions.append(
+                usage_after[1] - usage_before[1]
+                if usage_before is not None and usage_after is not None else None
+            )
 
     median_seconds = statistics.median(repetitions)
     mean_seconds = statistics.fmean(repetitions)
@@ -690,8 +732,19 @@ def run_tool(
         "sys_seconds": sys_repetitions,
         "median_seconds": median_seconds,
         "mean_seconds": mean_seconds,
-        "median_user_seconds": statistics.median(user_repetitions),
-        "median_sys_seconds": statistics.median(sys_repetitions),
+        "median_user_seconds": (
+            statistics.median(user_repetitions) if resource is not None else None
+        ),
+        "median_sys_seconds": (
+            statistics.median(sys_repetitions) if resource is not None else None
+        ),
+        "resource_metrics": (
+            {
+                "status": "unavailable",
+                "reason": "Process-tree CPU accounting is unavailable on this platform",
+            }
+            if resource is None else {"status": "available"}
+        ),
         "mb_per_second": corpus_bytes / 1_000_000 / median_seconds,
     }
 
@@ -714,9 +767,8 @@ def run_invocation(
             root=run_root,
         )
         return subprocess.run(
-            command,
+            **command_invocation(command, env=env),
             cwd=cwd,
-            env=env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -732,9 +784,8 @@ def run_invocation(
             root=run_root,
         )
         proc = subprocess.run(
-            command,
+            **command_invocation(command, env=env),
             cwd=cwd,
-            env=env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -826,7 +877,7 @@ def output_metrics(corpus_dir: Path, run_root: Path) -> dict[str, object]:
 def command_available(command: list[str]) -> bool:
     try:
         proc = subprocess.run(
-            command,
+            **command_invocation(command),
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -844,7 +895,7 @@ def tool_version(tool: Tool) -> str | None:
         return None
     try:
         proc = subprocess.run(
-            tool.version_command,
+            **command_invocation(tool.version_command),
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -886,9 +937,8 @@ def prepare_tool(tool: Tool, work_root: Path) -> str | None:
 
     try:
         proc = subprocess.run(
-            tool.prepare_command,
+            **command_invocation(tool.prepare_command, env=tool_env(tool, work_root)),
             cwd=ROOT,
-            env=tool_env(tool, work_root),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -930,7 +980,7 @@ def wipe_tool_cache(tool: Tool, work_root: Path) -> None:
 def pretty_yaml_driver_path() -> Path:
     if override := os.environ.get(PRETTY_YAML_DRIVER_ENV):
         return Path(override)
-    return PRETTY_YAML_DRIVER_TARGET / "release" / "format-pretty-yaml"
+    return PRETTY_YAML_DRIVER_TARGET / "release" / f"format-pretty-yaml{EXE_SUFFIX}"
 
 
 def prepare_pretty_yaml_driver() -> str | None:
@@ -1031,9 +1081,8 @@ def run_probe(tool: Tool, work_root: Path) -> str | None:
     command = materialize_command(tool.command, target=path, root=probe_root)
     try:
         proc = subprocess.run(
-            command,
+            **command_invocation(command, env=tool_env(tool, work_root)),
             cwd=probe_root if tool.cwd == "work" else ROOT,
-            env=tool_env(tool, work_root),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

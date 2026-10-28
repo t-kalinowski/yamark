@@ -289,13 +289,13 @@ fn canonical_yaml_value(label: &str, value: &str) -> Result<Value, String> {
         .map_err(|err| format!("{label}: failed to write YAML temp file: {err}"))?;
 
     let script = yamark_root()?.join("external-tests/support/yaml_suite_value.py");
-    let output = Command::new("python3")
+    let output = Command::new("python")
         .arg(script)
         .arg("yaml")
         .arg(input.path())
         .output()
         .map_err(|err| {
-            format!("{label}: failed to run python3 for YAML canonicalization: {err}")
+            format!("{label}: failed to run python for YAML canonicalization: {err}")
         })?;
 
     if !output.status.success() {

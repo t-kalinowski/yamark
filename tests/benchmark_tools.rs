@@ -1,7 +1,8 @@
 use std::ffi::OsString;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -9,7 +10,7 @@ use serde_json::Value;
 use tempfile::tempdir;
 
 fn python() -> OsString {
-    std::env::var_os("PYTHON").unwrap_or_else(|| OsString::from("python3"))
+    std::env::var_os("PYTHON").unwrap_or_else(|| OsString::from("python"))
 }
 
 fn git_output(cwd: &Path, args: &[&str]) -> String {
@@ -27,14 +28,25 @@ fn git_output(cwd: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
-fn command_for<'a>(stdout: &'a str, label: &str) -> &'a str {
+fn command_for(stdout: &str, label: &str) -> String {
     let heading = format!("[{label}]");
     let mut lines = stdout.lines();
     while let Some(line) = lines.next() {
         if line == heading {
-            return lines
+            let command = lines
                 .next()
                 .unwrap_or_else(|| panic!("missing command after {heading}"));
+            // Compare arguments independently of shlex's quoting of Windows paths.
+            let output = Command::new(python())
+                .args([
+                    "-c",
+                    "import shlex, sys; print(' '.join(shlex.split(sys.argv[1])))",
+                    command,
+                ])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            return String::from_utf8(output.stdout).unwrap().trim().to_owned();
         }
     }
     panic!("missing {heading} in benchmark dry run")
@@ -64,7 +76,9 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
         "a dry run should not create its result directory"
     );
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout)
+        .unwrap()
+        .replace("\r\n", "\n");
     assert!(stdout.contains(&format!(
         "benchmark commit: {}",
         git_output(Path::new("."), &["rev-parse", "HEAD"])
@@ -74,14 +88,18 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
         git_output(Path::new("."), &["rev-parse", "HEAD^{tree}"])
     )));
 
-    let resolved_result = dir.path().canonicalize().unwrap().join("complete-run");
-    let frozen_binary = resolved_result.join("bin/yamark");
+    let canonical = dir.path().canonicalize().unwrap();
+    let resolved_result =
+        PathBuf::from(canonical.to_str().unwrap().trim_start_matches(r"\\?\")).join("complete-run");
+    let frozen_binary = resolved_result
+        .join("bin")
+        .join(format!("yamark{}", std::env::consts::EXE_SUFFIX));
 
     let build = command_for(&stdout, "build");
     assert!(build.starts_with("cargo build --release --locked --bin yamark"));
     assert!(build.contains(&format!(
         "--target-dir {}",
-        resolved_result.join("scratch/cargo-target").display()
+        resolved_result.join("scratch").join("cargo-target").display()
     )));
     assert_eq!(
         command_for(&stdout, "yaml-performance-tests"),
@@ -93,7 +111,8 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     );
 
     let default = command_for(&stdout, "default-yaml");
-    assert!(default.contains("tools/bench/run.py"));
+    let runner = Path::new("tools").join("bench").join("run.py");
+    assert!(default.contains(&runner.display().to_string()));
     assert!(default.contains("--corpus yaml --corpus-shape flow-heavy"));
     assert!(default.contains("--invocation per-file --operation write"));
     assert!(default.contains("--width-profile default"));
@@ -104,15 +123,23 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     assert!(default.contains(&format!("--yamark-bin {}", frozen_binary.display())));
     assert!(default.contains(&format!(
         "--out-dir {}",
-        resolved_result.join("scratch/default").display()
+        resolved_result.join("scratch").join("default").display()
     )));
     assert!(default.contains(&format!(
         "--artifact-dir {}",
-        resolved_result.join("artifacts/default").display()
+        resolved_result.join("artifacts").join("default").display()
     )));
 
     let big = command_for(&stdout, "big-files");
-    assert!(big.contains("tools/bench/big.py"));
+    assert!(
+        big.contains(
+            &Path::new("tools")
+                .join("bench")
+                .join("big.py")
+                .display()
+                .to_string()
+        )
+    );
     assert!(big.contains("--target-bytes 4000000"));
     assert!(big.contains("--frontmatter-yaml-bytes 200000 --seed 20260602"));
     assert!(big.contains("--reps 20 --warmups 2"));
@@ -124,15 +151,15 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     assert!(big.contains(&format!("--yamark-bin {}", frozen_binary.display())));
     assert!(big.contains(&format!(
         "--out-dir {}",
-        resolved_result.join("scratch/big").display()
+        resolved_result.join("scratch").join("big").display()
     )));
     assert!(big.contains(&format!(
         "--artifact-dir {}",
-        resolved_result.join("artifacts/big").display()
+        resolved_result.join("artifacts").join("big").display()
     )));
 
     let directory = command_for(&stdout, "directory-yaml");
-    assert!(directory.contains("tools/bench/run.py"));
+    assert!(directory.contains(&runner.display().to_string()));
     assert!(directory.contains("--corpus yaml --corpus-shape flow-heavy"));
     assert!(directory.contains("--invocation directory --operation write"));
     assert!(directory.contains("--width-profile default"));
@@ -144,11 +171,11 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     assert!(directory.contains(&format!("--yamark-bin {}", frozen_binary.display())));
     assert!(directory.contains(&format!(
         "--out-dir {}",
-        resolved_result.join("scratch/directory").display()
+        resolved_result.join("scratch").join("directory").display()
     )));
     assert!(directory.contains(&format!(
         "--artifact-dir {}",
-        resolved_result.join("artifacts/directory").display()
+        resolved_result.join("artifacts").join("directory").display()
     )));
     assert!(stdout.contains(
         "[artifact-validation]\n\
@@ -204,8 +231,8 @@ fn complete_benchmark_refuses_a_dirty_worktree_before_writing() {
 
     assert!(!output.status.success());
     assert_eq!(
-        String::from_utf8(output.stderr).unwrap(),
-        "working tree must be clean before running benchmarks\n"
+        String::from_utf8(output.stderr).unwrap().trim_end(),
+        "working tree must be clean before running benchmarks"
     );
     assert!(!result_dir.exists());
 }
@@ -332,6 +359,64 @@ fn yaml_benchmark_defaults_to_two_repetitions() {
 }
 
 #[test]
+fn benchmark_workdirs_follow_temp_environment() {
+    for (script, options, prefix) in [
+        (
+            "tools/bench/run.py",
+            vec!["--files", "1", "--items", "1"],
+            "yamark-yaml-bench-",
+        ),
+        (
+            "tools/bench/big.py",
+            vec!["--target-bytes", "1200"],
+            "yamark-big-bench-",
+        ),
+    ] {
+        let dir = tempdir().unwrap();
+        // R's Unix runtime rejects spaces in its temporary directory.
+        let scratch = dir.path().join("custom-temp");
+        fs::create_dir(&scratch).unwrap();
+        let output = Command::new(python())
+            .arg(script)
+            .args(options)
+            .args([
+                "--tools",
+                "yamark",
+                "--reps",
+                "1",
+                "--warmups",
+                "0",
+                "--keep-workdirs",
+                "--skip-yamark-build",
+                "--yamark-bin",
+            ])
+            .arg(assert_cmd::cargo::cargo_bin("yamark"))
+            .arg("--out-dir")
+            .arg(dir.path().join("raw"))
+            .arg("--artifact-dir")
+            .arg(dir.path().join("artifacts"))
+            .env("TMPDIR", &scratch)
+            .env("TMP", &scratch)
+            .env("TEMP", &scratch)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            fs::read_dir(&scratch).unwrap().any(|entry| {
+                let entry = entry.unwrap();
+                entry.file_name().to_string_lossy().starts_with(prefix)
+                    && entry.path().join("yamark").is_dir()
+            }),
+            "{script} must place retained formatter workdirs in the configured temporary directory"
+        );
+    }
+}
+
+#[test]
 fn yaml_benchmark_default_path_is_yamark_per_file() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().join("raw");
@@ -381,6 +466,152 @@ fn yaml_benchmark_default_path_is_yamark_per_file() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["formatter"], "yamark");
     assert_eq!(rows[0]["invocation"], "per-file");
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_batch_formatters_preserve_paths_and_exit_status() {
+    let dir = tempdir().unwrap();
+    let bin = dir.path().join("formatter&%YAMARK_BATCH_TEST%!^bin");
+    fs::create_dir(&bin).unwrap();
+    fs::write(
+        bin.join("capture.py"),
+        "import json, sys\nprint(json.dumps(sys.argv[1:]))\nsys.exit(17)\n",
+    )
+    .unwrap();
+    for extension in ["cmd", "bat"] {
+        fs::write(
+            bin.join(format!("capture.{extension}")),
+            "@echo off\r\npython \"%~dp0capture.py\" %*\r\nexit /b %errorlevel%\r\n",
+        )
+        .unwrap();
+    }
+    let harness = r#"import json, pathlib, runpy, subprocess, sys
+module = runpy.run_path(sys.argv[1])
+arguments = [str(pathlib.Path(sys.argv[2]) / name) for name in [
+    'with space.md', 'with&mark.md', 'with%YAMARK_BATCH_TEST%mark.md',
+    'with!YAMARK_BATCH_TEST!mark.md', 'with^mark.md', 'trailing\\',
+]] + ['']
+for extension in ['cmd', 'bat']:
+    command = [str(pathlib.Path(sys.argv[2]) / ('capture.' + extension)), *arguments]
+    result = subprocess.run(**module['command_invocation'](command), capture_output=True, text=True)
+    assert result.returncode == 17, (result.returncode, result.stdout, result.stderr)
+    assert json.loads(result.stdout) == arguments, (result.stdout, arguments)
+"#;
+    for script in [
+        "tools/bench/run.py",
+        "tools/bench/big.py",
+        "tools/bench/run-all.py",
+    ] {
+        let output = Command::new(python())
+            .args(["-c", harness, script])
+            .arg(&bin)
+            .env("YAMARK_BATCH_TEST", "must-not-expand")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_benchmarks_run_cmd_formatters_from_path() {
+    let dir = tempdir().unwrap();
+    let bin = dir.path().join("formatter bin");
+    fs::create_dir(&bin).unwrap();
+    fs::write(
+        bin.join("prettier.cmd"),
+        "@echo off\r\npython \"%~dp0prettier.py\" %*\r\n",
+    )
+    .unwrap();
+    fs::write(
+        bin.join("prettier.py"),
+        r#"import pathlib, sys
+if sys.argv[1:] == ['--version']:
+    print('3.0.0')
+else:
+    data = bytearray(32 * 1024 * 1024)
+    sum(range(500000))
+    path = pathlib.Path(sys.argv[-1])
+    path.write_bytes(path.read_bytes() + b'\n# formatted\n')
+"#,
+    )
+    .unwrap();
+    let mut paths = vec![bin];
+    paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap()));
+    let path = std::env::join_paths(paths).unwrap();
+    let version = Command::new(python())
+        .args(["-c", "import runpy; print(runpy.run_path('tools/bench/run-all.py')['command_version'](['prettier', '--version']))"])
+        .env("PATH", &path)
+        .output().unwrap();
+    assert!(
+        version.status.success(),
+        "{}",
+        String::from_utf8_lossy(&version.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), "3.0.0");
+    for (name, script, options) in [
+        (
+            "yaml",
+            "tools/bench/run.py",
+            vec!["--files", "1", "--items", "1"],
+        ),
+        ("big", "tools/bench/big.py", vec!["--target-bytes", "1200"]),
+    ] {
+        let artifact_dir = dir.path().join(name).join("artifacts");
+        let output = Command::new(python())
+            .arg(script)
+            .args(options)
+            .args(["--tools", "prettier", "--reps", "1", "--warmups", "0"])
+            .arg("--out-dir")
+            .arg(dir.path().join(name).join("raw"))
+            .arg("--artifact-dir")
+            .arg(&artifact_dir)
+            .env("PATH", &path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let artifact = fs::read_dir(artifact_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let data: Value = serde_json::from_str(&fs::read_to_string(artifact).unwrap()).unwrap();
+        assert_eq!(
+            data["tool_versions"]["prettier"], "3.0.0",
+            "{script}: {data}"
+        );
+        for row in data["results"].as_array().unwrap() {
+            assert_eq!(row["status"], "ok", "{script}: {row}");
+            assert_eq!(row["formatter"], "prettier");
+            assert!(row["median_seconds"].as_f64().unwrap() > 0.0);
+            assert_eq!(row["resource_metrics"]["status"], "unavailable");
+            assert!(
+                row["resource_metrics"]["reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("CPU")
+            );
+            for field in ["user_seconds", "sys_seconds"] {
+                assert_eq!(row[field], serde_json::json!([null]));
+                assert!(row[format!("median_{field}")].is_null());
+            }
+            if name == "big" {
+                assert_eq!(row["peak_rss_bytes"], serde_json::json!([null]));
+                assert!(row["median_peak_rss_bytes"].is_null());
+                assert!(String::from_utf8_lossy(&output.stdout).contains("unavailable"));
+            }
+        }
+    }
 }
 
 #[test]
@@ -792,9 +1023,15 @@ fn big_benchmark_prints_table_and_json_artifact() {
     assert_eq!(rows[0]["formatter"], "yamark");
     assert_eq!(rows[0]["status"], "ok");
     assert!(rows[0]["median_seconds"].as_f64().unwrap() > 0.0);
-    assert!(rows[0]["median_peak_rss_bytes"].as_u64().unwrap() > 0);
+    if cfg!(windows) {
+        assert!(rows[0]["median_peak_rss_bytes"].is_null());
+        assert_eq!(rows[0]["resource_metrics"]["status"], "unavailable");
+    } else {
+        assert!(rows[0]["median_peak_rss_bytes"].as_u64().unwrap() > 0);
+    }
 }
 
+#[cfg(unix)]
 #[test]
 fn big_benchmark_accepts_common_markdown_formatters() {
     let dir = tempdir().unwrap();
@@ -1456,6 +1693,7 @@ fn r_summary_defaults_to_recent_yamark_per_file_results() {
     assert!(!stdout.contains("dprint-yaml"));
 }
 
+#[cfg(unix)]
 #[test]
 fn yaml_benchmark_records_panache_dprint_and_pretty_yaml_rows() {
     let dir = tempdir().unwrap();
@@ -1565,6 +1803,7 @@ find "$1" -name '*.yaml' -exec perl -0pi -e 's/probe:\s+\[one,two\]/probe: [one,
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn yaml_benchmark_records_directory_rows_for_wrapped_formatters() {
     let dir = tempdir().unwrap();
@@ -1634,6 +1873,7 @@ fn yaml_benchmark_records_directory_rows_for_wrapped_formatters() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn yaml_benchmark_records_deno_fmt_rows() {
     let dir = tempdir().unwrap();
@@ -1776,6 +2016,7 @@ def write_yaml(value, path):
     assert_eq!(row["changed_files"], 2);
 }
 
+#[cfg(unix)]
 #[test]
 fn yaml_benchmark_rejects_later_repetition_no_ops() {
     let dir = tempdir().unwrap();
@@ -1922,6 +2163,7 @@ fn write_summary_fixture(
     fs::write(artifact_dir.join(file_name), content).unwrap();
 }
 
+#[cfg(unix)]
 fn write_executable(path: &std::path::Path, contents: &str) {
     fs::write(path, contents).unwrap();
     let mut permissions = fs::metadata(path).unwrap().permissions();
@@ -1929,6 +2171,7 @@ fn write_executable(path: &std::path::Path, contents: &str) {
     fs::set_permissions(path, permissions).unwrap();
 }
 
+#[cfg(unix)]
 fn write_fake_panache(path: &std::path::Path) {
     write_executable(
         path,
@@ -1942,6 +2185,7 @@ find "$3" -name '*.qmd' -exec perl -0pi -e 's/probe:\s+\[one,two\]/probe: [one, 
     );
 }
 
+#[cfg(unix)]
 fn write_fake_dprint(path: &std::path::Path) {
     write_executable(
         path,
@@ -1966,6 +2210,7 @@ fi
     );
 }
 
+#[cfg(unix)]
 fn write_fake_markdown_formatter(path: &std::path::Path, version: &str) {
     write_executable(
         path,
@@ -1989,6 +2234,7 @@ fi
     );
 }
 
+#[cfg(unix)]
 fn write_fake_markdown_dprint(path: &std::path::Path) {
     write_executable(
         path,
@@ -2015,6 +2261,7 @@ fi
     );
 }
 
+#[cfg(unix)]
 fn write_fake_pretty_yaml(path: &std::path::Path) {
     write_executable(
         path,
@@ -2024,6 +2271,7 @@ find "$1" -name '*.yaml' -exec perl -0pi -e 's/probe:\s+\[one,two\]/probe: [one,
     );
 }
 
+#[cfg(unix)]
 fn write_fake_deno(path: &std::path::Path) {
     write_executable(
         path,
@@ -2045,6 +2293,7 @@ fi
     );
 }
 
+#[cfg(unix)]
 fn write_fake_deno_with_later_no_op(path: &std::path::Path) {
     write_executable(
         path,

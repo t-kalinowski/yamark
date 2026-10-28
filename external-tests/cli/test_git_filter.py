@@ -283,7 +283,10 @@ def test_git_filter_join_refuses_when_branch_is_behind_upstream() -> None:
         )
 
 
-def test_git_filter_join_installs_local_config_and_keeps_checkout_clean() -> None:
+@pytest.mark.parametrize("autocrlf,eol", [("false", "lf"), ("true", "crlf"), ("true", "lf")])
+def test_git_filter_join_installs_local_config_and_keeps_checkout_clean(
+    autocrlf: str, eol: str
+) -> None:
     with TemporaryDirectory(prefix="yamark-pytest-git-") as temp:
         root = Path(temp)
         origin = create_origin_with_initial_docs(root)
@@ -293,10 +296,18 @@ def test_git_filter_join_installs_local_config_and_keeps_checkout_clean() -> Non
 
         run_git(root, "clone", os.fspath(origin), os.fspath(maintainer))
         configure_git_user(maintainer)
+        (maintainer / ".gitattributes").write_text(
+            f"*.md text eol={eol}\n", encoding="utf-8", newline="\n"
+        )
+        run_git(maintainer, "add", ".gitattributes")
+        run_git(maintainer, "commit", "-m", "Set checkout line endings")
         run_yamark(maintainer, "git-filter", "adopt", "--markdown-wrap-at-column", "32")
         run_git(maintainer, "commit", "-m", "Adopt yamark filter")
         run_git(maintainer, "push")
-        run_git(root, "clone", os.fspath(origin), os.fspath(contributor))
+        run_git(
+            root, "clone", "-c", f"core.autocrlf={autocrlf}",
+            os.fspath(origin), os.fspath(contributor),
+        )
 
         result = run_yamark(
             contributor,
@@ -324,12 +335,15 @@ def test_git_filter_join_installs_local_config_and_keeps_checkout_clean() -> Non
             "32",
         )
         assert "yamark Git filter check passed for 1 Markdown file(s)." in check.stdout
-        assert (contributor / path).read_text(encoding="utf-8") == (
+        expected = (
             "Alpha beta gamma delta epsilon\n"
             "zeta eta theta iota kappa lambda\n"
             "mu nu xi omicron pi rho sigma\n"
             "tau. Second sentence?\n"
         )
+        assert (contributor / path).read_bytes() == expected.replace(
+            "\n", "\r\n" if eol == "crlf" else "\n"
+        ).encode("utf-8")
 
 
 def test_git_filter_check_rejects_non_roundtripping_committed_blob() -> None:

@@ -157,15 +157,15 @@ test("native and JSON-family commands share one formatted preview provider", asy
   assert.equal(calls.length, sourceCount);
   assert.deepEqual(calls[0], {
     command: "yamark",
-    args: ["format", "--stdin-file-path", "/tmp/notes.md"],
+    args: ["format", "--stdin-file-path", path.resolve("/tmp/notes.md")],
     input: "#   Notes ##\n",
-    cwd: "/tmp",
+    cwd: path.resolve("/tmp"),
   });
   assert.deepEqual(calls[1], {
     command: "yamark",
-    args: ["to-yaml", "--stdin-file-path", "/tmp/data.json"],
+    args: ["to-yaml", "--stdin-file-path", path.resolve("/tmp/data.json")],
     input: '{"answer":42}\n',
-    cwd: "/tmp",
+    cwd: path.resolve("/tmp"),
   });
   assert.deepEqual(
     vscode.window.shownTextDocuments.map(({ document }) => document.uri.scheme),
@@ -224,16 +224,16 @@ test("formatted native preview runs the complete Format Document chain", async (
         "--compact",
         "--skip-embedded-formatters",
         "--stdin-file-path",
-        "/tmp/notes.qmd",
+        path.resolve("/tmp/notes.qmd"),
       ],
       input: "---\ntags: [r,code]\n---\n\n```{r}\nx<-1\n```\n",
-      cwd: "/tmp",
+      cwd: path.resolve("/tmp"),
     },
     {
       command: "quarto-native",
-      args: ["--stdin-file-path", "/tmp/notes.qmd"],
+      args: ["--stdin-file-path", path.resolve("/tmp/notes.qmd")],
       input: "---\ntags: [r, code]\n---\n\n```{r}\nx<-1\n```\n",
-      cwd: "/tmp",
+      cwd: path.resolve("/tmp"),
     },
   ]);
   assert.equal(
@@ -269,9 +269,9 @@ test("JSON as YAML bypasses format arguments and the next formatter", async () =
   assert.deepEqual(calls, [
     {
       command: "yamark",
-      args: ["to-yaml", "--stdin-file-path", "/tmp/data.json5"],
+      args: ["to-yaml", "--stdin-file-path", path.resolve("/tmp/data.json5")],
       input: "{answer:42}\n",
-      cwd: "/tmp",
+      cwd: path.resolve("/tmp"),
     },
   ]);
   assert.equal(vscode.window.shownTextDocuments[0].document.languageId, "yaml");
@@ -307,7 +307,7 @@ test("JSON as YAML ignores unrelated language-scoped formatter settings", async 
   assert.deepEqual(calls[0].args, [
     "to-yaml",
     "--stdin-file-path",
-    "/tmp/data.json5",
+    path.resolve("/tmp/data.json5"),
   ]);
 });
 
@@ -395,7 +395,7 @@ test("JSONL YAML preview refreshes after its source file is appended", async () 
         : "---\nid: 1\n";
     },
     watchPath: (sourcePath, onChange) => {
-      assert.equal(sourcePath, "/tmp/events.jsonl");
+      assert.equal(sourcePath, path.resolve("/tmp/events.jsonl"));
       directFileChange = onChange;
       return {
         close() {},
@@ -925,13 +925,13 @@ test("opens the filtered index beside an unstaged working-tree file", async () =
       command: "/usr/bin/git",
       args: ["check-attr", "filter", "--", "docs/post.md"],
       input: "",
-      cwd: repositoryRoot,
+      cwd: path.resolve(repositoryRoot),
     },
     {
       command: "/usr/bin/git",
       args: ["cat-file", "--filters", ":docs/post.md"],
       input: "",
-      cwd: repositoryRoot,
+      cwd: path.resolve(repositoryRoot),
     },
   ]);
 });
@@ -1163,9 +1163,9 @@ test("formats a document through yamark stdin mode", async () => {
   assert.deepEqual(calls, [
     {
       command: "yamark",
-      args: ["format", "--stdin-file-path", "/tmp/config.yaml"],
+      args: ["format", "--stdin-file-path", path.resolve("/tmp/config.yaml")],
       input: "items: [a,b]\n",
-      cwd: "/tmp",
+      cwd: path.resolve("/tmp"),
     },
   ]);
 });
@@ -1342,15 +1342,15 @@ test("configured stdin next formatter executable runs after yamark", async () =>
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0], {
     command: yamarkCommand,
-    args: ["format", "--stdin-file-path", "/tmp/analysis.R"],
+    args: ["format", "--stdin-file-path", path.resolve("/tmp/analysis.R")],
     input: "call(\n  x\n)\n",
-    cwd: "/tmp",
+    cwd: path.resolve("/tmp"),
   });
   assert.deepEqual(calls[1], {
     command: "/extensions/air/bundled/bin/air",
-    args: ["format", "--stdin-file-path", "/tmp/analysis.R"],
+    args: ["format", "--stdin-file-path", path.resolve("/tmp/analysis.R")],
     input: "call(\n  yamarked = TRUE\n)\n",
-    cwd: "/tmp",
+    cwd: path.resolve("/tmp"),
   });
   assert.equal(edits.length, 1);
   assert.equal(edits[0].newText, "call(\n  yamarked = TRUE\n)\n");
@@ -1431,7 +1431,7 @@ test("documented Ruff executable setting runs after yamark", async () => {
       if (call.command === yamarkCommand) {
         return "x=1\n";
       }
-      if (call.command.endsWith("/bundled/libs/bin/ruff")) {
+      if (call.command.endsWith(`/bundled/libs/bin/ruff${process.platform === "win32" ? ".exe" : ""}`)) {
         assert.equal(call.input, "x=1\n");
         return "x = 1\n";
       }
@@ -1443,12 +1443,12 @@ test("documented Ruff executable setting runs after yamark", async () => {
 
   assert.deepEqual(calls.map((call) => call.command), [
     yamarkCommand,
-    "/extensions/ruff/bundled/libs/bin/ruff",
+    `/extensions/ruff/bundled/libs/bin/ruff${process.platform === "win32" ? ".exe" : ""}`,
   ]);
   assert.deepEqual(calls[1].args, [
     "format",
     "--stdin-filename",
-    "/tmp/analysis.py",
+    path.resolve("/tmp/analysis.py"),
     "-",
   ]);
   assert.equal(edits.length, 1);
@@ -1685,9 +1685,9 @@ test("format selection command formats the selected text as markdown", async () 
   assert.deepEqual(calls, [
     {
       command: "yamark",
-      args: ["format", "--stdin-file-path", "/tmp/prompt.py.md"],
+      args: ["format", "--stdin-file-path", path.resolve("/tmp/prompt.py.md")],
       input: "- a\n- b",
-      cwd: "/tmp",
+      cwd: path.resolve("/tmp"),
     },
   ]);
   assert.equal(appliedEdits.length, 1);
@@ -1855,9 +1855,9 @@ test("quarto executable chain skips yamark embedded formatters", async () => {
     "format",
     "--skip-embedded-formatters",
     "--stdin-file-path",
-    "/tmp/notes.qmd",
+    path.resolve("/tmp/notes.qmd"),
   ]);
-  assert.deepEqual(calls[1].args, ["--stdin-file-path", "/tmp/notes.qmd"]);
+  assert.deepEqual(calls[1].args, ["--stdin-file-path", path.resolve("/tmp/notes.qmd")]);
   assert.equal(edits.length, 1);
   assert.equal(
     edits[0].newText,
@@ -1895,7 +1895,7 @@ test("quarto runs embedded formatters when no executable chain is configured", a
   assert.deepEqual(calls[0].args, [
     "format",
     "--stdin-file-path",
-    "/tmp/notes.qmd",
+    path.resolve("/tmp/notes.qmd"),
   ]);
 });
 

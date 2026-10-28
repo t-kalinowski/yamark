@@ -8811,7 +8811,7 @@ fn external_block_scalar_action(
     let (preamble, formatter_input) = crate::core::emit::split_renderer_preamble(&formatter_source);
     Ok(Some(match plugins.run(name, formatter_input, line)? {
         Some(mut formatted) => {
-            append_trailing_line_ending_if_missing(
+            crate::core::emit::append_trailing_line_ending_if_missing(
                 &mut formatted,
                 external_block_scalar_line_ending(source, scalar, options),
             );
@@ -8835,12 +8835,6 @@ fn external_block_scalar_line_ending(
         options.default_line_ending
     } else {
         line_ending
-    }
-}
-
-fn append_trailing_line_ending_if_missing(text: &mut String, line_ending: &str) {
-    if !text.is_empty() && !text.ends_with('\n') && !text.ends_with('\r') {
-        text.push_str(line_ending);
     }
 }
 
