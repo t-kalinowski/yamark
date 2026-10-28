@@ -373,7 +373,8 @@ fn benchmark_workdirs_follow_temp_environment() {
         ),
     ] {
         let dir = tempdir().unwrap();
-        let scratch = dir.path().join("custom temp");
+        // R's Unix runtime rejects spaces in its temporary directory.
+        let scratch = dir.path().join("custom-temp");
         fs::create_dir(&scratch).unwrap();
         let output = Command::new(python())
             .arg(script)
