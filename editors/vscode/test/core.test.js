@@ -1170,6 +1170,97 @@ test("formats a document through yamark stdin mode", async () => {
   ]);
 });
 
+for (const command of ["yamark.formatDocument", "yamark.formatSelectionAsMarkdown"]) {
+  test(`${command} preserves edits made while the formatter is running`, async () => {
+    const document = fakeDocument("/tmp/notes.md", "Original   text.\n", "markdown", {
+      version: 1,
+    });
+    const editor = { document, selection: fakeSelection(0, document.text.length) };
+    const started = Promise.withResolvers();
+    const formatted = Promise.withResolvers();
+    const applied = [];
+    const vscode = fakeVscode({
+      documents: [document],
+      activeTextEditor: editor,
+      onApplyEdit: (edit) => applied.push(edit),
+    });
+    const api = createYamarkExtension(vscode, {
+      runProcess: async () => {
+        started.resolve();
+        return formatted.promise;
+      },
+    });
+    api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+    const pending = vscode.commands.executeCommand(command);
+    await started.promise;
+    document.text = "New user text.\n";
+    document.version += 1;
+    formatted.resolve("Original text.\n");
+    await pending;
+
+    assert.deepEqual(applied, []);
+    assert.equal(document.text, "New user text.\n");
+  });
+}
+
+test("format provider discards output for a changed document", async () => {
+  const document = fakeDocument("/tmp/notes.md", "Original   text.\n", "markdown", {
+    version: 1,
+  });
+  const started = Promise.withResolvers();
+  const formatted = Promise.withResolvers();
+  const api = createYamarkExtension(fakeVscode(), {
+    runProcess: async () => {
+      started.resolve();
+      return formatted.promise;
+    },
+  });
+
+  const pending = api.provideDocumentFormattingEdits(document);
+  await started.promise;
+  document.text = "New user text.\n";
+  document.version += 1;
+  formatted.resolve("Original text.\n");
+
+  assert.deepEqual(await pending, []);
+});
+
+test("format selection keeps the original range when the selection moves", async () => {
+  const document = fakeDocument("/tmp/notes.md", "First   text. Second text.\n", "markdown", {
+    version: 1,
+  });
+  const selection = fakeSelection(0, 13);
+  const editor = { document, selection };
+  const started = Promise.withResolvers();
+  const formatted = Promise.withResolvers();
+  const applied = [];
+  const vscode = fakeVscode({
+    documents: [document],
+    activeTextEditor: editor,
+    onApplyEdit: (edit) => applied.push(edit),
+  });
+  const api = createYamarkExtension(vscode, {
+    runProcess: async (call) => {
+      assert.equal(call.input, "First   text.");
+      started.resolve();
+      return formatted.promise;
+    },
+  });
+  api.activate({ extensionPath: "/extension", subscriptions: [] });
+
+  const pending = vscode.commands.executeCommand("yamark.formatSelectionAsMarkdown");
+  await started.promise;
+  editor.selection = fakeSelection(14, 26);
+  formatted.resolve("First text.");
+  await pending;
+
+  assert.equal(applied.length, 1);
+  assert.deepEqual(applied[0].edits, [
+    { uri: document.uri, range: selection, newText: "First text." },
+  ]);
+});
+
 test("resolves relative document paths before invoking yamark", async () => {
   const relativePath = "./yaml-defense/index.qmd";
   const resolvedPath = path.resolve(relativePath);

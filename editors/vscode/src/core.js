@@ -111,11 +111,16 @@ function createYamarkExtension(vscode, runtime = {}) {
       return [];
     }
 
+    const originalVersion = document.version;
     const originalText = document.getText();
 
     try {
       const formatted = await formatDocumentText(document, originalText, op);
 
+      if (document.version !== originalVersion) {
+        logProviderReturn(op, ownsOp, 0, "document-changed");
+        return [];
+      }
       if (formatted === originalText) {
         logProviderReturn(op, ownsOp, 0, "no-change", formatted);
         return [];
@@ -137,8 +142,15 @@ function createYamarkExtension(vscode, runtime = {}) {
       return;
     }
     const op = logger.startOp("format");
+    const originalVersion = target.version;
     try {
       const edits = await provideDocumentFormattingEdits(target, { op, trigger: "command" });
+      // The command resumes after the provider; keep its result tied to the
+      // same document revision until the edit is submitted.
+      if (target.version !== originalVersion) {
+        op.end("done applied.edits=0 reason=document-changed");
+        return;
+      }
       if (edits.length === 0) {
         op.end("done applied.edits=0");
         return;
@@ -168,7 +180,9 @@ function createYamarkExtension(vscode, runtime = {}) {
     }
 
     const document = target.document;
-    const originalText = document.getText(target.selection);
+    const originalVersion = document.version;
+    const selection = target.selection;
+    const originalText = document.getText(selection);
     const op = logger.startOp("format-selection");
     try {
       op.log(documentLogLine(document, "selection-command"));
@@ -187,13 +201,18 @@ function createYamarkExtension(vscode, runtime = {}) {
         },
       );
 
+      if (document.version !== originalVersion) {
+        logSelectionReturn(op, 0, "document-changed");
+        op.end("done applied.edits=0 reason=document-changed");
+        return;
+      }
       if (formatted === originalText) {
         logSelectionReturn(op, 0, "no-change", formatted);
         op.end("done applied.edits=0 reason=no-change");
         return;
       }
 
-      const edit = vscode.TextEdit.replace(target.selection, formatted);
+      const edit = vscode.TextEdit.replace(selection, formatted);
       await withProviderSuppression(op, "apply-selection-edits", () =>
         applyDocumentEdits(vscode, document, [edit], op),
       );
