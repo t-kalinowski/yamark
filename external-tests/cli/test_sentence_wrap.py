@@ -113,8 +113,31 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(
 @pytest.mark.parametrize(
     ("case_name", "wrap"),
     [
+        ("markdown_column_preserved_html_literals.case", "72"),
+        ("markdown_column_preserved_html_literals.case", "12"),
+        ("markdown_column_preserved_html_literals.case", "sentence:12"),
+        ("markdown_column_math_sensitive_emphasis.case", "24"),
+        ("markdown_column_math_sensitive_emphasis.case", "12"),
+        ("markdown_column_math_sensitive_emphasis.case", "sentence:12"),
+        ("markdown_column_quoted_html_escapes.case", "72"),
+        ("markdown_column_quoted_html_escapes.case", "12"),
+        ("markdown_column_quoted_html_escapes.case", "sentence:12"),
+        ("markdown_column_final_marker_escapes.case", "12"),
+        ("markdown_column_final_marker_escapes.case", "sentence:12"),
+        ("markdown_column_emphasis_math_escapes.case", "72"),
+        ("markdown_column_emphasis_math_escapes.case", "12"),
+        ("markdown_column_emphasis_math_escapes.case", "sentence:12"),
+        ("markdown_column_hard_break_marker_escapes.case", "12"),
+        ("markdown_column_hard_break_asterisk_escapes.case", "72"),
+        ("markdown_column_trailing_asterisk_repairs.case", "23"),
+        ("markdown_column_trailing_asterisk_repairs.case", "12"),
+        ("markdown_column_trailing_asterisk_repairs.case", "sentence:12"),
+        ("markdown_column_nested_headings.case", "72"),
+        ("markdown_column_nested_headings.case", "sentence"),
+        ("markdown_sentence_column_nested_headings.case", "sentence:12"),
         ("markdown_sentence_column_emphasis_repairs.case", "sentence:72"),
         ("markdown_column_emphasis_repairs.case", "12"),
+        ("markdown_column_opaque_html_escapes.case", "72"),
         ("markdown_column_raw_tex_escapes.case", "72"),
         ("markdown_column_raw_tex_escapes.case", "sentence:12"),
         ("markdown_column_asterisk_escapes.case", "12"),
@@ -122,6 +145,10 @@ def test_parenthesized_marker_escapes_preserve_math_meaning(
         ("markdown_sentence_column_math_contents.case", "sentence:12"),
         ("markdown_sentence_setext_candidates.case", "sentence"),
         ("markdown_sentence_setext_candidates.case", "sentence:12"),
+        ("markdown_sentence_reference_boundaries.case", "sentence"),
+        ("markdown_sentence_definition_markers.case", "sentence"),
+        ("markdown_sentence_definition_markers.case", "sentence:12"),
+        ("markdown_sentence_definition_markers.case", "12"),
     ],
 )
 def test_marker_repair_preserves_inline_and_block_meaning(
@@ -149,17 +176,23 @@ def test_asterisk_boundaries_keep_column_roundtrips(width: int, wrap: str) -> No
         assert markdown_ast(output, "markdown") == expected
 
 
-def test_shortcode_arguments_do_not_change_sentence_wrap_on_second_pass(
+@pytest.mark.parametrize(
+    ("case_name", "wrap"),
+    [
+        ("markdown_sentence_shortcode_math_opener.case", "sentence:12"),
+        ("markdown_column_final_marker_escapes.case", "12"),
+    ],
+)
+def test_formatted_transcripts_are_stable_and_pass_check(
     tmp_path: Path,
+    case_name: str,
+    wrap: str,
 ) -> None:
-    case = (
-        Path(os.environ["YAMARK_ROOT"])
-        / "tests/cases/markdown_sentence_shortcode_math_opener.case"
-    ).read_text()
+    case = (Path(os.environ["YAMARK_ROOT"]) / "tests/cases" / case_name).read_text()
     source = case.split("-- stdin\n")[1].split("-- stdout\n")[0]
     expected = case.split("-- stdout\n")[1].split("-- stderr\n")[0]
-    assert format_markdown(source, "sentence:12") == expected
-    assert format_markdown(expected, "sentence:12") == expected
+    assert format_markdown(source, wrap) == expected
+    assert format_markdown(expected, wrap) == expected
     path = tmp_path / "input.md"
     path.write_text(expected)
     result = subprocess.run(
@@ -168,7 +201,7 @@ def test_shortcode_arguments_do_not_change_sentence_wrap_on_second_pass(
             "format",
             "--check",
             "--wrap",
-            "sentence:12",
+            wrap,
             str(path),
         ],
         capture_output=True,

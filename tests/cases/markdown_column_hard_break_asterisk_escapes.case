@@ -1,0 +1,35 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+Note \*\
+*Emphasis* text.
+
+Note \* \
+*Emphasis* text.
+
+Note \*  
+*Emphasis* text.
+
+Note \*\
+ordinary prose.
+
+Note \*\
+`*` text.
+-- stdout
+Note \*\
+*Emphasis* text.
+
+Note \* \
+*Emphasis* text.
+
+Note \* \
+*Emphasis* text.
+
+Note *\
+ordinary prose.
+
+Note *\
+`*` text.
+-- stderr
+-- status
+0

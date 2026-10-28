@@ -1,0 +1,51 @@
+-- args
+format --stdin-file-path input.md --wrap 72
+-- stdin
+Before   `a  
+b` <!-- comment --> after. 
+
+Before <!-- comment --> `a  
+b` after.
+
+Before `a	
+b` <input value="a > \- b"> after.
+
+> Before `a  
+> b` <!-- comment --> after.
+
+- Before `a  
+  b` <!-- comment --> after.
+
+::: {.note}
+Before `a  
+b` <!-- comment --> after.
+:::
+
+Outside   `a  
+b` after.
+-- stdout
+Before   `a  
+b` <!-- comment --> after.
+
+Before <!-- comment --> `a  
+b` after.
+
+Before `a	
+b` <input value="a > \- b"> after.
+
+> Before `a  
+> b` <!-- comment --> after.
+
+- Before `a  
+  b` <!-- comment --> after.
+
+::: {.note}
+Before `a  
+b` <!-- comment --> after.
+:::
+
+Outside `a  
+b` after.
+-- stderr
+-- status
+0

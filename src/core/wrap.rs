@@ -393,35 +393,102 @@ pub(crate) fn markdown_multiline_link_destination_spans(
 pub(crate) fn markdown_multiline_literal_spans(
     source: &str,
 ) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
-    let mut scan = InlineScan::new(source);
-    let mut index = 0;
-    std::iter::from_fn(move || {
-        while index < source.len() {
-            let byte = source.as_bytes()[index];
-            if escaped_at(source, index) {
+    let mut scan = MarkdownMultilineInlineScan::new(source);
+    std::iter::from_fn(move || scan.next_literal_before(source.len()))
+}
+
+// Query in source order and skip confirmed raw blocks so their delimiters
+// cannot pair with inline content in later list items.
+pub(crate) struct MarkdownMultilineInlineScan<'a> {
+    scan: InlineScan<'a>,
+    index: usize,
+    literal_end: usize,
+    link_index: usize,
+    link_end: usize,
+}
+
+impl<'a> MarkdownMultilineInlineScan<'a> {
+    pub(crate) fn new(source: &'a str) -> Self {
+        Self {
+            scan: InlineScan::new(source),
+            index: 0,
+            literal_end: 0,
+            link_index: 0,
+            link_end: 0,
+        }
+    }
+
+    pub(crate) fn covers(&mut self, offset: usize) -> bool {
+        assert!(offset <= self.scan.text.len());
+        if offset < self.literal_end {
+            return true;
+        }
+        while let Some(span) = self.next_literal_before(offset) {
+            if span.contains(&offset) {
+                self.literal_end = span.end;
+                return true;
+            }
+        }
+
+        let source = self.scan.text;
+        if offset < self.link_end {
+            return true;
+        }
+        while self.link_index + 2 < offset {
+            let index = self.link_index;
+            self.link_index += 1;
+            if source.as_bytes()[index..].starts_with(b"](") {
+                let start = index + 2;
+                if let Some(end) = find_simple_destination_close(source, start)
+                    && source[start..end].contains(['\n', '\r'])
+                {
+                    self.link_end = self.link_end.max(end);
+                    if offset < self.link_end {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub(crate) fn skip_to(&mut self, offset: usize) {
+        assert!(offset <= self.scan.text.len());
+        self.index = offset;
+        self.literal_end = offset;
+        self.link_index = offset;
+        self.link_end = offset;
+    }
+
+    fn next_literal_before(&mut self, limit: usize) -> Option<std::ops::Range<usize>> {
+        let source = self.scan.text;
+        while self.index < limit {
+            let byte = source.as_bytes()[self.index];
+            if escaped_at(source, self.index) {
                 // An escaped run cannot become an opener partway through it.
-                index += if byte == b'`' {
-                    delimiter_run_len_at(source, index, b'`')
+                self.index += if byte == b'`' {
+                    delimiter_run_len_at(source, self.index, b'`')
                 } else {
-                    source[index..].chars().next().unwrap().len_utf8()
+                    source[self.index..].chars().next().unwrap().len_utf8()
                 };
                 continue;
             }
-            if let Some(end) = scan.literal_span_end(index) {
-                let start = index;
-                index = end;
+            if let Some(end) = self.scan.literal_span_end(self.index) {
+                let start = self.index;
+                self.index = end;
                 if byte == b'`' {
-                    index += delimiter_run_len_at(source, index, b'`');
+                    self.index += delimiter_run_len_at(source, self.index, b'`');
                 }
                 if source[start..end].contains(['\n', '\r']) {
                     return Some(start..end);
                 }
             } else if byte == b'`' {
-                index += delimiter_run_len_at(source, index, b'`');
-            } else if let Some(end) = raw_semantics_protected_token_end(&mut scan, index) {
-                index = end;
+                self.index += delimiter_run_len_at(source, self.index, b'`');
+            } else if let Some(end) = raw_semantics_protected_token_end(&mut self.scan, self.index)
+            {
+                self.index = end;
             } else {
-                index += source[index..]
+                self.index += source[self.index..]
                     .chars()
                     .next()
                     .expect("source character")
@@ -429,7 +496,7 @@ pub(crate) fn markdown_multiline_literal_spans(
             }
         }
         None
-    })
+    }
 }
 
 pub fn normalize_heading_content(source: &str) -> String {
@@ -1585,10 +1652,23 @@ fn markdown_block_start_line(line: &str) -> bool {
             || trimmed.starts_with('|')
             || trimmed.starts_with("Table:")
             || trimmed.starts_with(':')
+            || trimmed.starts_with('~')
+                && trimmed
+                    .as_bytes()
+                    .get(1)
+                    .is_some_and(u8::is_ascii_whitespace)
             || trimmed.starts_with("<!--")
             || markdown_html_block_start_line(trimmed)
-            || trimmed.starts_with("[") && trimmed.contains("]:")
+            || markdown_reference_definition_start(trimmed)
             || markdown_list_marker(trimmed).is_some())
+}
+
+pub(crate) fn markdown_reference_definition_start(text: &str) -> bool {
+    // Parsing and wrap safety must agree: the colon follows the label's
+    // matching bracket, not a later `]:` in ordinary prose.
+    text.starts_with('[')
+        && find_balanced_square_close(text, 1)
+            .is_some_and(|close| text.as_bytes().get(close + 1) == Some(&b':'))
 }
 
 fn setext_underline_line(line: &str) -> bool {
@@ -1771,7 +1851,7 @@ fn thematic_break_line(trimmed: &str) -> bool {
 fn footnote_definition(source: &str) -> bool {
     let trimmed = source.trim_start();
     let indent = source.len() - trimmed.len();
-    indent <= 3 && trimmed.starts_with("[^") && trimmed.contains("]:")
+    indent <= 3 && trimmed.starts_with("[^") && markdown_reference_definition_start(trimmed)
 }
 
 fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
@@ -2888,18 +2968,24 @@ impl<'a> TokenLine<'a> {
 
 // Interpret punctuation only in prose, reusing the existing opaque boundaries.
 // Text inside emphasis, HTML elements and ordinary braces remains visible.
-fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
+fn inline_wrap_safety(text: &str, literals: &[Span]) -> Option<(Option<usize>, bool)> {
     let check_math = text.contains("\\(");
     let check_asterisks = text.match_indices('*').nth(1).is_some();
-    if !check_math && !check_asterisks {
-        return (None, false);
+    let check_html = text.contains("<!")
+        || text.contains("<?")
+        || text.contains('<') && text.contains(['"', '\'']);
+    if !check_math && !check_asterisks && !check_html {
+        return Some((None, false));
     }
     let mut scan = InlineScan::new(text);
     let mut index = 0;
     let mut unmatched_math_opener = None;
     let mut asterisks = 0;
+    let mut emphasis_end = 0;
     while let Some(offset) = text[index..].find(['`', '$', '\\', '<', '[', '!', '{', '*']) {
-        if (!check_math || unmatched_math_opener.is_some()) && (!check_asterisks || asterisks >= 2)
+        if !check_html
+            && (!check_math || unmatched_math_opener.is_some())
+            && (!check_asterisks || asterisks >= 2)
         {
             break;
         }
@@ -2924,6 +3010,16 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
                     .count();
             }
             index = span.end;
+        } else if check_html
+            && !escaped_at(text, index)
+            && (text[index..].starts_with("<!")
+                || text[index..].starts_with("<?")
+                || inline_html_tag_has_quoted_gt(text, index))
+        {
+            // Preserve raw HTML openers, including incomplete or prose uses,
+            // and ambiguous tags with a quoted `>`. Their contents cannot
+            // safely use Markdown marker unescaping.
+            return None;
         } else if !escaped_at(text, index)
             && let Some(end) = commonmark_autolink_span_end(text, index)
                 .or_else(|| inline_html_tag_span_end(text, index))
@@ -2964,19 +3060,37 @@ fn inline_wrap_safety(text: &str, literals: &[Span]) -> (Option<usize>, bool) {
         } else if text.as_bytes()[index] == b'`' {
             index += delimiter_run_len_at(text, index, b'`');
         } else {
+            // Ignore simple matched emphasis, but keep scanning its contents
+            // for math and HTML. A preceding loose star can capture a closer
+            // after reflow; nested stars also need the conservative guard.
+            if asterisks == 0
+                && index >= emphasis_end
+                && text.as_bytes()[index] == b'*'
+                && let Some(span) = emphasis_span_at(&mut scan, index)
+                && !text[index + span.run..span.close].contains('*')
+            {
+                emphasis_end = span.end;
+            }
+            // Count spaced stars too: Pandoc can pair them after column reflow
+            // puts a newline after one. Both modes need the same roundtrip guard.
             if text.as_bytes()[index] == b'*'
+                && index >= emphasis_end
                 && (!escaped_at(text, index)
-                    // Column reflow may unescape a standalone `\*`. Count it
-                    // in both modes to preserve roundtrips, but not `\*.`.
+                    // Column reflow may unescape a standalone `\*`, including
+                    // one before a compact hard break. Count it in both modes
+                    // for roundtrips, but not punctuation such as `\*.`.
                     || (index == 1 || text.as_bytes()[index - 2].is_ascii_whitespace())
-                        && text.as_bytes().get(index + 1).is_none_or(u8::is_ascii_whitespace))
+                        && (text.as_bytes().get(index + 1).is_none_or(u8::is_ascii_whitespace)
+                            || text[index + 1..]
+                                .strip_prefix('\\')
+                                .is_some_and(|rest| rest.starts_with(['\r', '\n']))))
             {
                 asterisks = (asterisks + 1).min(2);
             }
             index += 1;
         }
     }
-    (unmatched_math_opener, asterisks >= 2)
+    Some((unmatched_math_opener, asterisks >= 2))
 }
 
 struct TokenLineWriter<'out, 'prefix> {
@@ -3001,9 +3115,10 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
         literals: &'prefix [Span],
         first_prefix: &'prefix str,
         continuation_prefix: &'prefix str,
-    ) -> Self {
-        let (unmatched_math_opener, preserve_asterisk_escapes) = inline_wrap_safety(text, literals);
-        Self {
+    ) -> Option<Self> {
+        let (unmatched_math_opener, preserve_asterisk_escapes) =
+            inline_wrap_safety(text, literals)?;
+        Some(Self {
             out,
             tokens,
             text,
@@ -3015,7 +3130,7 @@ impl<'out, 'prefix> TokenLineWriter<'out, 'prefix> {
             check_block_starts: false,
             safety_line: String::new(),
             line_count: 0,
-        }
+        })
     }
 
     fn overlaps_literal(&self, token: &str) -> bool {
@@ -3101,6 +3216,19 @@ fn asterisk_run(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|byte| byte == b'*')
 }
 
+fn trailing_asterisk_may_open(text: &str) -> bool {
+    if !text.ends_with('*') || escaped_at(text, text.len() - 1) {
+        return false;
+    }
+    // A closer must be valid with and without backslash math. Otherwise a
+    // newline can turn its literal star into an opener in Pandoc Markdown.
+    let mut scan = InlineScan::new(text);
+    emphasis_span_end(&mut scan, 0) != Some(text.len())
+        || text.contains("\\(")
+            && emphasis_span_at_with_math(&mut scan, 0, false)
+                .is_none_or(|span| span.end != text.len())
+}
+
 struct WrapLineBuffer<'a> {
     pending: Option<TokenLine<'a>>,
     current: TokenLine<'a>,
@@ -3133,19 +3261,19 @@ impl<'a> WrapLineBuffer<'a> {
     }
 
     fn commit_current(&mut self, writer: &mut TokenLineWriter<'_, '_>) -> Option<()> {
-        // Pandoc can treat an asterisk before a newline as an emphasis opener.
-        // Keep a bare asterisk with the following word when another can pair.
+        // Pandoc can pair a trailing literal asterisk across a newline. Keep
+        // it with the following text when another asterisk could pair.
         if writer.preserve_asterisk_escapes
             && self
                 .current
                 .tokens
                 .last()
-                .is_some_and(|token| asterisk_run(token.text()))
+                .is_some_and(|token| trailing_asterisk_may_open(token.text()))
         {
             return Some(());
         }
         // A bare ordered marker can introduce a list when more text follows
-        // on the next line. A final word such as `div.` needs no such repair.
+        // on the next line.
         self.repair_current_line_if_markdown_block_start(
             &mut writer.safety_line,
             true,
@@ -3161,6 +3289,15 @@ impl<'a> WrapLineBuffer<'a> {
     }
 
     fn finish(mut self, writer: &mut TokenLineWriter<'_, '_>, suffix: &'static str) -> Option<()> {
+        // The last token has no next iteration to check a bare marker. Apply
+        // the same check to escaped and unescaped inputs, including at EOF.
+        // A compact backslash cannot complete a list prefix.
+        let include_marker_only = suffix != "\\";
+        self.repair_current_line_if_markdown_block_start(
+            &mut writer.safety_line,
+            include_marker_only,
+            writer.preserve_asterisk_escapes,
+        )?;
         if !self.current.is_empty() {
             if let Some(pending) = self.pending.take() {
                 writer.write_line(&pending, "")?;
@@ -3250,7 +3387,9 @@ impl<'a> WrapLineBuffer<'a> {
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
-            if preserve_asterisk_escapes && asterisk_run(previous.tokens[split - 1].text()) {
+            if preserve_asterisk_escapes
+                && trailing_asterisk_may_open(previous.tokens[split - 1].text())
+            {
                 continue;
             }
             let suffix_width = previous.suffix_width(split);
@@ -3297,13 +3436,15 @@ fn write_wrapped_tokens_with_first_width(
 ) -> Option<()> {
     let mut lines = WrapLineBuffer::new(first_width, continuation_width, sentence_wrap);
     for (index, mut token) in tokens.iter(writer.unmatched_math_opener).enumerate() {
-        // More text follows, so a bare ordered marker needs its escape before
-        // measuring whether this next token fits on the same line.
-        lines.repair_current_line_if_markdown_block_start(
-            &mut writer.safety_line,
-            true,
-            writer.preserve_asterisk_escapes,
-        )?;
+        // Sentence layout already checked bare markers after the last token.
+        // Column layout needs this check before measuring the next token.
+        if !sentence_wrap {
+            lines.repair_current_line_if_markdown_block_start(
+                &mut writer.safety_line,
+                true,
+                writer.preserve_asterisk_escapes,
+            )?;
+        }
         let literal = writer.overlaps_literal(token.text());
         // Column layout may have escaped the previous period. Decide whether
         // it ends a sentence using the text that will actually be written.
@@ -3348,9 +3489,9 @@ fn write_wrapped_tokens_with_first_width(
         // Column layout can remove a sentence-start escape once the marker is
         // back inside prose. Keep escapes at the start of a paragraph or hard
         // break, and let the existing column repair avoid new block starts.
+        // Reflow can make spaced asterisks form emphasis across a newline.
+        // Retain their escapes when another asterisk could pair with them.
         if !sentence_wrap && index > 0 && !literal {
-            // Reflow can make spaced asterisks form emphasis across a newline.
-            // Retain their escapes when another asterisk could pair with them.
             token.remove_literal_marker_escape(writer.preserve_asterisk_escapes);
         }
         if token.width > lines.width
@@ -3721,6 +3862,22 @@ fn prepare_prefixed_markdown_lines(
     continuation_prefix: &str,
     preserve_lines: bool,
 ) -> Draft {
+    // Preserve authored headings in container bodies before inline normalization
+    // or marker repair can remove an escape or join an underline to its title.
+    if lines.iter().any(|(body, _)| {
+        let trimmed = body.trim_start();
+        atx_heading_start(trimmed) || setext_underline_line(trimmed)
+    }) {
+        let mut draft = Draft::new();
+        let mut prefix = first_prefix;
+        for (body, newline) in lines {
+            draft.push_str(source, prefix);
+            draft.push_str(source, body);
+            draft.push_str(source, newline);
+            prefix = continuation_prefix;
+        }
+        return draft;
+    }
     let mut content = String::with_capacity(
         lines
             .iter()
@@ -3834,6 +3991,24 @@ fn inline_html_tag_span_end(text: &str, index: usize) -> Option<usize> {
         return None;
     }
     text[index..].find('>').map(|close| index + close + 1)
+}
+
+fn inline_html_tag_has_quoted_gt(text: &str, index: usize) -> bool {
+    let Some(end) = inline_html_tag_span_end(text, index) else {
+        return false;
+    };
+    // Existing tag recognition stops at the first `>`. An open quote there
+    // makes the boundary ambiguous; preserve the paragraph instead of editing
+    // attribute contents as prose.
+    let mut quote = None;
+    for byte in text[index..end].bytes() {
+        match (quote, byte) {
+            (None, b'\'' | b'"') => quote = Some(byte),
+            (Some(open), close) if open == close => quote = None,
+            _ => {}
+        }
+    }
+    quote.is_some()
 }
 
 fn normalize_supported_links_and_images(source: &str) -> Cow<'_, str> {
@@ -4280,6 +4455,14 @@ fn emphasis_span_end(scan: &mut InlineScan<'_>, start: usize) -> Option<usize> {
 }
 
 fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisSpan> {
+    emphasis_span_at_with_math(scan, start, true)
+}
+
+fn emphasis_span_at_with_math(
+    scan: &mut InlineScan<'_>,
+    start: usize,
+    backslash_math: bool,
+) -> Option<EmphasisSpan> {
     let text = scan.text;
     if escaped_at(text, start) {
         return None;
@@ -4305,7 +4488,10 @@ fn emphasis_span_at(scan: &mut InlineScan<'_>, start: usize) -> Option<EmphasisS
     let mut opaque_end = search;
     while search < text.len() {
         let byte = text.as_bytes()[search];
-        if search >= opaque_end && matches!(byte, b'`' | b'$') {
+        // Keep matched math opaque while searching for the emphasis closer,
+        // including Pandoc's backslash math.
+        if search >= opaque_end && (matches!(byte, b'`' | b'$') || backslash_math && byte == b'\\')
+        {
             if let Some(end) = scan.literal_span_end(search) {
                 search = end;
                 continue;

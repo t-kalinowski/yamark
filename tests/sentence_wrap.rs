@@ -127,6 +127,58 @@ fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
             MarkdownWrap::SentenceAndColumn(12),
         ),
         (
+            include_str!("cases/markdown_column_preserved_html_literals.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_column_math_sensitive_emphasis.case"),
+            MarkdownWrap::Column(24),
+        ),
+        (
+            include_str!("cases/markdown_column_quoted_html_escapes.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_column_final_marker_escapes.case"),
+            MarkdownWrap::Column(12),
+        ),
+        (
+            include_str!("cases/markdown_column_emphasis_math_escapes.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_column_hard_break_marker_escapes.case"),
+            MarkdownWrap::Column(12),
+        ),
+        (
+            include_str!("cases/markdown_column_hard_break_asterisk_escapes.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_column_trailing_asterisk_repairs.case"),
+            MarkdownWrap::Column(23),
+        ),
+        (
+            include_str!("cases/markdown_column_nested_headings.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
+            include_str!("cases/markdown_sentence_column_nested_headings.case"),
+            MarkdownWrap::SentenceAndColumn(12),
+        ),
+        (
+            include_str!("cases/markdown_sentence_definition_markers.case"),
+            MarkdownWrap::Sentence,
+        ),
+        (
+            include_str!("cases/markdown_sentence_reference_boundaries.case"),
+            MarkdownWrap::Sentence,
+        ),
+        (
+            include_str!("cases/markdown_column_opaque_html_escapes.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
             include_str!("cases/markdown_sentence_column_emphasis_repairs.case"),
             MarkdownWrap::SentenceAndColumn(72),
         ),

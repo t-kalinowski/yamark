@@ -1,0 +1,36 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Opening. [x] text ]: still prose.
+
+Opening. [x]: target. Last sentence.
+
+Opening. [x\]]: target. Last sentence.
+
+Opening. [x\]] text ]: still prose.
+
+Opening. [^x] text ]: still prose.
+
+[ref]: https://example.com
+  "title   spacing"
+-- stdout
+Opening.
+[x] text ]: still prose.
+
+Opening. [x]: target.
+Last sentence.
+
+Opening. [x\]]: target.
+Last sentence.
+
+Opening.
+[x\]] text ]: still prose.
+
+Opening.
+[^x] text ]: still prose.
+
+[ref]: https://example.com
+  "title   spacing"
+-- stderr
+-- status
+0

@@ -1,0 +1,77 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+-   First.
+  - Second.
+ ~~~text
+alpha    beta
+ ~~~
+
+ - First.
+- Second.
+ ~~~text
+alpha    beta
+ ~~~
+
+ - First.
+- Second.
+ ```text
+alpha    beta
+ ```
+
+ - First.
+- Second.
+ <pre>
+alpha    beta
+ </pre>
+
+ - First.
+- Second.
+ <!--
+alpha    beta
+ -->
+
+ - First.
+- Second.
+ $$
+alpha    beta
+ $$
+-- stdout
+-   First.
+  - Second.
+ ~~~text
+alpha    beta
+ ~~~
+
+ - First.
+- Second.
+ ~~~text
+alpha    beta
+ ~~~
+
+ - First.
+- Second.
+ ```text
+alpha    beta
+ ```
+
+ - First.
+- Second.
+ <pre>
+alpha    beta
+ </pre>
+
+ - First.
+- Second.
+ <!--
+alpha    beta
+ -->
+
+ - First.
+- Second.
+ $$
+alpha    beta
+ $$
+-- stderr
+-- status
+0

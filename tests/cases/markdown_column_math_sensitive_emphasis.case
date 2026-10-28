@@ -1,0 +1,34 @@
+-- args
+format --stdin-file-path input.md --wrap 24
+-- stdin
+Text *use \(x^* + 2\) here* and *more*.
+
+Text **use \(x^** + 2\) here** and **more**.
+
+Text *use `\(x^*` + 2\) here* and *more*.
+
+Text *use $x^* + 2$ here* and *more*.
+
+Text *simple emphasis* and *more*.
+-- stdout
+Text
+*use \(x^* + 2\) here* and
+*more*.
+
+Text
+**use \(x^** + 2\) here** and
+**more**.
+
+Text
+*use `\(x^*` + 2\) here*
+and *more*.
+
+Text
+*use $x^* + 2$ here* and
+*more*.
+
+Text *simple emphasis*
+and *more*.
+-- stderr
+-- status
+0

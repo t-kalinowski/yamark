@@ -1,0 +1,66 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:12
+-- stdin
+> # Title \#
+
+- # Title \#
+
+> > ## Nested \#
+
+- Parent
+  > # Title \#
+
+- Parent
+  ## Title \#
+
+> Title
+> -----
+
+- Title
+  =====
+
+> > Title
+> > -----
+
+> Before. # still prose.
+
+- Before. # still prose.
+
+> #not a heading. Next sentence.
+-- stdout
+> # Title \#
+
+- # Title \#
+
+> > ## Nested \#
+
+- Parent
+  > # Title \#
+
+- Parent
+  ## Title \#
+
+> Title
+> -----
+
+- Title
+  =====
+
+> > Title
+> > -----
+
+> Before.
+> \# still
+> prose.
+
+- Before.
+  \# still
+  prose.
+
+> #not a
+> heading.
+> Next
+> sentence.
+-- stderr
+-- status
+0
