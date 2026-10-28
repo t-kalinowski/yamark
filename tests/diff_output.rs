@@ -24,7 +24,8 @@ fn diff_context_produces_applicable_patches() {
             .clone();
         Command::new("git")
             .current_dir(dir.path())
-            .args(["apply", "-"])
+            // Keep patch application byte-exact regardless of the user's Git settings.
+            .args(["-c", "core.autocrlf=false", "apply", "-"])
             .write_stdin(diff)
             .assert()
             .success();
