@@ -1,1 +1,11 @@
 <!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
+
+- Relative file, directory, and stdin paths now discover `yamark.toml` in ancestor directories above the working directory.
+- Diffs merge overlapping context so nearby changes produce applicable patches.
+- Git filter adoption and joining handle Unicode filenames and filenames that Git would quote in line-oriented output.
+- Git filter verification with `--repo` reads formatting configuration from the selected repository, including nested configuration files.
+- YAML flow layout accounts for required quotes around escaped numeric-looking strings, keeping the layout stable on a second formatting pass.
+
+## Editor integration
+
+Formatting discards pending results when the document changes. Selection formatting retains the range selected when the command started, so moving the selection while formatting does not replace a different range.
