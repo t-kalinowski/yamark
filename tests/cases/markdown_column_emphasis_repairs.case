@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+something * *** |
+
+Costs* *include taxes* (b) details.
+-- stdout
+something * *** |
+
+Costs* *include taxes*
+(b\)
+details.
+-- stderr
+-- status
+0

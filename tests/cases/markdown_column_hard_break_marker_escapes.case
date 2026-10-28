@@ -1,0 +1,46 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+- Ordinary 1\.  
+  more prose.
+
+- Ordinary 1\. \
+  more prose.
+
+- Ordinary 1\.\
+  more prose.
+
+- Ordinary 1\.
+
+- Brief 1\.  
+  done.
+
+Ordinary 1\.  
+more prose.
+-- stdout
+- Ordinary
+  1\. \
+  more
+  prose.
+
+- Ordinary
+  1\. \
+  more
+  prose.
+
+- Ordinary
+  1.\
+  more
+  prose.
+
+- Ordinary
+  1\.
+
+- Brief 1. \
+  done.
+
+Ordinary 1. \
+more prose.
+-- stderr
+-- status
+0

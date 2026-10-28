@@ -1,0 +1,35 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:12
+-- stdin
+- Opening sentence. First sentence. 2. More prose. Last sentence.
+
+- Opening sentence. First sentence. ii. More prose. Last sentence.
+
+- Opening. Next words. - more. Finish.
+-- stdout
+- Opening
+  sentence.
+  First
+  sentence.
+  2\. More
+  prose.
+  Last
+  sentence.
+
+- Opening
+  sentence.
+  First
+  sentence.
+  ii\. More
+  prose.
+  Last
+  sentence.
+
+- Opening.
+  Next
+  words.
+  \- more.
+  Finish.
+-- stderr
+-- status
+0

@@ -97,6 +97,11 @@ impl InlineSource {
                 index += 1;
                 continue;
             }
+            // Raw TeX environments have their own escaping and nesting rules.
+            // Preserve this inline block instead of repairing Markdown in it.
+            if rest.starts_with("\\begin{") {
+                return None;
+            }
             let atom = if let Some(end) = scan.literal_span_end(index) {
                 Some((end, Kind::Literal))
             } else if byte == b'`' {
@@ -165,6 +170,14 @@ impl InlineSource {
             normalize_links,
             simple: false,
         })
+    }
+
+    pub(super) fn literal_spans(&self) -> Box<[Span]> {
+        self.atoms
+            .iter()
+            .filter(|atom| matches!(atom.kind, Kind::Literal))
+            .map(|atom| atom.span.span())
+            .collect()
     }
 
     pub(super) fn normalize(

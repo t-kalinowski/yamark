@@ -429,19 +429,22 @@ fn markdown_preserves_non_ascii_whitespace_before_block_markers() {
 }
 
 #[test]
-fn markdown_wrapping_preserves_paragraphs_when_quote_marker_would_start_line() {
+fn markdown_wrapping_escapes_quote_markers_when_no_safe_break_fits() {
     let input = "preamble > marker remains prose after wrapping.\n";
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "9"],
         input,
     );
     assert_eq!(status, 0, "{stderr}");
-    assert_eq!(stdout, input);
+    assert_eq!(
+        stdout,
+        "preamble\n\\> marker\nremains\nprose\nafter\nwrapping.\n"
+    );
     assert_eq!(stderr, "");
 }
 
 #[test]
-fn markdown_wrapping_preserves_paragraphs_when_unordered_marker_would_start_line() {
+fn markdown_wrapping_escapes_unordered_markers_when_no_safe_break_fits() {
     for marker in ["+ ", "- ", "* "] {
         let input = format!("preamble {marker}marker remains prose after wrapping.\n");
         let (status, stdout, stderr) = run_stdin(
@@ -449,21 +452,33 @@ fn markdown_wrapping_preserves_paragraphs_when_unordered_marker_would_start_line
             &input,
         );
         assert_eq!(status, 0, "{stderr}");
-        assert_eq!(stdout, input);
+        assert_eq!(
+            stdout,
+            format!("preamble\n\\{marker}marker\nremains\nprose\nafter\nwrapping.\n")
+        );
         assert_eq!(stderr, "");
     }
 }
 
 #[test]
-fn markdown_wrapping_preserves_paragraphs_when_ordered_marker_would_start_line() {
-    for marker in ["1. ", "1) ", "a. ", "i. ", "(a) "] {
+fn markdown_wrapping_escapes_ordered_markers_when_no_safe_break_fits() {
+    for (marker, escaped_line) in [
+        ("1. ", "1\\. marker"),
+        ("1) ", "1\\) marker"),
+        ("a. ", "a\\. marker"),
+        ("i. ", "i\\. marker"),
+        ("(a) ", "(a\\)\nmarker"),
+    ] {
         let input = format!("preamble {marker}marker remains prose after wrapping.\n");
         let (status, stdout, stderr) = run_stdin(
             &["format", "--stdin-file-path", "input.md", "--wrap", "10"],
             &input,
         );
         assert_eq!(status, 0, "{stderr}");
-        assert_eq!(stdout, input);
+        assert_eq!(
+            stdout,
+            format!("preamble\n{escaped_line}\nremains\nprose\nafter\nwrapping.\n")
+        );
         assert_eq!(stderr, "");
     }
 }

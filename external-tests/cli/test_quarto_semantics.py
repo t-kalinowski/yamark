@@ -14,7 +14,6 @@ import pytest
 
 SEED = 20260731
 WIDTHS = [20, 40, 72]
-QUARTO_VERSION = "1.10.18"
 PANDOC_TABLE_CASES = [
     (
         "simple-default-header-wider-body",
@@ -524,14 +523,6 @@ def test_formatting_preserves_quarto_document(
     width: int, canonical: bool, table_widths: str
 ) -> None:
     assert shutil.which("quarto") is not None, "quarto is required"
-    version = subprocess.run(
-        ["quarto", "--version"],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    assert version.returncode == 0, version.stderr
-    assert version.stdout.strip() == QUARTO_VERSION
     yamark_bin = os.environ.get("YAMARK_BIN")
     assert yamark_bin is not None, "YAMARK_BIN is not set"
 

@@ -1,0 +1,32 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:32
+-- stdin
+- Version 1.12 ships now. 2. Later.
+
+- Choose first. b. Later.
+
+- Choose first. ii. Later.
+
+Safe first. This second sentence contains enough words to wrap.
+
+First. [link](url) text. Later [x]: text.
+-- stdout
+- Version 1.12 ships now.
+  2\. Later.
+
+- Choose first.
+  b\. Later.
+
+- Choose first.
+  ii\. Later.
+
+Safe first.
+This second sentence contains
+enough words to wrap.
+
+First.
+[link](url) text.
+Later [x]: text.
+-- stderr
+-- status
+0

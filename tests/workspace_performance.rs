@@ -1,23 +1,67 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::fs;
+use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use yamark::core::document::FormatOptions;
-use yamark::workspace::{FormatMode, format_paths};
+use yamark::core::document::{FormatOptions, MarkdownWrap};
+use yamark::workspace::{FormatMode, format_paths, format_source_for_path};
 
 struct PeakAllocator;
 
 static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
 static PEAK_BYTES: AtomicUsize = AtomicUsize::new(0);
+static ALLOCATED_BYTES: AtomicUsize = AtomicUsize::new(0);
 static ALLOCATION_LOCK: Mutex<()> = Mutex::new(());
 
 #[global_allocator]
 static GLOBAL: PeakAllocator = PeakAllocator;
 
 fn record_allocation(bytes: usize) {
+    ALLOCATED_BYTES.fetch_add(bytes, Ordering::Relaxed);
     let live = LIVE_BYTES.fetch_add(bytes, Ordering::Relaxed) + bytes;
     PEAK_BYTES.fetch_max(live, Ordering::Relaxed);
+}
+
+#[test]
+fn sentence_column_wrapping_does_not_copy_long_plain_sentences() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = format!("Opening. {}ordinary.\n", "ordinary ".repeat(8191));
+    let line = format!("{}ordinary\n", "ordinary ".repeat(7));
+    let expected = format!(
+        "Opening.\n{}{}ordinary.\n",
+        line.repeat(1023),
+        "ordinary ".repeat(7),
+    );
+    let mut allocated = Vec::new();
+    for wrap in [
+        MarkdownWrap::Column(72),
+        MarkdownWrap::SentenceAndColumn(72),
+    ] {
+        let source = input.clone();
+        let before = ALLOCATED_BYTES.load(Ordering::Relaxed);
+        let formatted = format_source_for_path(
+            Path::new("input.md"),
+            source,
+            FormatOptions {
+                markdown_wrap: wrap,
+                ..FormatOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        allocated.push(ALLOCATED_BYTES.load(Ordering::Relaxed) - before);
+        if matches!(wrap, MarkdownWrap::SentenceAndColumn(_)) {
+            assert_eq!(formatted.output, expected);
+        }
+    }
+    // A sentence break needs another line, not a copy of the following sentence.
+    assert!(
+        allocated[1] <= allocated[0] + input.len() / 2,
+        "column wrapping allocated {} bytes; combined wrapping allocated {} bytes",
+        allocated[0],
+        allocated[1],
+    );
 }
 
 unsafe impl GlobalAlloc for PeakAllocator {

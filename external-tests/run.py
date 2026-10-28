@@ -20,7 +20,7 @@
 #   uv run external-tests/run.py --suite smoke --suite snapshots
 #   uv run external-tests/run.py --suite cli/test_semantic_*.py
 #
-# Requires Quarto 1.10.18 on PATH for the Quarto semantic-equivalence suite.
+# Requires Quarto on PATH for the Quarto semantic-equivalence suite.
 #
 # Optional flags:
 #   --yamark-bin PATH   Use a specific yamark binary (defaults to target/debug/yamark).
