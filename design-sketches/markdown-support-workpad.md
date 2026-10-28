@@ -1,5 +1,9 @@
 # Markdown Support Gap Workpad
 
+This is a historical record of the June 2026 corpus investigation and completed
+work. See the [repository guides](../docs/README.md) and public tests for current
+contracts, and [Open work](../docs/TODO.md) for agreed follow-up work.
+
 This workpad turns trace findings from the book fixture corpus into an
 implementation checklist. Use it as a progress document: add a public CLI or
 public API regression test first, confirm it fails, implement one feature, then

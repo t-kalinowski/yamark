@@ -29,10 +29,21 @@ fn cli_cases() {
 
     for path in cases {
         let case = parse_case(&fs::read_to_string(&path).unwrap());
+        if !cfg!(unix)
+            && case
+                .git_fixture
+                .as_ref()
+                .is_some_and(|fixture| fixture.get("unix-index-files").is_some())
+        {
+            continue;
+        }
         let repo = case.git_fixture.as_ref().map(create_git_fixture);
         let mut command = Command::cargo_bin("yamark").unwrap();
         if let Some(repo) = &repo {
-            command.current_dir(repo.path());
+            let cwd = case.git_fixture.as_ref().unwrap()["cwd"]
+                .as_str()
+                .unwrap_or(".");
+            command.current_dir(repo.path().join(cwd));
         }
         command.args(split_args(&case.args));
         command.write_stdin(case.stdin);
@@ -106,6 +117,39 @@ fn create_git_fixture(fixture: &serde_json::Value) -> tempfile::TempDir {
         let path = repo.path().join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, contents.as_str().unwrap()).unwrap();
+    }
+    #[cfg(unix)]
+    if let Some(files) = fixture.get("unix-index-files") {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        for file in files.as_array().unwrap() {
+            let bytes: Vec<u8> = serde_json::from_value(file["name_bytes"].clone()).unwrap();
+            let path = OsString::from_vec(bytes);
+            let hash = Command::new("git")
+                .current_dir(repo.path())
+                .args(["hash-object", "-w", "--stdin"])
+                .write_stdin(file["contents"].as_str().unwrap())
+                .assert()
+                .success()
+                .get_output()
+                .stdout
+                .clone();
+            let hash = String::from_utf8(hash).unwrap();
+            Command::new("git")
+                .current_dir(repo.path())
+                .args(["update-index", "--add", "--cacheinfo", "100644"])
+                .arg(hash.trim())
+                .arg(&path)
+                .assert()
+                .success();
+            Command::new("git")
+                .current_dir(repo.path())
+                .args(["update-index", "--skip-worktree", "--"])
+                .arg(path)
+                .assert()
+                .success();
+        }
     }
     git(&["add", "."]);
     git(&["commit", "-q", "-m", "fixture"]);

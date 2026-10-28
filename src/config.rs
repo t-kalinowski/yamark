@@ -201,6 +201,9 @@ fn default_template_delimiters() -> Vec<TemplateDelimiter> {
 }
 
 pub fn discover_config_path(path: &Path) -> Option<PathBuf> {
+    // Resolve relative paths before walking parents, including virtual stdin
+    // paths that do not exist. Otherwise discovery stops at the working directory.
+    let path = std::path::absolute(path).ok()?;
     let mut dir = path.parent().unwrap_or_else(|| Path::new("."));
     loop {
         let candidate = dir.join("yamark.toml");

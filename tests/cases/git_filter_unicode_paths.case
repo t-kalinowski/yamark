@@ -1,0 +1,32 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false", "core.quotePath": "true"},
+  "files": {
+    "café.md": "First sentence. Second sentence?\n",
+    "with space.md": "Third sentence. Fourth sentence?\n"
+  }
+}
+-- args
+git-filter adopt --markdown-wrap-at-column 32
+-- stdin
+-- stdout
+Adopted yamark Git filter in {{repo}}
+Updated .gitattributes with 4 new attribute pattern(s)
+Staged .gitattributes and 2 normalized Markdown file(s).
+
+Review and commit with:
+  git diff --cached
+  git commit -m "Normalize Markdown with yamark Git filter"
+-- stderr
+-- git-index
+{
+  "café.md": "First sentence.\nSecond sentence?\n",
+  "with space.md": "Third sentence.\nFourth sentence?\n"
+}
+-- git-worktree
+{
+  "café.md": "First sentence. Second sentence?\n",
+  "with space.md": "Third sentence. Fourth sentence?\n"
+}
+-- status
+0

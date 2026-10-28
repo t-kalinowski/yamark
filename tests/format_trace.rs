@@ -261,15 +261,17 @@ Read the [guide] before opening the [issue list][issues].
 #[cfg(feature = "format-trace")]
 #[test]
 fn markdown_trace_marks_alpha_and_strict_nested_ordered_lists_formatted() {
-    let input = "\
-  a. License grant.
-  b. Other rights.
-
-1. Construct an image `X` with diagonal edges.
-    1. What happens if you apply the kernel `K` to the image?
-    1. What happens if you transpose `X` before applying it?
-1. Design some kernels manually.
-";
+    // A backslash-newline string opener strips the first line's indentation,
+    // turning the alphabetic siblings into the unsupported shifted layout.
+    let input = concat!(
+        "  a. License grant.\n",
+        "  b. Other rights.\n",
+        "\n",
+        "1. Construct an image `X` with diagonal edges.\n",
+        "    1. What happens if you apply the kernel `K` to the image?\n",
+        "    1. What happens if you transpose `X` before applying it?\n",
+        "1. Design some kernels manually.\n",
+    );
     let output = Command::cargo_bin("yamark")
         .unwrap()
         .args(["format", "--diagnostics", "--stdin-file-path", "input.md"])
@@ -281,15 +283,40 @@ fn markdown_trace_marks_alpha_and_strict_nested_ordered_lists_formatted() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8(output.stderr).unwrap();
     assert_eq!(
-        stderr
-            .matches("markdown trace: formatted kind=List emit=MarkdownList")
-            .count(),
-        2,
-        "{stderr}"
+        String::from_utf8(output.stdout).unwrap(),
+        input,
+        "supported list indentation must remain intact"
     );
-    assert!(!stderr.contains("markdown trace: skipped"), "{stderr}");
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        concat!(
+            "input.md:1:1: note: markdown trace: formatted kind=List emit=MarkdownList\n",
+            "input.md:4:1: note: markdown trace: formatted kind=List emit=MarkdownList\n",
+        ),
+    );
+}
+
+#[cfg(feature = "format-trace")]
+#[test]
+fn markdown_trace_marks_shifted_alphabetic_siblings_preserved() {
+    let input = "a. License grant.\n  b. Other rights.\n";
+    let output = Command::cargo_bin("yamark")
+        .unwrap()
+        .args(["format", "--diagnostics", "--stdin-file-path", "input.md"])
+        .write_stdin(input)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), input);
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "input.md:1:1: note: markdown trace: skipped kind=List emit=Copy reason=unsupported_markdown_construct_or_template\n",
+    );
 }
 
 #[cfg(not(feature = "format-trace"))]

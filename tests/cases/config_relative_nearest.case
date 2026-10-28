@@ -1,0 +1,18 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "cwd": "nested",
+  "files": {
+    "yamark.toml": "[format]\nwrap = \"sentence\"\n",
+    "nested/yamark.toml": "[format]\nwrap = \"none\"\n"
+  }
+}
+-- args
+format --stdin-file-path nonexistent.md
+-- stdin
+First sentence. Second sentence.
+-- stdout
+First sentence. Second sentence.
+-- stderr
+-- status
+0
