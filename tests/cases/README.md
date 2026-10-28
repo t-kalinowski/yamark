@@ -62,3 +62,12 @@ formatting; `tests/multiline_literals.rs` checks the same fixtures' exact
 formatted bytes and second passes. `markdown_literal_line_endings_check.case`
 checks an already-formatted mixed-ending fixture, so a change to newline bytes
 alone fails even when it would be invisible in the diff display.
+
+The `external_formatter_*.case` transcripts cover formatters that remove only
+the final LF from their output, as Ruff does for notebook cells. The CRLF and
+CR-only fixtures in `tests/fixtures/` disable Git newline conversion and use
+`--check` to catch changes to newline bytes. The LF transcript also shows code
+formatting in Markdown, Quarto, and YAML blocks. A configured Python command
+simulates the formatter without depending on the installed Ruff version;
+`tests/external_formatter_line_endings.rs` checks exact output bytes and second
+passes for LF, CRLF, and CR-only inputs.

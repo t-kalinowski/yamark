@@ -748,8 +748,11 @@ fn external_plugin_line_ending(
     }
 }
 
-fn append_trailing_line_ending_if_missing(text: &mut String, line_ending: &str) {
-    if !text.is_empty() && !text.ends_with('\n') && !text.ends_with('\r') {
+pub(crate) fn append_trailing_line_ending_if_missing(text: &mut String, line_ending: &str) {
+    if text.ends_with('\r') && line_ending == "\r\n" {
+        // Notebook formatters can remove only the final LF from a CRLF pair.
+        text.push('\n');
+    } else if !text.is_empty() && !text.ends_with('\n') && !text.ends_with('\r') {
         text.push_str(line_ending);
     }
 }

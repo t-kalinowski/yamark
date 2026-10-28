@@ -1,0 +1,45 @@
+-- args
+format --stdin-file-path input.md --config tests/fixtures/external_formatter_line_endings.toml
+-- stdin
+```python
+x=1
+x
+```
+
+```{python}
+x=1
+x
+```
+
+```yaml
+# fmt: python
+code: |
+  x=1
+  x
+other: 1
+```
+
+After.
+-- stdout
+```python
+x = 1
+x
+```
+
+```{python}
+x = 1
+x
+```
+
+```yaml
+# fmt: python
+code: |
+  x = 1
+  x
+other: 1
+```
+
+After.
+-- stderr
+-- status
+0

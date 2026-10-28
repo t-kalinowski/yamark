@@ -1,0 +1,8 @@
+-- args
+format --check --config tests/fixtures/external_formatter_line_endings.toml tests/fixtures/external_formatter_crlf.yaml
+-- stdin
+-- stdout
+-- stderr
+1 files scanned, 0 formatted, 1 unchanged, 0 skipped, 0 failed
+-- status
+0
