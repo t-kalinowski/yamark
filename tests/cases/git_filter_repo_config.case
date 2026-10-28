@@ -1,0 +1,19 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "cwd": "caller",
+  "files": {
+    ".gitattributes": "*.md filter=yamark-md\n",
+    "docs/yamark.toml": "[format]\nmarkdown_horizontal_rule = \"***\"\n",
+    "docs/post.md": "***\n",
+    "caller/.keep": ""
+  }
+}
+-- args
+git-filter check --repo ..
+-- stdin
+-- stdout
+yamark Git filter check passed for 1 Markdown file(s).
+-- stderr
+-- status
+0

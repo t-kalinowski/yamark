@@ -574,8 +574,12 @@ fn verify_roundtrip(
     let mut failures = Vec::new();
     for path in paths {
         let blob = git_blob(repo_root, source, path)?;
-        let smudged = format_git_filter_text(path, blob.clone(), MarkdownWrap::Column(width))?;
-        let cleaned = format_git_filter_text(path, smudged, MarkdownWrap::Sentence)?;
+        // Discover configuration beside the target file even when --repo
+        // selects a repository outside the caller's working directory.
+        let source_path = repo_root.join(path);
+        let smudged =
+            format_git_filter_text(&source_path, blob.clone(), MarkdownWrap::Column(width))?;
+        let cleaned = format_git_filter_text(&source_path, smudged, MarkdownWrap::Sentence)?;
         if cleaned != blob {
             failures.push(format!(
                 "{path}: roundtrip failure: clean(smudge(blob)) != blob"
@@ -626,7 +630,11 @@ fn git_blob(repo_root: &Path, source: BlobSource, path: &str) -> Result<String, 
     git_stdout_os(repo_root, &[OsString::from("show"), OsString::from(spec)])
 }
 
-fn format_git_filter_text(path: &str, input: String, wrap: MarkdownWrap) -> Result<String, String> {
+fn format_git_filter_text(
+    path: &Path,
+    input: String,
+    wrap: MarkdownWrap,
+) -> Result<String, String> {
     let options = FormatOptions {
         markdown_wrap: wrap,
         markdown_compact_tables: true,
@@ -634,7 +642,7 @@ fn format_git_filter_text(path: &str, input: String, wrap: MarkdownWrap) -> Resu
         ..FormatOptions::default()
     };
     format_source_for_path_with_overrides(
-        Path::new(path),
+        path,
         input,
         options,
         None,
