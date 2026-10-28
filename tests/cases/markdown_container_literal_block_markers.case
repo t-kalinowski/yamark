@@ -1,0 +1,55 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+- First. Second. `code
+  # heading
+  end`
+
+> First. Second. `code
+> Title
+> ===
+> end`
+
+- First. Second. `code
+  <pre>
+  alpha    beta
+  </pre>
+  end`
+
+> First. Second. `code
+> <pre>
+> alpha    beta
+> </pre>
+> end`
+-- stdout
+- First.
+  Second.
+  `code
+  # heading
+  end`
+
+> First.
+> Second.
+> `code
+> Title
+> ===
+> end`
+
+- First.
+  Second.
+  `code
+  <pre>
+  alpha    beta
+  </pre>
+  end`
+
+> First.
+> Second.
+> `code
+> <pre>
+> alpha    beta
+> </pre>
+> end`
+-- stderr
+-- status
+0

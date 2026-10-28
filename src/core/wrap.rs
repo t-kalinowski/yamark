@@ -3610,7 +3610,12 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
         target,
         suffix,
     } = link;
-    if target.title.is_some() {
+    // Keep empty destinations as `()`. Pandoc treats angle brackets as URL
+    // characters when an angle-bracket destination follows a newline.
+    if target.title.is_some()
+        || target.destination.is_empty()
+        || target.destination.starts_with('<')
+    {
         return None;
     }
 
