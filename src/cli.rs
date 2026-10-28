@@ -979,9 +979,11 @@ fn ensure_shared_yamark_attributes(repo_root: &Path) -> Result<(), String> {
 }
 
 fn tracked_yamark_filter_paths(repo_root: &Path) -> Result<Vec<String>, String> {
-    let tracked = git_stdout(repo_root, ["ls-files"])?;
+    // NUL records preserve Unicode and embedded line breaks without Git's
+    // presentation quoting. Each check-attr response is path, name, then value.
+    let tracked = git_stdout(repo_root, ["ls-files", "-z"])?;
     let mut paths = Vec::new();
-    for path in tracked.lines() {
+    for path in tracked.split_terminator('\0') {
         if crate::core::document::FileKind::for_path(Path::new(path))
             != crate::core::document::FileKind::Markdown
         {
@@ -991,12 +993,13 @@ fn tracked_yamark_filter_paths(repo_root: &Path) -> Result<Vec<String>, String> 
             repo_root,
             &[
                 OsString::from("check-attr"),
+                OsString::from("-z"),
                 OsString::from("filter"),
                 OsString::from("--"),
                 OsString::from(path),
             ],
         )?;
-        if output.trim_end().ends_with(": filter: yamark-md") {
+        if output.split_terminator('\0').nth(2) == Some("yamark-md") {
             paths.push(path.to_owned());
         }
     }
