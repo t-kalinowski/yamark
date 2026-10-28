@@ -16,7 +16,8 @@ suite of GPU-accelerated machine learning libraries powered by
 development, and currently implements R interfaces for the algorithms
 listed below (which is a subset of
 [algorithms supported by RAPIDS cuML](
-  https://github.com/rapidsai/cuml#supported-algorithms)).
+  https://github.com/rapidsai/cuml#supported-algorithms
+)).
 -- stderr
 -- status
 0

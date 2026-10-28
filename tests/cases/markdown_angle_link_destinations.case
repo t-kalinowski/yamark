@@ -1,0 +1,35 @@
+-- args
+format --stdin-file-path input.md --wrap sentence:12
+-- stdin
+[text](<https://example.com>)
+
+![image](<https://example.com/image.png>)
+
+[![image](<https://example.com/image.png>)](<https://example.com>)
+
+[![image](image.png)](<https://example.com>)
+
+[![image](<https://example.com/image.png>)](https://example.com)
+
+[empty angle destination](<>)
+
+[text](<https://example.com> "Title")
+-- stdout
+[text](<https://example.com>)
+
+![image](<https://example.com/image.png>)
+
+[![image](<https://example.com/image.png>)](<https://example.com>)
+
+[![image](image.png)](<https://example.com>)
+
+[![image](<https://example.com/image.png>)](
+  https://example.com
+)
+
+[empty angle destination](<>)
+
+[text](<https://example.com> "Title")
+-- stderr
+-- status
+0

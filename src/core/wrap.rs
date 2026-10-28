@@ -3606,12 +3606,14 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
         target,
         suffix,
     } = link;
-    // Pandoc reads angle-bracket destinations literally after a newline.
-    if target.title.is_some() || target.destination.starts_with('<') {
+    // Keep empty destinations as `()`. Pandoc treats angle brackets as URL
+    // characters when an angle-bracket destination follows a newline.
+    if target.title.is_some()
+        || target.destination.is_empty()
+        || target.destination.starts_with('<')
+    {
         return None;
     }
-    // CommonMark and GFM need the closing parenthesis on the destination line.
-    let target_close = format!("  {}){suffix}{trailing_suffix}", target.destination);
 
     if !image {
         let label = &link[label_start..label_close];
@@ -3636,12 +3638,17 @@ fn split_long_link_token(token: &str, width: usize) -> Option<Vec<String>> {
                 return Some(lines);
             }
             lines.push(format!("{last}]("));
-            lines.push(target_close);
+            lines.extend(split_link_target_lines(target, width));
+            lines.push(format!("){suffix}{trailing_suffix}"));
             return Some(lines);
         }
     }
 
-    Some(vec![link[..destination_open + 1].to_owned(), target_close])
+    let mut lines = Vec::new();
+    lines.push(link[..destination_open + 1].to_owned());
+    lines.extend(split_link_target_lines(target, width));
+    lines.push(format!("){suffix}{trailing_suffix}"));
+    Some(lines)
 }
 
 struct SplitLinkToken<'a> {
@@ -5043,6 +5050,20 @@ fn render_existing_split_link_target(raw: &str, target: LinkTarget<'_>) -> Strin
         render_link_target(target),
         &raw[trailing..]
     )
+}
+
+fn split_link_target_lines(target: LinkTarget<'_>, width: usize) -> Vec<String> {
+    let target_width = width.saturating_sub(2).max(1);
+    let lines = match target.title {
+        Some(title)
+            if render_link_target(target).chars().count() > target_width
+                && !target.destination.is_empty() =>
+        {
+            vec![target.destination.to_owned(), title.to_owned()]
+        }
+        _ => vec![render_link_target(target)],
+    };
+    lines.into_iter().map(|line| format!("  {line}")).collect()
 }
 
 fn simple_link_destination_atom_supported(destination: &str) -> bool {
