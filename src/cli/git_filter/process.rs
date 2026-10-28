@@ -1,19 +1,19 @@
 //! Git subprocess invocation and local configuration access.
 
-use std::ffi::OsString;
-use std::path::Path;
+use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 pub(super) fn run_git_with_paths(
     repo_root: &Path,
     prefix: &[&str],
-    paths: &[String],
+    paths: &[PathBuf],
 ) -> Result<(), String> {
     let mut args = prefix
         .iter()
         .map(|arg| OsString::from(*arg))
         .collect::<Vec<_>>();
-    args.extend(paths.iter().map(OsString::from));
+    args.extend(paths.iter().map(|path| path.as_os_str().to_owned()));
     run_git_os(repo_root, &args)
 }
 
@@ -31,7 +31,10 @@ pub(super) fn run_git_os(repo_root: &Path, args: &[OsString]) -> Result<(), Stri
     }
 }
 
-pub(super) fn git_stdout_os(repo_root: &Path, args: &[OsString]) -> Result<String, String> {
+pub(super) fn git_stdout_bytes(
+    repo_root: &Path,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<Vec<u8>, String> {
     let output = ProcessCommand::new("git")
         .arg("-C")
         .arg(repo_root)
@@ -41,7 +44,7 @@ pub(super) fn git_stdout_os(repo_root: &Path, args: &[OsString]) -> Result<Strin
     if !output.status.success() {
         return Err(format_git_error("git", output));
     }
-    String::from_utf8(output.stdout).map_err(|err| format!("git output was not UTF-8: {err}"))
+    Ok(output.stdout)
 }
 
 pub(super) fn local_git_config_count(repo_root: &Path, key: &str) -> Result<usize, String> {
@@ -116,17 +119,12 @@ pub(super) fn unset_git_config_key(repo: &Path, key: &str) -> Result<usize, Stri
     Err(format_git_error("git config", output))
 }
 
-pub(super) fn git_stdout<const N: usize>(repo: &Path, args: [&str; N]) -> Result<String, String> {
-    let output = ProcessCommand::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run git: {err}"))?;
-    if !output.status.success() {
-        return Err(format_git_error("git", output));
-    }
-    String::from_utf8(output.stdout).map_err(|err| format!("git output was not UTF-8: {err}"))
+pub(super) fn git_stdout(
+    repo: &Path,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<String, String> {
+    String::from_utf8(git_stdout_bytes(repo, args)?)
+        .map_err(|err| format!("git output was not UTF-8: {err}"))
 }
 
 fn format_git_error(command: &str, output: std::process::Output) -> String {

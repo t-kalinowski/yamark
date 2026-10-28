@@ -43,7 +43,7 @@ See [Tests](../tests/README.md) for the difference between transcripts, public A
 
 ## Windows
 
-CI runs on macOS and Windows. On Windows, put `Rscript.exe` and Quarto on `PATH` and set `PYTHONUTF8=1`. Run `scripts/check.sh` from Git Bash, as CI does, or run its commands explicitly from PowerShell. Unix shell-script tests run only on Unix; symlink tests need Developer Mode or symlink privileges.
+CI runs the complete checks on macOS and Windows, plus the Git path tests on Linux to cover non-UTF-8 filenames in the working tree. On Windows, put `Rscript.exe` and Quarto on `PATH` and set `PYTHONUTF8=1`. Run `scripts/check.sh` from Git Bash, as CI does, or run its commands explicitly from PowerShell. Unix shell-script tests run only on Unix; symlink tests need Developer Mode or symlink privileges.
 
 Keep byte-sensitive fixtures under the existing `.gitattributes` rules. CRLF, bare CR, and mixed line endings are behavioral test data, not formatting noise.
 

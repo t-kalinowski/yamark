@@ -21,7 +21,7 @@ use attributes::{
     remove_yamark_filter_attribute_lines,
 };
 use process::{
-    git_stdout, git_stdout_os, local_git_config_count, run_git_config, run_git_os,
+    git_stdout, git_stdout_bytes, local_git_config_count, run_git_config, run_git_os,
     run_git_with_paths, unset_git_config_key,
 };
 
@@ -410,6 +410,17 @@ enum BlobSource {
     Index,
 }
 
+impl BlobSource {
+    fn spec(self, path: &Path) -> OsString {
+        let mut spec = OsString::from(match self {
+            Self::Head => "HEAD:",
+            Self::Index => ":",
+        });
+        spec.push(path);
+        spec
+    }
+}
+
 fn configure_git_filter(
     repo_root: &Path,
     yamark: Option<PathBuf>,
@@ -529,45 +540,57 @@ fn ensure_shared_yamark_attributes(repo_root: &Path) -> Result<(), String> {
     }
 }
 
-fn tracked_yamark_filter_paths(repo_root: &Path) -> Result<Vec<String>, String> {
-    // NUL records preserve Unicode and embedded line breaks without Git's
+fn tracked_yamark_filter_paths(repo_root: &Path) -> Result<Vec<PathBuf>, String> {
+    // NUL records contain native filename bytes, not UTF-8 text or Git's
     // presentation quoting. Each check-attr response is path, name, then value.
-    let tracked = git_stdout(repo_root, ["ls-files", "-z"])?;
+    let tracked = git_stdout_bytes(repo_root, ["ls-files", "-z"])?;
     let mut paths = Vec::new();
-    for path in tracked.split_terminator('\0') {
-        if crate::core::document::FileKind::for_path(Path::new(path))
+    for path in tracked
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        #[cfg(unix)]
+        let path = {
+            use std::os::unix::ffi::OsStrExt;
+            PathBuf::from(std::ffi::OsStr::from_bytes(path))
+        };
+        #[cfg(not(unix))]
+        let path = PathBuf::from(
+            std::str::from_utf8(path).map_err(|err| format!("git path was not UTF-8: {err}"))?,
+        );
+        if crate::core::document::FileKind::for_path(&path)
             != crate::core::document::FileKind::Markdown
         {
             continue;
         }
-        let output = git_stdout_os(
+        let output = git_stdout_bytes(
             repo_root,
-            &[
+            [
                 OsString::from("check-attr"),
                 OsString::from("-z"),
                 OsString::from("filter"),
                 OsString::from("--"),
-                OsString::from(path),
+                path.as_os_str().to_owned(),
             ],
         )?;
-        if output.split_terminator('\0').nth(2) == Some("yamark-md") {
-            paths.push(path.to_owned());
+        if output.split(|byte| *byte == 0).nth(2) == Some(b"yamark-md") {
+            paths.push(path);
         }
     }
     Ok(paths)
 }
 
-fn verify_head_roundtrip(repo_root: &Path, paths: &[String], width: usize) -> Result<(), String> {
+fn verify_head_roundtrip(repo_root: &Path, paths: &[PathBuf], width: usize) -> Result<(), String> {
     verify_roundtrip(repo_root, paths, BlobSource::Head, width)
 }
 
-fn verify_index_roundtrip(repo_root: &Path, paths: &[String], width: usize) -> Result<(), String> {
+fn verify_index_roundtrip(repo_root: &Path, paths: &[PathBuf], width: usize) -> Result<(), String> {
     verify_roundtrip(repo_root, paths, BlobSource::Index, width)
 }
 
 fn verify_roundtrip(
     repo_root: &Path,
-    paths: &[String],
+    paths: &[PathBuf],
     source: BlobSource,
     width: usize,
 ) -> Result<(), String> {
@@ -582,7 +605,8 @@ fn verify_roundtrip(
         let cleaned = format_git_filter_text(&source_path, smudged, MarkdownWrap::Sentence)?;
         if cleaned != blob {
             failures.push(format!(
-                "{path}: roundtrip failure: clean(smudge(blob)) != blob"
+                "{}: roundtrip failure: clean(smudge(blob)) != blob",
+                path.display()
             ));
         }
     }
@@ -593,16 +617,16 @@ fn verify_roundtrip(
     }
 }
 
-fn write_smudged_worktree(repo_root: &Path, paths: &[String]) -> Result<(), String> {
+fn write_smudged_worktree(repo_root: &Path, paths: &[PathBuf]) -> Result<(), String> {
     // Let Git apply text/eol attributes and core.autocrlf before the configured
     // smudge filter. Writing formatted blob bytes directly bypasses that step.
     for path in paths {
-        let smudged = git_stdout_os(
+        let smudged = git_stdout(
             repo_root,
-            &[
+            [
                 OsString::from("cat-file"),
                 OsString::from("--filters"),
-                OsString::from(format!(":{path}")),
+                BlobSource::Index.spec(path),
             ],
         )?;
         let worktree_path = repo_root.join(path);
@@ -622,12 +646,8 @@ fn write_smudged_worktree(repo_root: &Path, paths: &[String]) -> Result<(), Stri
     )
 }
 
-fn git_blob(repo_root: &Path, source: BlobSource, path: &str) -> Result<String, String> {
-    let spec = match source {
-        BlobSource::Head => format!("HEAD:{path}"),
-        BlobSource::Index => format!(":{path}"),
-    };
-    git_stdout_os(repo_root, &[OsString::from("show"), OsString::from(spec)])
+fn git_blob(repo_root: &Path, source: BlobSource, path: &Path) -> Result<String, String> {
+    git_stdout(repo_root, [OsString::from("show"), source.spec(path)])
 }
 
 fn format_git_filter_text(

@@ -2,7 +2,7 @@
 
 - Relative file, directory, and stdin paths now discover `yamark.toml` in ancestor directories above the working directory.
 - Diffs merge overlapping context so nearby changes produce applicable patches.
-- Git filter adoption and joining handle Unicode filenames and filenames that Git would quote in line-oriented output.
+- Git filter adoption, joining, and checking handle filenames that Git would quote in line-oriented output, including non-UTF-8 names on Unix.
 - Git filter verification with `--repo` reads formatting configuration from the selected repository, including nested configuration files.
 - YAML flow layout accounts for required quotes around escaped numeric-looking strings, keeping the layout stable on a second formatting pass.
 
