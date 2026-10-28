@@ -71,3 +71,12 @@ formatting in Markdown, Quarto, and YAML blocks. A configured Python command
 simulates the formatter without depending on the installed Ruff version;
 `tests/external_formatter_line_endings.rs` checks exact output bytes and second
 passes for LF, CRLF, and CR-only inputs.
+
+Git integration transcripts can add a `-- git-fixture` JSON object with `config`
+and `files` mappings. The harness creates a temporary repository, applies the
+local Git settings, writes and commits the supplied files, and runs the recorded
+invocation there. Output uses `{{repo}}` for that temporary repository's absolute
+path. An optional `-- git-status` section records the expected subsequent
+`git status --porcelain` output. `git_filter_join_crlf.case` verifies that joining
+the filter keeps a CRLF checkout clean when `core.autocrlf=true`. The LF and
+explicit `eol=lf` companion cases cover the corresponding compatibility boundaries.

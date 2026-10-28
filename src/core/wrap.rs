@@ -3864,11 +3864,28 @@ fn prepare_prefixed_markdown_lines(
     continuation_prefix: &str,
     preserve_lines: bool,
 ) -> Draft {
-    // Preserve authored headings in container bodies before inline normalization
-    // or marker repair can remove an escape or join an underline to its title.
-    if lines.iter().any(|(body, _)| {
+    let mut content = String::with_capacity(
+        lines
+            .iter()
+            .map(|(body, newline)| body.len() + newline.len())
+            .sum(),
+    );
+    for (body, newline) in lines {
+        content.push_str(body);
+        content.push_str(newline);
+    }
+    // Preserve authored block boundaries in containers, but allow prose around
+    // heading-like text inside multiline literals and links to wrap normally.
+    let mut inlines = MarkdownMultilineInlineScan::new(&content);
+    let mut offset = 0;
+    if lines.iter().any(|(body, newline)| {
         let trimmed = body.trim_start();
-        atx_heading_start(trimmed) || setext_underline_line(trimmed)
+        let content_offset = offset + body.len() - trimmed.len();
+        offset += body.len() + newline.len();
+        (atx_heading_start(trimmed)
+            || setext_underline_line(trimmed)
+            || markdown_html_block_start_line(trimmed))
+            && !inlines.covers(content_offset)
     }) {
         let mut draft = Draft::new();
         let mut prefix = first_prefix;
@@ -3879,16 +3896,6 @@ fn prepare_prefixed_markdown_lines(
             prefix = continuation_prefix;
         }
         return draft;
-    }
-    let mut content = String::with_capacity(
-        lines
-            .iter()
-            .map(|(body, newline)| body.len() + newline.len())
-            .sum(),
-    );
-    for (body, newline) in lines {
-        content.push_str(body);
-        content.push_str(newline);
     }
     let (body, _) = strip_final_newline(&content);
     let newline = lines.first().map_or("", |(_, newline)| *newline);

@@ -25,7 +25,11 @@ test("extension settings expose only supported formatter chaining", () => {
   assert.equal(properties["yamark.nextFormatterExecutable"].scope, "language-overridable");
 });
 
-test("dev package strips bundled release executable before packaging", (t) => {
+const unixShellOnly = {
+  skip: process.platform === "win32" && "Exercises the Unix shell packaging scripts",
+};
+
+test("dev package strips bundled release executable before packaging", unixShellOnly, (t) => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "yamark-vscode-package-"));
   t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
 
@@ -114,7 +118,7 @@ test("dev package strips bundled release executable before packaging", (t) => {
   );
 });
 
-test("local install suppresses VS Code CLI deprecation warnings", (t) => {
+test("local install suppresses VS Code CLI deprecation warnings", unixShellOnly, (t) => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "yamark-vscode-install-"));
   t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
 

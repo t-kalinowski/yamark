@@ -10,6 +10,8 @@ struct Case {
     stdout: String,
     stderr: String,
     status: i32,
+    git_fixture: Option<serde_json::Value>,
+    git_status: Option<String>,
 }
 
 #[test]
@@ -24,24 +26,72 @@ fn cli_cases() {
 
     for path in cases {
         let case = parse_case(&fs::read_to_string(&path).unwrap());
+        let repo = case.git_fixture.as_ref().map(create_git_fixture);
         let mut command = Command::cargo_bin("yamark").unwrap();
+        if let Some(repo) = &repo {
+            command.current_dir(repo.path());
+        }
         command.args(split_args(&case.args));
         command.write_stdin(case.stdin);
         let assert = command.assert().code(case.status);
         let output = assert.get_output();
         assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
+            redact_repo(&output.stdout, repo.as_ref()),
             case.stdout,
             "stdout mismatch in {}",
             path.display()
         );
         assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
+            redact_repo(&output.stderr, repo.as_ref()),
             case.stderr,
             "stderr mismatch in {}",
             path.display()
         );
+        if let Some(expected) = case.git_status {
+            Command::new("git")
+                .current_dir(repo.as_ref().expect("git-status needs git-fixture").path())
+                .args(["status", "--porcelain"])
+                .assert()
+                .success()
+                .stdout(expected)
+                .stderr("");
+        }
     }
+}
+
+fn create_git_fixture(fixture: &serde_json::Value) -> tempfile::TempDir {
+    let repo = tempfile::tempdir().unwrap();
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .current_dir(repo.path())
+            .args(args)
+            .assert()
+            .success();
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.name", "CLI Case"]);
+    git(&["config", "user.email", "cli-case@example.test"]);
+    git(&["config", "commit.gpgSign", "false"]);
+    for (key, value) in fixture["config"].as_object().unwrap() {
+        git(&["config", key, value.as_str().unwrap()]);
+    }
+    for (name, contents) in fixture["files"].as_object().unwrap() {
+        let path = repo.path().join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents.as_str().unwrap()).unwrap();
+    }
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "fixture"]);
+    repo
+}
+
+fn redact_repo(bytes: &[u8], repo: Option<&tempfile::TempDir>) -> String {
+    let text = String::from_utf8_lossy(bytes).into_owned();
+    let Some(repo) = repo else { return text };
+    let root = repo.path().canonicalize().unwrap();
+    let root = root.to_str().unwrap().trim_start_matches(r"\\?\");
+    text.replace(root, "{{repo}}")
+        .replace(&root.replace('\\', "/"), "{{repo}}")
 }
 
 fn parse_case(input: &str) -> Case {
@@ -74,6 +124,8 @@ fn flush(case: &mut Case, section: &str, body: &str) {
         "stdout" => case.stdout = body.to_owned(),
         "stderr" => case.stderr = body.to_owned(),
         "status" => case.status = value.trim().parse().unwrap(),
+        "git-fixture" => case.git_fixture = Some(serde_json::from_str(value).unwrap()),
+        "git-status" => case.git_status = Some(body.to_owned()),
         "" => {}
         other => panic!("unknown case section {other}"),
     }

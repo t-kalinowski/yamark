@@ -416,9 +416,9 @@ x=1
         "python".to_owned(),
         ExternalFormatter {
             command: vec![
-                "python3".to_owned(),
+                "python".to_owned(),
                 "-c".to_owned(),
-                "import sys; sys.stdout.write(sys.stdin.read().replace('x=1', 'x = 1'))".to_owned(),
+                "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'x=1', b'x = 1'))".to_owned(),
             ],
             path_suffix: ".py".to_owned(),
             mode: ExternalFormatterMode::Raw,
@@ -428,9 +428,9 @@ x=1
         "r".to_owned(),
         ExternalFormatter {
             command: vec![
-                "python3".to_owned(),
+                "python".to_owned(),
                 "-c".to_owned(),
-                "import sys; sys.stdout.write(sys.stdin.read().replace('x=1', 'x = 1'))".to_owned(),
+                "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'x=1', b'x = 1'))".to_owned(),
             ],
             path_suffix: ".R".to_owned(),
             mode: ExternalFormatterMode::Raw,

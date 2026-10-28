@@ -1,0 +1,18 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "true"},
+  "files": {
+    ".gitattributes": "*.md text eol=lf filter=yamark-md\n",
+    "post.md": "First sentence.\nSecond sentence?\n"
+  }
+}
+-- args
+git-filter join --markdown-wrap-at-column 32
+-- stdin
+-- stdout
+Joined yamark Git filter in {{repo}}
+Configured local filter driver and checked 1 committed Markdown file(s).
+-- stderr
+-- git-status
+-- status
+0

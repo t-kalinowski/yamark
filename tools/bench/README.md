@@ -73,13 +73,17 @@ tools/bench/run-all.py --result-dir /path/to/results
 tools/bench/run-all.py --dry-run --result-dir /path/to/results
 ```
 
-The full comparison requires a Unix-like Python runtime with the
-`resource` module and `os.wait4`, `Rscript` with the `stringi` and
+The full comparison requires Python, `Rscript` with the `stringi` and
 `yaml12` packages, plus `panache`, `mdformat`, `prettier`, `dprint`,
 `deno`, `yamlfmt`, and `yamlfix` on `PATH`. Missing comparison tools
 fail the complete run instead of producing a partial result. The runner
 does not copy results into `docs/benchmarks`; publishing remains a
 separate, reviewed step.
+
+Big-file measurements use `resource`/`os.wait4` on Unix and native process CPU
+and peak working-set counters on Windows. Run the Python scripts with `python`
+on Windows; executable paths include the `.exe` suffix automatically. Tests
+that install fake Unix shell executables run only on Unix.
 
 ## Big single-file benchmark
 

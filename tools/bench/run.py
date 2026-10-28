@@ -28,6 +28,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[2]
 BENCH_DIR = Path(__file__).resolve().parent
+EXE_SUFFIX = ".exe" if os.name == "nt" else ""
 DEFAULT_TOOLS = "yamark"
 DEFAULT_FILES = 400
 DEFAULT_ITEMS = 80
@@ -127,7 +128,7 @@ def main() -> int:
     parser.add_argument(
         "--yamark-bin",
         type=Path,
-        default=ROOT / "target" / "release" / "yamark",
+        default=ROOT / "target" / "release" / f"yamark{EXE_SUFFIX}",
     )
     parser.add_argument("--skip-yamark-build", action="store_true")
     parser.add_argument("--keep-workdirs", action="store_true")
@@ -930,7 +931,7 @@ def wipe_tool_cache(tool: Tool, work_root: Path) -> None:
 def pretty_yaml_driver_path() -> Path:
     if override := os.environ.get(PRETTY_YAML_DRIVER_ENV):
         return Path(override)
-    return PRETTY_YAML_DRIVER_TARGET / "release" / "format-pretty-yaml"
+    return PRETTY_YAML_DRIVER_TARGET / "release" / f"format-pretty-yaml{EXE_SUFFIX}"
 
 
 def prepare_pretty_yaml_driver() -> str | None:

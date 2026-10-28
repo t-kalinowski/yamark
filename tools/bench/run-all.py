@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TARGET_DIR = ROOT / "target"
 BENCH_DIR = ROOT / "tools" / "bench"
+YAMARK_EXE = "yamark.exe" if os.name == "nt" else "yamark"
 BIG_TOOLS = (
     "yamark,panache,mdformat,prettier,dprint-markdown,deno-fmt,"
     "yamlfmt,yamlfix,dprint-yaml"
@@ -88,7 +89,7 @@ def main() -> int:
     (result_dir / "logs").mkdir()
     (result_dir / "bin").mkdir()
     started_at = utc_now()
-    frozen_binary = result_dir / "bin" / "yamark"
+    frozen_binary = result_dir / "bin" / YAMARK_EXE
 
     for label, command in steps:
         run_step(label, command, result_dir / "logs" / f"{label}.log")
@@ -128,7 +129,7 @@ def default_result_dir(short_commit: str) -> Path:
 
 def benchmark_steps(result_dir: Path) -> list[tuple[str, list[str]]]:
     python = sys.executable
-    yamark_bin = result_dir / "bin" / "yamark"
+    yamark_bin = result_dir / "bin" / YAMARK_EXE
     scratch = result_dir / "scratch"
     artifacts = result_dir / "artifacts"
     common = [
@@ -293,14 +294,15 @@ def preflight() -> dict[str, str]:
     ]
     if missing:
         raise SystemExit(f"missing benchmark commands: {', '.join(missing)}")
-    if not hasattr(os, "wait4"):
-        raise SystemExit("os.wait4 is required for benchmark RSS measurements")
-    try:
-        import resource  # noqa: F401
-    except ImportError as error:
-        raise SystemExit(
-            "the Python resource module is required for benchmark RSS measurements"
-        ) from error
+    if os.name != "nt":
+        if not hasattr(os, "wait4"):
+            raise SystemExit("os.wait4 is required for benchmark RSS measurements")
+        try:
+            import resource  # noqa: F401
+        except ImportError as error:
+            raise SystemExit(
+                "the Python resource module is required for benchmark RSS measurements"
+            ) from error
 
     r_packages = subprocess.run(
         [
@@ -358,7 +360,7 @@ def run_step(label: str, command: list[str], log_path: Path) -> None:
 def find_built_binary(target_dir: Path) -> Path:
     candidates = sorted(
         path
-        for path in target_dir.glob("**/release/yamark")
+        for path in target_dir.glob(f"**/release/{YAMARK_EXE}")
         if path.is_file() and path.parent.name == "release"
     )
     if len(candidates) != 1:

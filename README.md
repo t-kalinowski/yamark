@@ -117,10 +117,12 @@ Build a Python wheel for local testing:
 uvx maturin build --release
 ```
 
-Run the Rust tests, formatting check, and lints:
+The full test suite also uses `uv`, Python, Ruff, Quarto, Node, and R with
+`stringi`, `jsonlite`, `knitr`, and `yaml12` installed. Run the Rust tests with
+Python dependencies available, followed by the formatting check and lints:
 
 ```sh
-cargo test
+uv run --no-project --with ruff --with py-yaml12 -- cargo test
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 ```
@@ -132,6 +134,12 @@ uv run external-tests/run.py
 cd editors/vscode
 npm test
 ```
+
+CI runs these checks on macOS and Windows. On Windows, put `Rscript.exe` and
+Quarto on `PATH` and set `$env:PYTHONUTF8 = "1"` in PowerShell before running the
+tests. Unix shell-script tests run on macOS; symlink tests need Windows Developer
+Mode or symlink privileges. Git attributes keep source and transcript files at
+LF while byte-sensitive fixtures retain their original line endings.
 
 When `tests/yaml-test-suite/data` exists, `cargo test` also runs the
 YAML Test Suite round-trip test. Populate that directory with:

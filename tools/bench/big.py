@@ -27,6 +27,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[2]
 BENCH_DIR = Path(__file__).resolve().parent
+EXE_SUFFIX = ".exe" if os.name == "nt" else ""
 GENERATOR = BENCH_DIR / "big.R"
 # Native formatter CLIs only, each invoked the way its docs say to format a
 # file, with no formatting options. Lint fixers (pymarkdown,
@@ -109,7 +110,10 @@ def main() -> int:
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--rscript", default="Rscript")
     parser.add_argument("--dprint-bin", default="dprint")
-    parser.add_argument("--yamark-bin", type=Path, default=ROOT / "target" / "release" / "yamark")
+    parser.add_argument(
+        "--yamark-bin", type=Path,
+        default=ROOT / "target" / "release" / f"yamark{EXE_SUFFIX}",
+    )
     parser.add_argument("--skip-yamark-build", action="store_true")
     parser.add_argument(
         "--out-dir",
@@ -549,7 +553,7 @@ def prepare_tool(tool: Tool, work_root: Path) -> str | None:
 def pretty_yaml_driver_path() -> Path:
     if override := os.environ.get(PRETTY_YAML_DRIVER_ENV):
         return Path(override)
-    return PRETTY_YAML_DRIVER_TARGET / "release" / "format-pretty-yaml"
+    return PRETTY_YAML_DRIVER_TARGET / "release" / f"format-pretty-yaml{EXE_SUFFIX}"
 
 
 def prepare_pretty_yaml_driver() -> str | None:
@@ -769,8 +773,9 @@ def run_measured(
     cwd: Path,
     env: dict[str, str] | None = None,
 ) -> MeasuredProcess:
-    stopifnot(resource is not None, "resource module is required for benchmark RSS")
-    stopifnot(hasattr(os, "wait4"), "os.wait4 is required for benchmark RSS")
+    if os.name != "nt":
+        stopifnot(resource is not None, "resource module is required for benchmark RSS")
+        stopifnot(hasattr(os, "wait4"), "os.wait4 is required for benchmark RSS")
     with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
         process = subprocess.Popen(
             command,
@@ -779,8 +784,14 @@ def run_measured(
             stdout=stdout_file,
             stderr=stderr_file,
         )
-        _pid, status, usage = os.wait4(process.pid, 0)
-        process.returncode = os.waitstatus_to_exitcode(status)
+        if os.name == "nt":
+            user_seconds, sys_seconds, peak_rss = wait_windows_usage(process)
+        else:
+            _pid, status, usage = os.wait4(process.pid, 0)
+            process.returncode = os.waitstatus_to_exitcode(status)
+            user_seconds = float(usage.ru_utime)
+            sys_seconds = float(usage.ru_stime)
+            peak_rss = max_rss_bytes(usage)
         stdout_file.seek(0)
         stderr_file.seek(0)
         proc = subprocess.CompletedProcess(
@@ -791,10 +802,66 @@ def run_measured(
         )
     return MeasuredProcess(
         proc=proc,
-        user_seconds=float(usage.ru_utime),
-        sys_seconds=float(usage.ru_stime),
-        max_rss_bytes=max_rss_bytes(usage),
+        user_seconds=user_seconds,
+        sys_seconds=sys_seconds,
+        max_rss_bytes=peak_rss,
     )
+
+
+def wait_windows_usage(process: subprocess.Popen) -> tuple[float, float, int]:
+    """Read lifetime CPU and peak working-set counters, including short runs."""
+    import ctypes
+    from ctypes import wintypes
+
+    class MemoryCounters(ctypes.Structure):
+        # PROCESS_MEMORY_COUNTERS, whose PeakWorkingSetSize is already in bytes.
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [
+        ctypes.POINTER(wintypes.FILETIME)
+    ] * 4
+    kernel.GetProcessTimes.restype = wintypes.BOOL
+    kernel.K32GetProcessMemoryInfo.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(MemoryCounters), wintypes.DWORD,
+    ]
+    kernel.K32GetProcessMemoryInfo.restype = wintypes.BOOL
+    # Keep a query handle alive after exit so the peak counters remain available.
+    handle = kernel.OpenProcess(0x1000, False, process.pid)  # QUERY_LIMITED_INFORMATION
+    if not handle:
+        error = ctypes.WinError(ctypes.get_last_error())
+        process.wait()
+        raise error
+    try:
+        process.wait()
+        created, exited, system, user = (wintypes.FILETIME() for _ in range(4))
+        if not kernel.GetProcessTimes(handle, created, exited, system, user):
+            raise ctypes.WinError(ctypes.get_last_error())
+        memory = MemoryCounters(cb=ctypes.sizeof(MemoryCounters))
+        if not kernel.K32GetProcessMemoryInfo(handle, memory, memory.cb):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+        def seconds(value: wintypes.FILETIME) -> float:
+            return ((value.dwHighDateTime << 32) | value.dwLowDateTime) / 10_000_000
+
+        return seconds(user), seconds(system), memory.PeakWorkingSetSize
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def max_rss_bytes(usage: object) -> int:

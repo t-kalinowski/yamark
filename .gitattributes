@@ -1,0 +1,3 @@
+# Keep source, documentation, and embedded test transcripts identical on every OS.
+# Byte-sensitive newline fixtures opt out in tests/fixtures/.gitattributes.
+* text=auto eol=lf

@@ -137,12 +137,12 @@ fn normalize_json_file(path: &Path) -> Result<String, String> {
 fn normalize_with_python(mode: &str, path: &Path) -> Result<String, String> {
     let script =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("external-tests/support/yaml_suite_value.py");
-    let output = Command::new("python3")
+    let output = Command::new("python")
         .arg(script)
         .arg(mode)
         .arg(path)
         .output()
-        .map_err(|err| format!("failed to run python3: {err}"))?;
+        .map_err(|err| format!("failed to run python: {err}"))?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());

@@ -1,12 +1,13 @@
 use std::ffi::OsString;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
 use tempfile::tempdir;
 
 fn python() -> OsString {
-    std::env::var_os("PYTHON").unwrap_or_else(|| OsString::from("python3"))
+    std::env::var_os("PYTHON").unwrap_or_else(|| OsString::from("python"))
 }
 
 #[test]
@@ -27,6 +28,7 @@ fn yaml_test_suite_bootstrap_copies_generated_data_and_deletes_stale_files() {
 
     fs::create_dir_all(source_root.join("data/ABCD")).unwrap();
     fs::write(source_root.join("data/ABCD/in.yaml"), "a: 1\n").unwrap();
+    #[cfg(unix)]
     symlink("ABCD", source_root.join("data/TAGS")).unwrap();
     fs::write(source_root.join("License"), "MIT License\n").unwrap();
 
