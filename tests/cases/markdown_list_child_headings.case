@@ -1,0 +1,39 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+  - One.
+- Two.
+
+  Title
+  ===
+
+  - One.
+- Two.
+
+  Title
+  ---
+
+  - One.
+- Two.
+
+  # Title
+-- stdout
+  - One.
+- Two.
+
+  Title
+  ===
+
+  - One.
+- Two.
+
+  Title
+  ---
+
+  - One.
+- Two.
+
+  # Title
+-- stderr
+-- status
+0

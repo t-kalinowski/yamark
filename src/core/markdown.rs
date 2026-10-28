@@ -470,7 +470,8 @@ fn parse_markdown_with_mode(
 
         if list_item_at(text) {
             let start = i;
-            i = list_block_end(source, i, end_line);
+            let block = list_block_end(source, i, end_line);
+            i = block.end;
             let state = engine.state_for_node(&mut doc, true);
             let span = Span::new(
                 source.lines[start].full.start(),
@@ -484,7 +485,7 @@ fn parse_markdown_with_mode(
                 span,
                 MarkdownBlockFormatKind::List,
                 options,
-                list_block_supported(source, start, i),
+                !block.preserve && list_block_supported(source, start, i),
             )?;
             continue;
         }
@@ -1985,13 +1986,26 @@ fn code_fence_at(text: &str) -> Option<Fence> {
 
 fn find_code_fence_closing(
     source: &SourceBuffer,
-    mut i: usize,
+    i: usize,
     end: usize,
     fence: Fence,
 ) -> Option<usize> {
+    find_code_fence_closing_at_indent(source, i, end, fence, 0)
+}
+
+fn find_code_fence_closing_at_indent(
+    source: &SourceBuffer,
+    mut i: usize,
+    end: usize,
+    fence: Fence,
+    indent: usize,
+) -> Option<usize> {
     while i < end {
-        if let Some(candidate) = code_fence_at(source.line_text(i)) {
-            let rest = &source.line_text(i).trim_start()[candidate.len..];
+        let text = source.line_text(i);
+        if text.bytes().take_while(|byte| *byte == b' ').count() >= indent
+            && let Some(candidate) = code_fence_at(&text[indent..])
+        {
+            let rest = &text.trim_start()[candidate.len..];
             if candidate.marker == fence.marker
                 && candidate.len >= fence.len
                 && rest.trim().is_empty()
@@ -2580,20 +2594,24 @@ fn list_item_at(text: &str) -> bool {
     markdown_list_marker_len(trimmed).is_some()
 }
 
-fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
+struct ListBlock {
+    end: usize,
+    preserve: bool,
+}
+
+fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> ListBlock {
     let first = source.line_text(start);
-    let base_indent = first.len() - first.trim_start().len();
-    let mut item_content_indent = list_item_content_indent(first);
+    let mut base_indent = first.len() - first.trim_start().len();
+    let mut item_content_indent = list_marker_content_indent(first);
+    let mut block_openers = Vec::new();
     let mut line = start + 1;
     while line < end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
             let Some(next) = next_nonblank_line(source, line + 1, end) else {
-                return end;
-            };
-            if list_item_at(source.line_text(next)) {
+                line = end;
                 break;
-            }
+            };
             if blank_line_continues_list_item(source.line_text(next), item_content_indent) {
                 line = next;
                 continue;
@@ -2601,18 +2619,74 @@ fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> usize {
             break;
         }
         if list_item_at(text) {
-            item_content_indent = list_item_content_indent(text);
+            let indent = text.len() - text.trim_start().len();
+            // Nested items do not change where the outer item can resume
+            // after a blank line. Only a sibling starts a new boundary.
+            if item_content_indent.is_some_and(|content_indent| indent < content_indent) {
+                // Keep the list's lowest indentation for lazy continuations.
+                base_indent = base_indent.min(indent);
+                item_content_indent = list_marker_content_indent(text);
+            }
             line += 1;
             continue;
         }
         let indent = text.len() - text.trim_start().len();
         if indent > base_indent {
+            if item_content_indent.is_some_and(|content_indent| indent < content_indent)
+                && !markdown_indented_code_at(text)
+                && !grid_table_separator(text)
+                && (code_fence_at(text).is_some() || raw_sensitive_at(text))
+            {
+                block_openers.push(line);
+            }
             line += 1;
             continue;
         }
         break;
     }
-    line
+    if block_openers.is_empty() {
+        return ListBlock {
+            end: line,
+            preserve: false,
+        };
+    }
+
+    // Preserve mixed list/raw regions together: normalizing a list marker can
+    // change the following block's membership. Consume the region we scanned
+    // so the next list does not scan the same suffix again.
+    let block_start = source.lines[start].full.start();
+    let block = source.slice(Span::new(block_start, source.lines[line - 1].full.end()));
+    let mut inlines = crate::core::wrap::MarkdownMultilineInlineScan::new(block);
+    let mut raw_end = start;
+    let mut preserve = false;
+    for opener in block_openers {
+        if opener < raw_end {
+            continue;
+        }
+        let offset = source.lines[opener].text.start() - block_start;
+        if inlines.covers(offset) {
+            continue;
+        }
+
+        preserve = true;
+        // Inline-looking markers were checked within the tentative region.
+        // Only a raw block can extend it to protect an unindented body.
+        raw_end = if let Some(fence) = code_fence_at(source.line_text(opener)) {
+            find_code_fence_closing(source, opener + 1, end, fence)
+                .map_or(end, |closing| closing + 1)
+        } else {
+            raw_sensitive_end(source, opener, end)
+        };
+        if raw_end >= line {
+            line = raw_end;
+            break;
+        }
+        inlines.skip_to(source.lines[raw_end].full.start() - block_start);
+    }
+    ListBlock {
+        end: line,
+        preserve,
+    }
 }
 
 fn next_nonblank_line(source: &SourceBuffer, mut line: usize, end: usize) -> Option<usize> {
@@ -2635,21 +2709,65 @@ fn blank_line_continues_list_item(text: &str, item_content_indent: Option<usize>
 
 fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool {
     let first = source.line_text(start);
+    let mut previous_item = first;
     let base_indent = first.len() - first.trim_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
     let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
+    let mut code_fence_end = start;
     for line in start + 1..end {
         let text = source.line_text(line);
         if text.trim().is_empty() {
             continue;
         }
         if list_item_at(text) {
+            let indent = text.len() - text.trim_start().len();
+            let previous_indent = previous_item.len() - previous_item.trim_start().len();
+            if indent > previous_indent
+                && list_marker_content_indent(previous_item)
+                    .is_some_and(|content_indent| indent < content_indent)
+            {
+                // The rich-list formatter can mistake a shifted sibling for
+                // a child when it normalizes the preceding marker's spacing.
+                return false;
+            }
+            previous_item = text;
             item_content_indent = list_item_content_indent(text);
             task_continuation = task_list_continuation_range(text);
             continue;
         }
         let indent = text.len() - text.trim_start().len();
+        if line >= code_fence_end
+            && let Some(content_indent) = item_content_indent
+            && indent >= content_indent
+            && let Some(fence) = code_fence_at(&text[content_indent..])
+        {
+            code_fence_end =
+                find_code_fence_closing_at_indent(source, line + 1, end, fence, content_indent)
+                    .map_or(end, |closing| closing + 1);
+        }
+        if line >= code_fence_end
+            && item_content_indent.is_some_and(|content_indent| indent >= content_indent)
+            && (heading_ranges(source, line).is_some()
+                || setext_heading_at(source, line, end).is_some())
+        {
+            let block_start = source.lines[start].full.start();
+            let multiline_inlines = multiline_inlines
+                .get_or_insert_with(|| list_multiline_inline_spans(source, start, end));
+            let content_offset = source.lines[line].text.start() - block_start + indent;
+            let underline_offset = source
+                .lines
+                .get(line + 1)
+                .filter(|_| setext_heading_at(source, line, end).is_some())
+                .map(|next| next.text.start() - block_start);
+            if !multiline_inlines.iter().any(|span| {
+                span.contains(&content_offset)
+                    || underline_offset.is_some_and(|offset| span.contains(&offset))
+            }) {
+                // The simple-list formatter cannot emit child headings.
+                return false;
+            }
+        }
         if blockquote_at(text) {
             let Some(body) = blockquote_plain_body(text) else {
                 return false;
@@ -2678,12 +2796,8 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
             // Multiline links and literals are rare. Keep this whole-block
             // scan off the ordinary-list hot path and cache it when needed.
             let block_start = source.lines[start].full.start();
-            let multiline_inlines = multiline_inlines.get_or_insert_with(|| {
-                let block = source.slice(Span::new(block_start, source.lines[end - 1].full.end()));
-                crate::core::wrap::markdown_multiline_link_destination_spans(block)
-                    .chain(crate::core::wrap::markdown_multiline_literal_spans(block))
-                    .collect::<Vec<_>>()
-            });
+            let multiline_inlines = multiline_inlines
+                .get_or_insert_with(|| list_multiline_inline_spans(source, start, end));
             // Include openers after the source indentation as well as lines
             // whose indentation is already inside a link or literal.
             let line_offset = source.lines[line].text.start() - block_start;
@@ -2698,6 +2812,20 @@ fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool
         }
     }
     true
+}
+
+fn list_multiline_inline_spans(
+    source: &SourceBuffer,
+    start: usize,
+    end: usize,
+) -> Vec<std::ops::Range<usize>> {
+    let block = source.slice(Span::new(
+        source.lines[start].full.start(),
+        source.lines[end - 1].full.end(),
+    ));
+    crate::core::wrap::markdown_multiline_link_destination_spans(block)
+        .chain(crate::core::wrap::markdown_multiline_literal_spans(block))
+        .collect()
 }
 
 fn list_rich_child_line(text: &str, item_content_indent: Option<usize>) -> bool {
@@ -2727,14 +2855,19 @@ fn rich_child_block_start(text: &str) -> bool {
         || list_item_at(trimmed)
 }
 
-fn list_item_content_indent(text: &str) -> Option<usize> {
+fn list_marker_content_indent(text: &str) -> Option<usize> {
     let trimmed = text.trim_start();
     let indent = text.len() - trimmed.len();
     let marker_len = markdown_list_marker_len(trimmed)?;
     let after_marker = &trimmed[marker_len..];
     let marker_gap = after_marker.len() - after_marker.trim_start().len();
-    let mut content_indent = indent + marker_len + marker_gap;
-    let rest = &after_marker[marker_gap..];
+    // Pandoc permits a paragraph at the source end of an empty marker.
+    Some(indent + marker_len + marker_gap)
+}
+
+fn list_item_content_indent(text: &str) -> Option<usize> {
+    let mut content_indent = list_marker_content_indent(text)?;
+    let rest = &text[content_indent..];
     if let Some(checkbox) = task_list_checkbox(rest) {
         let after_checkbox = &rest[checkbox.len()..];
         let checkbox_gap = after_checkbox.len() - after_checkbox.trim_start().len();

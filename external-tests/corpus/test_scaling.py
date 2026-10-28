@@ -1,4 +1,4 @@
-"""Public CLI scaling controls for template rejection and lexical shortcodes.
+"""Public CLI scaling controls for Markdown scanning.
 
 Run via `uv run external-tests/run.py --suite corpus/test_scaling.py`.
 """
@@ -163,6 +163,26 @@ def test_unpaired_shortcode_calls_scale_with_input_size(tmp_path: Path) -> None:
     )
 
 
+def test_alternating_lists_and_fences_scale_with_input_size(tmp_path: Path) -> None:
+    durations = []
+    for count in [1024, 4096]:
+        text = "- Item.\n ~~~text\n alpha beta\n ~~~\n" * count
+        source = tmp_path / f"lists-and-fences-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source, "--wrap", "sentence")
+        assert formatted == text
+        durations.append(cpu)
+
+    # Independent blocks should take proportional work, without rescanning
+    # the remaining document for each list.
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "list boundaries should not repeatedly scan the remaining suffix: "
+        f"1024 blocks used {small:.6f}s CPU, 4096 blocks used {large:.6f}s CPU"
+    )
+
+
 @pytest.mark.parametrize("token", ["{{ keep   this END", "{#identifier}"])
 @pytest.mark.parametrize("suffix", ["", "\n{# next line #}"])
 def test_overlapping_delimiters_and_attributes_scale_with_input_size(
@@ -199,13 +219,13 @@ def test_overlapping_delimiters_and_attributes_scale_with_input_size(
     )
 
 
-def measure_formatting_cpu(source: Path) -> tuple[float, str]:
+def measure_formatting_cpu(source: Path, *args: str) -> tuple[float, str]:
     log_path = source.with_suffix(".log")
 
     # Measure this child's CPU use, excluding scheduling and I/O waits. File
     # output lets wait4 reap the child without leaving unread pipes blocked.
     with log_path.open("wb") as log, subprocess.Popen(
-        [os.environ["YAMARK_BIN"], "format", os.fspath(source)],
+        [os.environ["YAMARK_BIN"], "format", os.fspath(source), *args],
         cwd=source.parent,
         stdout=log,
         stderr=subprocess.STDOUT,
