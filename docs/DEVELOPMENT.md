@@ -31,7 +31,7 @@ For behavior changes, add a failing [CLI transcript](../tests/cases/README.md) b
 
 `scripts/check.sh` checks Rust formatting, runs Clippy with all features and targets, runs the Rust tests with Python dependencies, executes the `format-trace` feature's diagnostic tests, runs the external suite, and runs the editor tests. It stops at the first failed command. Read the output and fix the cause before rerunning. Report a failed or unavailable stage rather than counting it as coverage.
 
-Use one Cargo build/test owner per checkout. Cargo's build lock does not cover the entire lifetime of integration tests that launch `target/debug/yamark`. Another build can replace that executable between invocations. Parallel test processes within one test run are supported; independent build/test runs need separate checkouts and target directories.
+Keep the checkout and Git HEAD unchanged during validation; benchmark tests compare artifacts keyed by commit. Use one Cargo build/test owner per checkout. Cargo's build lock does not cover the entire lifetime of integration tests that launch `target/debug/yamark`. Another build can replace that executable between invocations. Parallel test processes within one test run are supported; independent build/test runs need separate checkouts and target directories.
 
 The optional YAML Test Suite round-trip tests run when `tests/yaml-test-suite/data` exists. Prepare it from a local source with:
 
