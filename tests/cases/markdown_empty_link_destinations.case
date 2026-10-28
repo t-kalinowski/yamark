@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.md --wrap 12
+-- stdin
+[empty destination]()
+
+![empty image]()
+
+[![empty image]()](https://example.com)
+
+[![linked image](image.png)]()
+
+[empty with title]( "Title")
+
+[short]()
+-- stdout
+[empty destination]()
+
+![empty image]()
+
+[![empty image]()](
+  https://example.com
+)
+
+[![linked image](image.png)]()
+
+[empty with title]( "Title")
+
+[short]()
+-- stderr
+-- status
+0

@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#   "multimark>=0.4.0",
 #   "ruff",
 #   "py-yaml12>=0.2.0",
 #   "pytest>=9.1.1",
