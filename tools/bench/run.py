@@ -174,7 +174,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
 
     try:
         work_root = Path(
-            tempfile.mkdtemp(prefix=f"yamark-yaml-bench-{run_id}-", dir="/tmp")
+            tempfile.mkdtemp(prefix=f"yamark-yaml-bench-{run_id}-")
         ).resolve()
         results = []
         for name in selected:

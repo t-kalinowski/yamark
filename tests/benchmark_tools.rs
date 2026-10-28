@@ -359,6 +359,63 @@ fn yaml_benchmark_defaults_to_two_repetitions() {
 }
 
 #[test]
+fn benchmark_workdirs_follow_temp_environment() {
+    for (script, options, prefix) in [
+        (
+            "tools/bench/run.py",
+            vec!["--files", "1", "--items", "1"],
+            "yamark-yaml-bench-",
+        ),
+        (
+            "tools/bench/big.py",
+            vec!["--target-bytes", "1200"],
+            "yamark-big-bench-",
+        ),
+    ] {
+        let dir = tempdir().unwrap();
+        let scratch = dir.path().join("custom temp");
+        fs::create_dir(&scratch).unwrap();
+        let output = Command::new(python())
+            .arg(script)
+            .args(options)
+            .args([
+                "--tools",
+                "yamark",
+                "--reps",
+                "1",
+                "--warmups",
+                "0",
+                "--keep-workdirs",
+                "--skip-yamark-build",
+                "--yamark-bin",
+            ])
+            .arg(assert_cmd::cargo::cargo_bin("yamark"))
+            .arg("--out-dir")
+            .arg(dir.path().join("raw"))
+            .arg("--artifact-dir")
+            .arg(dir.path().join("artifacts"))
+            .env("TMPDIR", &scratch)
+            .env("TMP", &scratch)
+            .env("TEMP", &scratch)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            fs::read_dir(&scratch).unwrap().any(|entry| {
+                let entry = entry.unwrap();
+                entry.file_name().to_string_lossy().starts_with(prefix)
+                    && entry.path().join("yamark").is_dir()
+            }),
+            "{script} must place retained formatter workdirs in the configured temporary directory"
+        );
+    }
+}
+
+#[test]
 fn yaml_benchmark_default_path_is_yamark_per_file() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().join("raw");

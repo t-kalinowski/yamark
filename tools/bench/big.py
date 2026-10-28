@@ -189,7 +189,7 @@ def run_big_benchmark(args: argparse.Namespace) -> int:
 
     try:
         work_root = Path(
-            tempfile.mkdtemp(prefix=f"yamark-big-bench-{run_id}-", dir="/tmp")
+            tempfile.mkdtemp(prefix=f"yamark-big-bench-{run_id}-")
         ).resolve()
         prepared = prepare_tools(selected, tools, work_root)
         results: list[dict[str, object]] = []
