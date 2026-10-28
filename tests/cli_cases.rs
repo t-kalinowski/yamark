@@ -32,7 +32,10 @@ fn cli_cases() {
         let repo = case.git_fixture.as_ref().map(create_git_fixture);
         let mut command = Command::cargo_bin("yamark").unwrap();
         if let Some(repo) = &repo {
-            command.current_dir(repo.path());
+            let cwd = case.git_fixture.as_ref().unwrap()["cwd"]
+                .as_str()
+                .unwrap_or(".");
+            command.current_dir(repo.path().join(cwd));
         }
         command.args(split_args(&case.args));
         command.write_stdin(case.stdin);

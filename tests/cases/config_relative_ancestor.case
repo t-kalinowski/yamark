@@ -1,0 +1,19 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "cwd": "nested",
+  "files": {
+    "yamark.toml": "[format]\nwrap = \"sentence\"\n",
+    "nested/input.md": ""
+  }
+}
+-- args
+format --stdin-file-path input.md
+-- stdin
+First sentence. Second sentence.
+-- stdout
+First sentence.
+Second sentence.
+-- stderr
+-- status
+0
