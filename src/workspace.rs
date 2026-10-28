@@ -1040,7 +1040,7 @@ fn next_bounded_linear_diff_sync(
 }
 
 fn diff_hunks(ops: &[DiffOp<'_>], context: usize) -> Vec<(usize, usize)> {
-    let mut hunks = Vec::new();
+    let mut hunks: Vec<(usize, usize)> = Vec::new();
     let mut index = 0usize;
     while let Some(change) = next_change(ops, index) {
         let mut start = change;
@@ -1063,7 +1063,15 @@ fn diff_hunks(ops: &[DiffOp<'_>], context: usize) -> Vec<(usize, usize)> {
             }
             end += 1;
         }
-        hunks.push((start, end));
+        // Nearby changes share context. Emit that context once so the next
+        // hunk never refers back to lines consumed by the previous hunk.
+        if let Some(previous) = hunks.last_mut()
+            && start <= previous.1
+        {
+            previous.1 = end;
+        } else {
+            hunks.push((start, end));
+        }
         index = end;
     }
     hunks
