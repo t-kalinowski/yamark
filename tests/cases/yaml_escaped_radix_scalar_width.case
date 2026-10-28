@@ -1,0 +1,42 @@
+-- args
+format --stdin-file-path input.yaml --line-width 12 --verify
+-- stdin
+["\x30xFF", abc]
+---
+["\x30o77", abc]
+---
+["\x30b11", abc]
+---
+[!!str "\x30XAF", abc]
+---
+["\x30xyz", abc]
+---
+["0xFF", abc]
+---
+["\x30xFF"]
+---
+["\x30abc", abc]
+-- stdout
+- "0xFF"
+- abc
+---
+- "0o77"
+- abc
+---
+- "0b11"
+- abc
+---
+- !!str '0XAF'
+- abc
+---
+[0xyz, abc]
+---
+- "0xFF"
+- abc
+---
+["0xFF"]
+---
+[0abc, abc]
+-- stderr
+-- status
+0

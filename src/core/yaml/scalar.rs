@@ -1682,28 +1682,25 @@ impl DecodedStringWidthState {
     }
 }
 
-// Characters outside this set cannot appear in the current null/bool/int/float
-// recognizers, so a plain-safe decoded scalar containing one is a string.
+// Include every character accepted by the null/bool/int/float recognizers,
+// including radix prefixes and hexadecimal digits. Otherwise an escaped
+// numeric-looking string can be assigned a width that omits its quotes.
 fn yaml_core_non_string_semantic_char(ch: char) -> bool {
-    ch.is_ascii_digit()
+    ch.is_ascii_hexdigit()
         || matches!(
             ch,
             '+' | '-'
                 | '_'
                 | '.'
                 | '~'
-                | 'a'
-                | 'A'
-                | 'e'
-                | 'E'
-                | 'f'
-                | 'F'
                 | 'i'
                 | 'I'
                 | 'l'
                 | 'L'
                 | 'n'
                 | 'N'
+                | 'o'
+                | 'O'
                 | 'r'
                 | 'R'
                 | 's'
@@ -1712,6 +1709,8 @@ fn yaml_core_non_string_semantic_char(ch: char) -> bool {
                 | 'T'
                 | 'u'
                 | 'U'
+                | 'x'
+                | 'X'
         )
 }
 
