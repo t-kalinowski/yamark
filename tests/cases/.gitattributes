@@ -1,0 +1,2 @@
+# Literal scalar content starts with a tab after YAML indentation.
+yaml_tab_leading_literal.case whitespace=-space-before-tab

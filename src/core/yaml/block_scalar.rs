@@ -230,7 +230,7 @@ pub(super) fn block_scalar_body_reindent_is_safe(
     let mut saw_content = false;
     for line in body.split(['\r', '\n']) {
         let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-        if line.trim_ascii().is_empty() {
+        if line.trim_matches(' ').is_empty() {
             if implicit_indent && !saw_content && indent > source_indent {
                 return false;
             }
@@ -246,7 +246,7 @@ pub(super) fn block_scalar_body_reindent_is_safe(
 
 pub(super) fn block_scalar_body_indent(body: &str) -> Option<usize> {
     body.split(['\r', '\n'])
-        .find(|line| !line.trim_ascii().is_empty())
+        .find(|line| !line.trim_matches(' ').is_empty())
         .map(|line| line.bytes().take_while(|byte| *byte == b' ').count())
 }
 
@@ -259,7 +259,7 @@ pub(super) fn normalize_nontrailing_block_scalar_blank_lines(
     for line in body.split_inclusive(['\r', '\n']) {
         offset += line.len();
         let (line_body, _) = strip_newline(line);
-        if line_body.trim_ascii().is_empty() {
+        if line_body.trim_matches(' ').is_empty() {
             continue;
         }
         if line_body.bytes().take_while(|byte| *byte == b' ').count() < indent {

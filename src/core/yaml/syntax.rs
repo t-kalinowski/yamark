@@ -63,6 +63,40 @@ pub(super) fn yaml_scan_has_unsupported_preserve_syntax(
     false
 }
 
+pub(super) fn yaml_scan_has_tab_indentation(source: &SourceBuffer, scan: &YamlLineScan) -> bool {
+    let mut line = scan.start_line;
+    while line < scan.end_line {
+        if tab_in_indentation(source.line_text(line)).is_some() {
+            return true;
+        }
+        if let Some(block) = block_scalar_at(source, line, scan.end_line) {
+            let body_indent = block
+                .header_info
+                .indent
+                .map(|indent| block.header_info.base_indent + indent as usize)
+                .or_else(|| {
+                    super::block_scalar::block_scalar_body_indent(source.slice(block.body))
+                });
+            let end = source.line_at_byte(block.full.end.saturating_sub(1)) + 1;
+            // A tab after the scalar's required spaces is content. A tab before
+            // that boundary is still unsupported YAML indentation.
+            for body_line in line + 1..end {
+                if let Some(column) = tab_in_indentation(source.line_text(body_line))
+                    && body_indent.is_none_or(|indent| {
+                        column < indent || indent <= block.header_info.base_indent
+                    })
+                {
+                    return true;
+                }
+            }
+            line = end;
+        } else {
+            line += 1;
+        }
+    }
+    false
+}
+
 fn unsupported_yaml_line_syntax(
     source: &SourceBuffer,
     line: usize,
@@ -1132,35 +1166,22 @@ fn block_scalar_header_info(indicators: &str) -> Option<YamlBlockScalarHeader> {
 }
 
 fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<(usize, usize)> {
-    let indent = indentation(text);
-    if let Some(colon) = mapping_colon_at(text, indent)
-        && colon < marker_index
-    {
-        let mut value_start = colon + 1;
-        while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
-            value_start += 1;
-        }
-        return Some((value_start, indent));
-    }
-    if let Some(marker) = sequence_line(text, indent)
+    let mut value_start = indentation(text);
+    let mut base_indent = value_start;
+    while let Some(marker) = compact_sequence_marker_at(text, value_start)
         && marker < marker_index
     {
-        let mut value_start = marker + 1;
-        while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
-            value_start += 1;
-        }
-        return Some((value_start, indent));
+        base_indent = marker;
+        value_start = skip_ascii_whitespace(text, marker + 1);
     }
-    if let Some(marker) = explicit_key_line(text, indent)
+    if let Some(marker) = mapping_colon_from(text, value_start)
+        .or_else(|| explicit_indicator_at(text, value_start, b'?'))
         && marker < marker_index
     {
-        let mut value_start = marker + 1;
-        while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
-            value_start += 1;
-        }
-        return Some((value_start, indent));
+        base_indent = value_start;
+        value_start = skip_ascii_whitespace(text, marker + 1);
     }
-    Some((indent, indent))
+    Some((value_start, base_indent))
 }
 
 fn block_scalar_metadata_prefix(prefix: &str) -> bool {
