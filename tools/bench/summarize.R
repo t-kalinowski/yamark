@@ -24,7 +24,7 @@ read_yaml_benchmark_results <- function(input_dir) {
           result$width_profile,
           artifact_width_profile(data)
         ),
-        corpus_shape = value_or(data$corpus$shape, ""),
+        corpus_shape = value_or(data$corpus$shape, "flow-heavy"),
         files = data$corpus$files,
         bytes = data$corpus$bytes,
         changed_files = result$changed_files,
@@ -74,6 +74,7 @@ parse_args <- function(args) {
     invocation = "per-file",
     operation = "write",
     width_profile = "default",
+    corpus_shape = "representative",
     limit_commits = 5L
   )
   index <- 1L
@@ -81,7 +82,7 @@ parse_args <- function(args) {
     arg <- args[[index]]
     if (arg %in% c(
       "--input-dir", "--formatter", "--invocation", "--operation",
-      "--width-profile", "--limit-commits"
+      "--width-profile", "--corpus-shape", "--limit-commits"
     )) {
       index <- index + 1L
       stopifnot(index <= length(args))
@@ -107,7 +108,8 @@ main <- function() {
     invocation = args$invocation,
     operation = args$operation,
     width_profile = args$width_profile,
-    limit_commits = args$limit_commits
+    limit_commits = args$limit_commits,
+    corpus_shape = args$corpus_shape
   )
   stopifnot(requireNamespace("knitr", quietly = TRUE))
 
@@ -132,7 +134,8 @@ filter_benchmark_results <- function(
   invocation,
   operation,
   width_profile,
-  limit_commits
+  limit_commits,
+  corpus_shape = "representative"
 ) {
   out <- results
   if (nzchar(formatter)) {
@@ -146,6 +149,9 @@ filter_benchmark_results <- function(
   }
   if (nzchar(width_profile)) {
     out <- out[identical_or_na(out$width_profile, width_profile), , drop = FALSE]
+  }
+  if (nzchar(corpus_shape)) {
+    out <- out[identical_or_na(out$corpus_shape, corpus_shape), , drop = FALSE]
   }
   if (nrow(out) == 0L) {
     return(out)

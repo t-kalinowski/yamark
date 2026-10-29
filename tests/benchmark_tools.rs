@@ -113,7 +113,7 @@ fn complete_benchmark_dry_run_lists_the_canonical_isolated_suite() {
     let default = command_for(&stdout, "default-yaml");
     let runner = Path::new("tools").join("bench").join("run.py");
     assert!(default.contains(&runner.display().to_string()));
-    assert!(default.contains("--corpus yaml --corpus-shape flow-heavy"));
+    assert!(default.contains("--corpus yaml --corpus-shape representative"));
     assert!(default.contains("--invocation per-file --operation write"));
     assert!(default.contains("--width-profile default"));
     assert!(default.contains("--files 400 --items 80"));
@@ -668,6 +668,146 @@ fn big_benchmark_defaults_to_stable_repetitions() {
 }
 
 #[test]
+fn representative_benchmark_corpus_is_varied_deterministic_and_idempotent() {
+    let dir = tempdir().unwrap();
+    let families = [
+        "ordinary-config",
+        "flow-heavy",
+        "block-heavy",
+        "plain-prose",
+        "quoted-prose",
+        "literal-scalars",
+        "markdown-paragraphs",
+        "markdown-rich",
+    ];
+    let mut baseline = std::collections::BTreeMap::new();
+    for pass in ["default", "explicit"] {
+        let out_dir = dir.path().join(pass);
+        let artifact_dir = dir.path().join(format!("{pass}-artifacts"));
+        let mut command = Command::new(python());
+        command
+            .arg("tools/bench/run.py")
+            .args([
+                "--files",
+                "8",
+                "--items",
+                "12",
+                "--reps",
+                "1",
+                "--warmups",
+                "0",
+                "--keep-corpus",
+                "--skip-yamark-build",
+                "--yamark-bin",
+            ])
+            .arg(assert_cmd::cargo::cargo_bin("yamark"))
+            .arg("--out-dir")
+            .arg(&out_dir)
+            .arg("--artifact-dir")
+            .arg(&artifact_dir);
+        if pass == "explicit" {
+            command.args(["--corpus-shape", "representative"]);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let artifact = fs::read_dir(&artifact_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let data: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+        assert_eq!(data["corpus"]["shape"], "representative");
+        assert!(artifact.to_string_lossy().ends_with("-representative.json"));
+        assert_eq!(data["corpus"]["files"], 8);
+        assert_eq!(
+            data["corpus"]["workloads"].as_object().unwrap().len(),
+            families.len()
+        );
+        for family in families {
+            assert_eq!(data["corpus"]["workloads"][family], 1, "{family}");
+        }
+        assert_eq!(data["results"][0]["status"], "ok");
+        assert_eq!(data["results"][0]["changed_files"], 8);
+        let corpus = fs::read_dir(&out_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path()
+            .join("corpus");
+        let mut paths = Vec::new();
+        let mut inputs = std::collections::BTreeMap::new();
+        for target in data["invocation"]["targets"].as_array().unwrap() {
+            let relative = target.as_str().unwrap();
+            let path = corpus.join(relative);
+            inputs.insert(relative.to_owned(), fs::read(&path).unwrap());
+            paths.push(path);
+        }
+        let contents = |family: &str| {
+            String::from_utf8(
+                inputs
+                    .iter()
+                    .find(|(path, _)| path.starts_with(&format!("{family}/")))
+                    .unwrap()
+                    .1
+                    .clone(),
+            )
+            .unwrap()
+        };
+        let ordinary = contents("ordinary-config");
+        assert!(ordinary.contains("true") && ordinary.contains("false"));
+        assert!(ordinary.contains('&') && ordinary.contains('*') && ordinary.contains('#'));
+        let quotes = contents("quoted-prose");
+        assert!(!quotes.is_ascii() && quotes.contains("''") && quotes.contains("\\\""));
+        let literal = contents("literal-scalars");
+        assert!(literal.contains("\r\n\r\n"));
+        assert!(!literal.contains("\r\r\n"));
+        let markdown = contents("markdown-paragraphs");
+        let paragraph_counts = markdown
+            .split("  - !md |\n")
+            .skip(1)
+            .map(|scalar| scalar.split("\n\n").count())
+            .collect::<Vec<_>>();
+        assert_eq!(paragraph_counts, [1, 2, 8, 1]);
+        let rich = contents("markdown-rich");
+        assert!(rich.contains("!md") && rich.contains("```") && rich.contains("](https://"));
+        if pass == "default" {
+            baseline = inputs;
+        } else {
+            assert_eq!(inputs, baseline);
+        }
+        for iteration in 0..2 {
+            let before = paths
+                .iter()
+                .map(|path| fs::read(path).unwrap())
+                .collect::<Vec<_>>();
+            let output = Command::new(assert_cmd::cargo::cargo_bin("yamark"))
+                .args(["format", "--verify"])
+                .args(&paths)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            if iteration == 1 {
+                let after = paths
+                    .iter()
+                    .map(|path| fs::read(path).unwrap())
+                    .collect::<Vec<_>>();
+                assert_eq!(before, after);
+            }
+        }
+    }
+}
+
+#[test]
 fn yaml_benchmark_can_generate_mixed_node_corpus() {
     let dir = tempdir().unwrap();
     let out_dir = dir.path().join("raw");
@@ -755,7 +895,7 @@ fn yaml_benchmark_writes_separate_artifacts_for_different_corpus_shapes() {
     let out_dir = dir.path().join("raw");
     let artifact_dir = dir.path().join("artifacts");
 
-    for shape in ["flow-heavy", "mixed-node"] {
+    for shape in ["flow-heavy", "mixed-node", "representative"] {
         let output = Command::new(python())
             .arg("tools/bench/run.py")
             .args([
@@ -800,7 +940,7 @@ fn yaml_benchmark_writes_separate_artifacts_for_different_corpus_shapes() {
         .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
         .collect::<Vec<_>>();
     artifacts.sort();
-    assert_eq!(artifacts.len(), 2);
+    assert_eq!(artifacts.len(), 3);
 
     let mut shapes = artifacts
         .iter()
@@ -810,7 +950,12 @@ fn yaml_benchmark_writes_separate_artifacts_for_different_corpus_shapes() {
         })
         .collect::<Vec<_>>();
     shapes.sort();
-    assert_eq!(shapes, ["flow-heavy", "mixed-node"]);
+    assert_eq!(shapes, ["flow-heavy", "mixed-node", "representative"]);
+    let commit = git_output(Path::new("."), &["rev-parse", "HEAD"]);
+    let legacy: Value =
+        serde_json::from_slice(&fs::read(artifact_dir.join(format!("{commit}.json"))).unwrap())
+            .unwrap();
+    assert_eq!(legacy["corpus"]["shape"], "flow-heavy");
     assert!(artifacts.iter().any(|path| {
         path.file_name()
             .unwrap()
@@ -1629,6 +1774,7 @@ fn r_summary_reads_yaml_benchmark_json_directory() {
 
     let output = Command::new("Rscript")
         .arg("tools/bench/summarize.R")
+        .args(["--corpus-shape", "flow-heavy"])
         .arg("--input-dir")
         .arg(&artifact_dir)
         .output()
@@ -1648,6 +1794,41 @@ fn r_summary_reads_yaml_benchmark_json_directory() {
     assert!(stdout.contains("width_profile"));
     assert!(stdout.contains("186.18"));
     assert!(!stdout.contains("prettier"));
+}
+
+#[test]
+fn representative_summary_keeps_legacy_corpus_comparisons_separate() {
+    let dir = tempdir().unwrap();
+    for (commit, shape) in [("newcorpus", "representative"), ("oldcorpus", "flow-heavy")] {
+        let name = format!("{commit}.json");
+        write_summary_fixture(dir.path(), &name, commit, "2026-05-20T00:00:00Z", 0.02);
+        let path = dir.path().join(name);
+        let mut data: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        data["corpus"]["shape"] = Value::from(shape);
+        fs::write(path, serde_json::to_vec(&data).unwrap()).unwrap();
+    }
+    for (shape, expected, excluded) in [
+        (None, "newcorpus", "oldcorpus"),
+        (Some("flow-heavy"), "oldcorpus", "newcorpus"),
+    ] {
+        let mut command = Command::new("Rscript");
+        command
+            .arg("tools/bench/summarize.R")
+            .arg("--input-dir")
+            .arg(dir.path());
+        if let Some(shape) = shape {
+            command.args(["--corpus-shape", shape]);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(stdout.contains(expected), "{stdout}");
+        assert!(!stdout.contains(excluded), "{stdout}");
+    }
 }
 
 #[test]
@@ -2120,6 +2301,7 @@ fn write_summary_fixture(
   }},
   "corpus": {{
     "kind": "yaml",
+    "shape": "representative",
     "files": 2,
     "items_per_file": 2,
     "bytes": 2048
