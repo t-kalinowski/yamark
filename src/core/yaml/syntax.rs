@@ -660,8 +660,7 @@ pub(super) fn mapping_colon_at(text: &str, indent: usize) -> Option<usize> {
     if indentation(text) != indent {
         return None;
     }
-    let trimmed = text[indent..].trim_ascii_end();
-    if trimmed.starts_with('-') {
+    if compact_sequence_marker_at(text, indent).is_some() {
         return None;
     }
     mapping_colon_from(text, indent)
