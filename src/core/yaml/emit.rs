@@ -1055,7 +1055,6 @@ fn emit_yaml_mapping_value_after_colon(
         document,
         ast,
         options,
-        plugins: _,
         ..
     } = context;
     let value_node = ast.node(value);
