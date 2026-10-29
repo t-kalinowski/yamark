@@ -191,7 +191,11 @@ fn emit_yaml_scalar_plan_output_into(
     if emit_non_string_plain_scalar_plan_output_into(output, source, scalar, node).is_some() {
         return;
     }
-    if let Some(rendered) = render_quoted_literal_scalar(source, scalar, node, options, body_indent)
+    // A new literal header follows the emitted prefix, not the source indentation.
+    let literal_body_indent =
+        body_indent.unwrap_or_else(|| yaml_output_line_indent(output) + options.indent_width);
+    if let Some(rendered) =
+        render_quoted_literal_scalar(source, scalar, node, options, literal_body_indent)
     {
         output.push_str(&rendered);
         return;
@@ -443,14 +447,13 @@ fn render_quoted_literal_scalar(
     scalar: &YamlScalar,
     node: &YamlAstNode,
     options: FormatOptions,
-    body_indent: Option<usize>,
+    body_indent: usize,
 ) -> Option<String> {
     let newline = line_ending_or_default(source, node.span, options);
     let final_newline = !line_ending_for_span(source, node.span).is_empty();
     render_quoted_literal_scalar_with_layout(
         source,
         scalar,
-        node,
         options,
         body_indent,
         newline,
@@ -458,13 +461,11 @@ fn render_quoted_literal_scalar(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn render_quoted_literal_scalar_with_layout(
     source: &SourceBuffer,
     scalar: &YamlScalar,
-    node: &YamlAstNode,
     options: FormatOptions,
-    body_indent: Option<usize>,
+    body_indent: usize,
     newline: &str,
     final_newline: bool,
 ) -> Option<String> {
@@ -508,11 +509,7 @@ pub(super) fn render_quoted_literal_scalar_with_layout(
         return None;
     }
 
-    let indent = body_indent.unwrap_or_else(|| {
-        let line_index = source.line_at_byte(node.span.start());
-        indentation(source.line_text(line_index)) + options.indent_width
-    });
-    let indent = " ".repeat(indent);
+    let indent = " ".repeat(body_indent);
 
     let mut out = String::new();
     let trailing_newlines = decoded

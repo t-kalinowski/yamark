@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path lorem.yaml --verify
+-- stdin
+# Lorem ipsum
+    ' Lorem ipsum
+
+      dolor sit amet'
+-- stdout
+# Lorem ipsum
+|2-
+   Lorem ipsum
+  dolor sit amet
+-- stderr
+-- status
+0

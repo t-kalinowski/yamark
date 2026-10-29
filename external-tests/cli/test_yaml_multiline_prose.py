@@ -5,9 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from yaml12 import read_yaml
-
 from _support import run_command
+from yaml12 import read_yaml
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
@@ -74,8 +73,10 @@ def test_cli_reflows_multiline_yaml_prose(
         ('"Lorem  ipsum    dolor sit amet,\n  consectetur adipiscing elit."', ""),
         ("'Lorem ipsum''dolor sit amet,\n  consectetur adipiscing elit.'", ""),
         (
-            '"Lorem ipsum \\\n  dolor sit amet,\\nconsectetur \\"adipiscing\\" elit, '
-            '\\\\ sed do eiusmod tempor incididunt."',
+            (
+                '"Lorem ipsum \\\n  dolor sit amet,\\nconsectetur \\"adipiscing\\" elit, '
+                '\\\\ sed do eiusmod tempor incididunt."'
+            ),
             "",
         ),
         (
@@ -208,7 +209,7 @@ def test_cli_distinguishes_multiline_yaml_content_from_skip_directives(
     else:
         assert b"ipsum: [dolor, sit]" in output
         if directive == "next":
-            assert output.startswith(f"{prefix}{scalar}".encode("utf-8"))
+            assert output.startswith(f"{prefix}{scalar}".encode())
 
     run_command(
         "yamark", "format", "--prose-width", "36", "--verify", path, cwd=tmp_path
@@ -287,3 +288,55 @@ def test_cli_preserves_root_multiline_yaml_trivia(
     )
     assert read_yaml(path, multi=True) == before
     assert path.read_bytes() == output
+
+
+@pytest.mark.parametrize("quote", ["'", '"'], ids=["single", "double"])
+@pytest.mark.parametrize("source_indent", [0, 2, 4])
+@pytest.mark.parametrize("indent_width", [2, 4])
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
+def test_cli_indents_root_literals_from_the_emitted_header(
+    tmp_path: Path, quote: str, source_indent: int, indent_width: int, newline: str
+) -> None:
+    prefix = "---\n# Lorem ipsum\n"
+    source = (
+        f"{prefix}{' ' * source_indent}{quote} Lorem ipsum\n\n"
+        f"{' ' * (source_indent + 2)}dolor sit amet {quote}\n"
+    ).replace("\n", newline)
+    expected = (
+        (
+            f"{prefix}|{indent_width}-\n"
+            f"{' ' * (indent_width + 1)}Lorem ipsum\n"
+            f"{' ' * indent_width}dolor sit amet \n"
+        )
+        .replace("\n", newline)
+        .encode("utf-8")
+    )
+    path = tmp_path / "lorem.yaml"
+    path.write_bytes(source.encode("utf-8"))
+    before = read_yaml(path, multi=True)
+    assert before == [" Lorem ipsum\ndolor sit amet "]
+
+    run_command(
+        "yamark",
+        "format",
+        "--indent-width",
+        str(indent_width),
+        "--verify",
+        path,
+        cwd=tmp_path,
+    )
+
+    assert path.read_bytes() == expected
+    assert read_yaml(path, multi=True) == before
+
+    run_command(
+        "yamark",
+        "format",
+        "--indent-width",
+        str(indent_width),
+        "--verify",
+        path,
+        cwd=tmp_path,
+    )
+    assert path.read_bytes() == expected
+    assert read_yaml(path, multi=True) == before
