@@ -40,7 +40,7 @@ Preserving a mapping value or sequence item includes its parent entry header, ev
 
 Compact sequence ancestors can share a physical header with a preserved child. Emission records the ancestor prefix's output boundary so copying that header replaces the already-emitted markers once; later siblings keep their own output. Explicitly formatted scalars retain parent comments and intervening trivia in place, with the same container indentation constraint as preserved values.
 
-Markdown block scalars are prepared when their Markdown target becomes known, including tags attached from a parent line. Their owned source removes YAML indentation before Markdown parsing and retains an origin for diagnostic coordinates. Emission restores YAML indentation around the formatted Markdown; byte spans and line indexes remain local to the owned source.
+Markdown block scalars are prepared when their Markdown target becomes known, including tags attached from a parent line. Their owned source removes YAML indentation before Markdown parsing and retains an origin for diagnostic coordinates. Explicit indentation indicators use the enclosing YAML parent's indentation, including when the header starts on a later line. Emission restores YAML indentation around the formatted Markdown; byte spans and line indexes remain local to the owned source.
 
 ## Process and file boundaries
 

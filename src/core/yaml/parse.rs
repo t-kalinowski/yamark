@@ -109,7 +109,16 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 .map(Some);
         }
 
-        if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
+        // Child blocks are entered at their parent's indentation plus one;
+        // root blocks use zero. An explicit block-scalar indicator is relative
+        // to that parent, even when the scalar header is indented farther.
+        if let Some(block) = block_scalar_at_value(
+            self.source,
+            self.line,
+            self.end,
+            actual_indent,
+            indent.saturating_sub(1),
+        ) {
             let id = self.parse_block_scalar(block)?;
             self.ast.node_mut(id).leading_trivia = leading.into();
             return Ok(Some(id));

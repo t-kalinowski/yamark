@@ -721,7 +721,12 @@ fn emit_yaml_scalar_with_parent_trivia(
         .anchor
         .filter(|anchor| anchor.start() >= child.value.start());
     let line = context.source.line_at_byte(child.value.start());
-    let body_indent = indentation(context.source.line_text(line)) + context.options.indent_width;
+    let base_indent = child
+        .block_header
+        .filter(|header| header.indent.is_some())
+        .map(|header| header.base_indent)
+        .unwrap_or_else(|| indentation(context.source.line_text(line)));
+    let body_indent = base_indent + context.options.indent_width;
     stats.emitted_nodes += 1;
     if let Some(ExternalBlockScalarAction::Formatted(formatted)) = external_action {
         emit_yaml_formatted_external_block_scalar_after_prefix(
