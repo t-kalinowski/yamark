@@ -9,9 +9,10 @@ use super::scalar::{
 use super::simple::{format_markdown_yaml_block_value, format_simple_yaml_line, strip_newline};
 use super::syntax::{find_trailing_comment, indentation, line_ending_for_span, scalar_metadata};
 use crate::core::document::{Document, FormatOptions};
-use crate::core::source::{SourceBuffer, Span};
+use crate::core::source::{SourceBuffer, SourceSpan, Span};
 use crate::core::yaml_model::{
     YamlAlias, YamlAstKind, YamlAstNode, YamlBlockChomp, YamlEmitPlan, YamlScalar, YamlScalarStyle,
+    YamlTriviaKind,
 };
 use crate::diagnostic::Result;
 use crate::plugins::PluginRegistry;
@@ -20,6 +21,17 @@ use std::borrow::Cow;
 pub(super) enum ExternalBlockScalarAction {
     Preserve,
     Formatted(String),
+}
+
+pub(super) fn yaml_scalar_keeps_parent_header(
+    node: &YamlAstNode,
+    parent_line: SourceSpan,
+    parent_comment: Option<SourceSpan>,
+) -> bool {
+    matches!(&node.kind, YamlAstKind::Scalar(scalar)
+        if scalar.value.start() >= parent_line.end()
+            && (parent_comment.is_some() || node.leading_trivia.iter().any(|trivia|
+                matches!(trivia.kind, YamlTriviaKind::Comment | YamlTriviaKind::Directive))))
 }
 
 pub(super) fn line_ending_or_default(
@@ -339,6 +351,19 @@ pub(super) fn emit_yaml_scalar_after_prefix(
             );
             Ok(())
         }
+        YamlEmitPlan::NestedMarkdownBlockScalar { nested } => {
+            emit_yaml_nested_markdown_block_scalar(
+                out,
+                source,
+                document,
+                scalar,
+                node,
+                options,
+                plugins,
+                *nested as usize,
+                body_indent,
+            )
+        }
         _ => emit_yaml_scalar(out, source, document, scalar, node, options, plugins),
     }
 }
@@ -374,6 +399,7 @@ pub(super) fn emit_yaml_nested_markdown_block_scalar(
     options: FormatOptions,
     plugins: &PluginRegistry,
     nested: usize,
+    body_indent: Option<usize>,
 ) -> Result<()> {
     let header_span = scalar.header.expect("block scalars have headers");
     out.push_str(&render_yaml_block_scalar_value_header(source, scalar));
@@ -389,12 +415,14 @@ pub(super) fn emit_yaml_nested_markdown_block_scalar(
     {
         nested_output.push_str(line_ending_for_span(source, header_span));
     }
-    out.push_str(&reindent_yaml_block_scalar_body(
-        source,
-        scalar,
-        node,
+    let body_indent = body_indent.unwrap_or_else(|| {
+        let line = source.line_at_byte(header_span.start());
+        indentation(source.line_text(line)) + options.indent_width
+    });
+    out.push_str(&reindent_block_lines(
         &nested_output,
-        options,
+        0,
+        block_scalar_output_body_indent(scalar, body_indent, options),
     ));
     Ok(())
 }

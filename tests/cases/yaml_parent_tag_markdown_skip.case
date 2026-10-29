@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path lorem.yaml --canonical --verify
+-- stdin
+lorem: !md
+  # fmt: skip
+  |
+    <!-- fmt: lorem -->
+ipsum: [dolor,sit]
+-- stdout
+lorem: !md
+  # fmt: skip
+  |
+    <!-- fmt: lorem -->
+ipsum: [dolor, sit]
+-- stderr
+-- status
+0

@@ -70,6 +70,7 @@ pub(super) fn emit_yaml_scalar(
                 options,
                 plugins,
                 *nested as usize,
+                None,
             )
         }
         YamlEmitPlan::ExternalBlockScalar => {

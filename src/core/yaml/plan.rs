@@ -3,7 +3,8 @@
 use super::YamlParser;
 use super::block_scalar::{
     block_scalar_body_reindent_is_safe, inline_markdown_scalar_is_renderable,
-    markdown_block_scalar_body_is_empty, resolve_inline_markdown_plan, yaml_tag_is_markdown,
+    markdown_block_scalar_body_is_empty, resolve_inline_markdown_plan,
+    yaml_scalar_keeps_parent_header, yaml_tag_is_markdown,
 };
 use super::flow_emit::{
     flow_trailing_comment, mapping_pair_child_indent, planned_yaml_inline_width_or_source,
@@ -74,13 +75,26 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     YamlAstKind::Mapping(mapping) => mapping.pairs.iter().any(|pair| {
                         pair.key_node
                             .is_some_and(|key| self.ast.node(key).requires_source_indent)
-                            || pair
-                                .value
-                                .is_none_or(|value| self.ast.node(value).requires_source_indent)
+                            || pair.value.is_none_or(|value| {
+                                let value = self.ast.node(value);
+                                value.requires_source_indent
+                                    || yaml_scalar_keeps_parent_header(
+                                        value,
+                                        pair.line,
+                                        pair.trailing_comment,
+                                    )
+                            })
                     }),
                     YamlAstKind::Sequence(sequence) => sequence.items.iter().any(|item| {
-                        item.value
-                            .is_none_or(|value| self.ast.node(value).requires_source_indent)
+                        item.value.is_none_or(|value| {
+                            let value = self.ast.node(value);
+                            value.requires_source_indent
+                                || yaml_scalar_keeps_parent_header(
+                                    value,
+                                    item.line,
+                                    item.trailing_comment,
+                                )
+                        })
                     }),
                     YamlAstKind::Opaque(_) => true,
                     YamlAstKind::Empty
