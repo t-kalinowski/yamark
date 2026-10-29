@@ -22,15 +22,26 @@ pub(super) fn compact_root_collection_allowed(ast: &YamlDocumentAst, id: YamlNod
             mapping.pairs.len() > 1
                 && mapping.pairs.iter().all(|pair| {
                     pair.value
-                        .is_some_and(|value| !yaml_node_is_block_collection(ast, value))
+                        .is_some_and(|value| compact_root_child_allowed(ast, value))
                 })
         }
         YamlAstKind::Sequence(sequence) => sequence.items.iter().all(|item| {
             item.value
-                .is_some_and(|value| !yaml_node_is_block_collection(ast, value))
+                .is_some_and(|value| compact_root_child_allowed(ast, value))
         }),
         _ => true,
     }
+}
+
+fn compact_root_child_allowed(ast: &YamlDocumentAst, id: YamlNodeId) -> bool {
+    // Keep the root layout stable when a child collection collapses to flow.
+    !matches!(
+        ast.node(id).kind,
+        YamlAstKind::Mapping(_)
+            | YamlAstKind::Sequence(_)
+            | YamlAstKind::FlowMapping(_)
+            | YamlAstKind::FlowSequence(_)
+    )
 }
 
 pub(super) fn yaml_node_is_block_collection(ast: &YamlDocumentAst, id: YamlNodeId) -> bool {

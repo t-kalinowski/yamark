@@ -15,7 +15,7 @@ mod tests;
 use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{FormatOptions, MarkdownWrap};
 use crate::core::lines::text_lines as markdown_lines;
-use crate::core::markdown_marker::markdown_list_marker;
+use crate::core::markdown_marker::{markdown_list_marker, ordered_alpha_marker};
 use crate::core::source::{SourceSpan, Span};
 use containers::{footnote_definition, prepare_markdown_footnote};
 pub use containers::{
@@ -331,8 +331,9 @@ fn setext_underline_line(line: &str) -> bool {
         && line.bytes().all(|byte| byte == line.as_bytes()[0])
 }
 
-// ASCII words can start blocks only as list markers or Table: captions. Keep
-// every other prefix on the full recognizer's path, including punctuation.
+// ASCII words can start blocks only as list markers or Table: captions. Use
+// the shared marker grammar so ordinary words ending in a period do not send
+// every growing line through block recognition. Other prefixes still do.
 fn token_may_start_markdown_block(token: &str) -> bool {
     let token = token.trim_start_matches([' ', '\t']);
     let word_len = token.bytes().take_while(u8::is_ascii_alphabetic).count();
@@ -342,6 +343,7 @@ fn token_may_start_markdown_block(token: &str) -> bool {
             .as_bytes()
             .get(word_len)
             .is_some_and(|byte| matches!(byte, b'.' | b')'))
+            && ordered_alpha_marker(&token[..word_len])
 }
 
 /// These markers are literal punctuation in prose. Escaping HTML, math, or

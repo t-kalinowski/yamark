@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path lorem.yaml --wrap none --verify
+-- stdin
+# fmt: markdown
+lorem:
+
+  'Lorem __ipsum__
+    dolor sit amet.'
+# fmt: markdown canonical=true scope=file
+-- stdout
+# fmt: markdown
+lorem: |
+  Lorem **ipsum** dolor sit amet.
+# fmt: markdown canonical=true scope=file
+-- stderr
+-- status
+0

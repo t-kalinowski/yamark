@@ -712,9 +712,8 @@ fn render_yaml_flow_block_scalar(
         && let Some(rendered) = render_quoted_literal_scalar_with_layout(
             source,
             scalar,
-            node,
             options,
-            Some(body_indent),
+            body_indent,
             newline,
             true,
         )

@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path lorem.yaml --canonical --wrap none --verify
+-- stdin
+# fmt: markdown
+lorem:
+  |2
+      Lorem __ipsum__.
+ipsum: [dolor,sit]
+---
+- !md
+  |2
+      Lorem __ipsum__.
+- [dolor,sit]
+---
+    !markdown |2
+      Lorem __ipsum__.
+-- stdout
+# fmt: markdown
+lorem: |2
+      Lorem __ipsum__.
+ipsum: [dolor, sit]
+---
+- !md |2
+      Lorem __ipsum__.
+- [dolor, sit]
+---
+!markdown |2
+      Lorem __ipsum__.
+-- stderr
+-- status
+0

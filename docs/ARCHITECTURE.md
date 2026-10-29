@@ -34,6 +34,18 @@ Wrapping must preserve Markdown structure as well as fit the requested width. Mo
 
 YAML formatting retains unsupported source and checks scalar semantics when choosing spelling, quoting, folding, or collection layout. `--verify` reparses formatted output and checks the supported equivalence contract. It complements exact transcripts and external parser comparisons; it does not replace them.
 
+Preserved YAML children retain their source prefixes. Planning propagates that indentation constraint through containing block collections, and emission keeps those collections at their source indentation while formatting editable siblings. Inline sequence mappings retain the corresponding marker-to-key spacing. Newly emitted literal scalar bodies use the emitted header's indentation rather than the original scalar's indentation.
+
+Preserving a mapping value or sequence item includes its parent entry header, even when the scalar starts on a later line. Ordinary out-of-line scalars retain that layout when parent properties or comments would be lost by moving the value inline. Tags and anchors belong to the scalar's semantic model regardless of which line contains them; their source spans remain separate from the scalar content used for verification.
+
+Compact sequence ancestors can share a physical header with a preserved child. Emission records the ancestor prefix's output boundary so copying that header replaces the already-emitted markers once; later siblings keep their own output. Explicitly formatted scalars retain parent comments and intervening trivia in place, with the same container indentation constraint as preserved values.
+
+Markdown block scalars are parsed when their Markdown target becomes known, including tags attached from a parent line. Their owned source removes YAML indentation before Markdown parsing and retains an origin for diagnostic coordinates. Explicit indentation indicators use the enclosing YAML parent's indentation, including when the header starts on a later line. Emission restores YAML indentation around the formatted Markdown; byte spans and line indexes remain local to the owned source.
+
+Ordinary Markdown wrapping plans are created and resolved one node at a time after directive policy settles. Explicit Markdown targets still prepare during parsing to retain diagnostic and skip precedence. Validation keeps the parsed structure without allocating ordinary emission drafts. Scalar spelling alternatives share a temporary decoded value, and wrapped YAML lines borrow slices of that value rather than copying each line.
+
+Block scalar comments are content only at or beyond the explicit or inferred content indentation. A dedented comment ends the body and remains available to YAML directive processing. When a YAML comment follows a scalar, its content and containing collections retain their source indentation so formatting cannot absorb that comment into the value. Blank embedded output followed by a comment indented beyond the YAML parent is rejected: there is no content left to establish that boundary, and changing the comment's indentation or the embedded target's scalar style is unsupported.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.

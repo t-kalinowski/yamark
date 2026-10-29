@@ -5,6 +5,7 @@
 - Git filter adoption, joining, and checking handle filenames that Git would quote in line-oriented output, including non-UTF-8 names on Unix.
 - Git filter verification with `--repo` reads formatting configuration from the selected repository, including nested configuration files.
 - YAML flow layout accounts for required quotes around escaped numeric-looking strings, keeping the layout stable on a second formatting pass.
+- YAML prose already split across plain or quoted continuation lines can be wrapped into folded blocks. Supported multiline quoted values allow the surrounding document to be formatted while preserving comments and scalar values.
 
 ## Editor integration
 

@@ -1,6 +1,5 @@
 //! Source-level YAML indicators, scalar boundaries, properties, and preservation checks.
 
-use super::scalar::decode_quoted_scalar;
 use super::simple::{simple_mapping_colon, strip_newline};
 use crate::core::directives::DirectiveTargetKind;
 use crate::core::source::{SourceBuffer, Span};
@@ -50,7 +49,7 @@ pub(super) fn yaml_scan_has_unsupported_preserve_syntax(
             line = source.line_at_byte(block.full.end.saturating_sub(1)) + 1;
             continue;
         }
-        let quoted_block = escaped_double_quoted_scalar_block_at(source, line, scan.end_line);
+        let quoted_block = supported_quoted_scalar_block_at(source, line, scan.end_line);
         if unsupported_yaml_line_syntax(source, line, scan.end_line, quoted_block.is_some()) {
             return true;
         }
@@ -63,11 +62,45 @@ pub(super) fn yaml_scan_has_unsupported_preserve_syntax(
     false
 }
 
+pub(super) fn yaml_scan_has_tab_indentation(source: &SourceBuffer, scan: &YamlLineScan) -> bool {
+    let mut line = scan.start_line;
+    while line < scan.end_line {
+        if tab_in_indentation(source.line_text(line)).is_some() {
+            return true;
+        }
+        if let Some(block) = block_scalar_at(source, line, scan.end_line) {
+            let body_indent = block
+                .header_info
+                .indent
+                .map(|indent| block.header_info.base_indent + indent as usize)
+                .or_else(|| {
+                    super::block_scalar::block_scalar_body_indent(source.slice(block.body))
+                });
+            let end = source.line_at_byte(block.full.end.saturating_sub(1)) + 1;
+            // A tab after the scalar's required spaces is content. A tab before
+            // that boundary is still unsupported YAML indentation.
+            for body_line in line + 1..end {
+                if let Some(column) = tab_in_indentation(source.line_text(body_line))
+                    && body_indent.is_none_or(|indent| {
+                        column < indent || indent <= block.header_info.base_indent
+                    })
+                {
+                    return true;
+                }
+            }
+            line = end;
+        } else {
+            line += 1;
+        }
+    }
+    false
+}
+
 fn unsupported_yaml_line_syntax(
     source: &SourceBuffer,
     line: usize,
     end: usize,
-    escaped_multiline_quote: bool,
+    supported_multiline_quote: bool,
 ) -> bool {
     let text = source.line_text(line);
     let (body, _) = strip_newline(text);
@@ -84,7 +117,7 @@ fn unsupported_yaml_line_syntax(
     if trimmed.starts_with('%') || unsupported_multiline_flow_collection(source, line, end) {
         return true;
     }
-    if !escaped_multiline_quote && line_starts_unclosed_quoted_scalar(text) {
+    if !supported_multiline_quote && line_starts_unclosed_quoted_scalar(text) {
         return true;
     }
 
@@ -394,6 +427,7 @@ pub(super) enum PlainScalarContinuation {
 pub(super) struct PlainScalarExtension {
     pub(super) span_end: usize,
     pub(super) value_end: usize,
+    pub(super) trailing_comment: Option<Span>,
 }
 
 pub(super) fn plain_scalar_continuation_line(
@@ -659,8 +693,7 @@ pub(super) fn mapping_colon_at(text: &str, indent: usize) -> Option<usize> {
     if indentation(text) != indent {
         return None;
     }
-    let trimmed = text[indent..].trim_ascii_end();
-    if trimmed.starts_with('-') {
+    if compact_sequence_marker_at(text, indent).is_some() {
         return None;
     }
     mapping_colon_from(text, indent)
@@ -898,17 +931,16 @@ pub(super) struct QuotedScalarBlock {
     pub(super) trailing_comment: Option<Span>,
 }
 
-fn escaped_double_quoted_scalar_block_at(
+fn supported_quoted_scalar_block_at(
     source: &SourceBuffer,
     line: usize,
     end: usize,
 ) -> Option<QuotedScalarBlock> {
     let line_info = source.lines.get(line)?;
     let text = source.line_text(line);
-    // A supported multiline double-quoted scalar must escape its first newline.
-    memchr(b'\\', text.as_bytes())?;
+    memchr2(b'\'', b'"', text.as_bytes())?;
     let value_start = yaml_line_value_content_start(text)?;
-    if let Some(block) = escaped_double_quoted_scalar_block_from_value(
+    if let Some(block) = supported_quoted_scalar_block_from_value(
         source,
         line,
         end,
@@ -923,16 +955,10 @@ fn escaped_double_quoted_scalar_block_at(
     let key_start = skip_ascii_whitespace(text, marker + 1);
     let colon = mapping_colon_from(text, key_start)?;
     let value_start = skip_ascii_whitespace(text, colon + 1);
-    escaped_double_quoted_scalar_block_from_value(
-        source,
-        line,
-        end,
-        value_start,
-        line_info.full.start(),
-    )
+    supported_quoted_scalar_block_from_value(source, line, end, value_start, line_info.full.start())
 }
 
-fn escaped_double_quoted_scalar_block_from_value(
+fn supported_quoted_scalar_block_from_value(
     source: &SourceBuffer,
     line: usize,
     end: usize,
@@ -942,7 +968,11 @@ fn escaped_double_quoted_scalar_block_from_value(
     let block = quoted_scalar_block_from_value(source, line, end, value_start, span_start)?;
     let metadata = scalar_metadata(source, block.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    decode_quoted_scalar(raw)?;
+    crate::core::yaml_scalar::decode_quoted_chars(
+        raw,
+        crate::core::yaml_scalar::DecodePolicy::Format,
+        |_| {},
+    )?;
     Some(block)
 }
 
@@ -987,33 +1017,28 @@ pub(super) fn quoted_scalar_block_from_value(
 }
 
 pub(super) fn quoted_scalar_close(text: &str, start: usize, quote: u8) -> Option<usize> {
+    let bytes = text.as_bytes();
     let mut pos = start + 1;
-    let mut escaped = false;
 
-    while pos < text.len() {
-        let ch = text[pos..].chars().next()?;
-        let ch_len = ch.len_utf8();
-        if quote == b'"' {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
+    if quote == b'"' {
+        while pos < bytes.len() {
+            pos += memchr2(b'"', b'\\', &bytes[pos..])?;
+            if bytes[pos] == b'"' {
                 return Some(pos);
             }
-            pos += ch_len;
-            continue;
+            // Skip the escaped byte. UTF-8 continuation bytes cannot contain
+            // either ASCII delimiter; escape validity is checked by decoding.
+            pos += 2;
         }
-
-        if ch == '\'' {
-            let next = pos + ch_len;
-            if text[next..].starts_with('\'') {
-                pos = next + '\''.len_utf8();
-                continue;
+    } else {
+        while pos < bytes.len() {
+            pos += memchr(b'\'', &bytes[pos..])?;
+            if bytes.get(pos + 1) == Some(&b'\'') {
+                pos += 2;
+            } else {
+                return Some(pos);
             }
-            return Some(pos);
         }
-        pos += ch_len;
     }
 
     None
@@ -1080,17 +1105,26 @@ fn block_scalar_at_impl(
         return None;
     }
     header_info.base_indent = base_indent;
+    let mut content_indent = header_info
+        .indent
+        .map(|indent| base_indent + indent as usize);
     let mut i = line + 1;
     while i < end {
         let candidate = source.line_text(i);
-        if candidate.trim_ascii().is_empty() {
+        if candidate.bytes().all(|byte| byte == b' ') {
             i += 1;
             continue;
         }
         let indent = candidate.bytes().take_while(|byte| *byte == b' ').count();
-        if indent <= base_indent {
+        // Comments below the content indentation belong to YAML, even when
+        // they remain indented farther than the scalar's enclosing parent.
+        if indent <= base_indent
+            || candidate.as_bytes().get(indent) == Some(&b'#')
+                && content_indent.is_some_and(|content_indent| indent < content_indent)
+        {
             break;
         }
+        content_indent.get_or_insert(indent);
         i += 1;
     }
     let body = if i == line + 1 {
@@ -1139,35 +1173,22 @@ fn block_scalar_header_info(indicators: &str) -> Option<YamlBlockScalarHeader> {
 }
 
 fn block_scalar_value_start(text: &str, marker_index: usize) -> Option<(usize, usize)> {
-    let indent = indentation(text);
-    if let Some(colon) = mapping_colon_at(text, indent)
-        && colon < marker_index
-    {
-        let mut value_start = colon + 1;
-        while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
-            value_start += 1;
-        }
-        return Some((value_start, indent));
-    }
-    if let Some(marker) = sequence_line(text, indent)
+    let mut value_start = indentation(text);
+    let mut base_indent = value_start;
+    while let Some(marker) = compact_sequence_marker_at(text, value_start)
         && marker < marker_index
     {
-        let mut value_start = marker + 1;
-        while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
-            value_start += 1;
-        }
-        return Some((value_start, indent));
+        base_indent = marker;
+        value_start = skip_ascii_whitespace(text, marker + 1);
     }
-    if let Some(marker) = explicit_key_line(text, indent)
+    if let Some(marker) = mapping_colon_from(text, value_start)
+        .or_else(|| explicit_indicator_at(text, value_start, b'?'))
         && marker < marker_index
     {
-        let mut value_start = marker + 1;
-        while value_start < marker_index && text.as_bytes()[value_start].is_ascii_whitespace() {
-            value_start += 1;
-        }
-        return Some((value_start, indent));
+        base_indent = value_start;
+        value_start = skip_ascii_whitespace(text, marker + 1);
     }
-    Some((indent, indent))
+    Some((value_start, base_indent))
 }
 
 fn block_scalar_metadata_prefix(prefix: &str) -> bool {

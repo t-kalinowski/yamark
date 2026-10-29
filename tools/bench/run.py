@@ -16,9 +16,14 @@ import sys
 import tempfile
 import textwrap
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Module execution and runpy loaders do not add this script's directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from representative import WORKLOADS, render_file as render_representative_file
 
 try:
     import resource
@@ -34,10 +39,10 @@ DEFAULT_FILES = 400
 DEFAULT_ITEMS = 80
 DEFAULT_REPS = 2
 DEFAULT_INVOCATION = "per-file"
-DEFAULT_CORPUS_SHAPE = "flow-heavy"
+DEFAULT_CORPUS_SHAPE = "representative"
 INVOCATIONS = ("directory", "per-file")
 OPERATIONS = ("write", "check")
-CORPUS_SHAPES = ("flow-heavy", "block-heavy", "mixed-node")
+CORPUS_SHAPES = ("representative", *WORKLOADS, "mixed-node")
 WIDTH_PROFILES = ("default", "flow-preserve-wide", "no-prose-wrap")
 PROBE_YAML = "probe:    [one,two]\n"
 DPRINT_YAML_CONFIG = BENCH_DIR / "dprint-yaml.json"
@@ -452,17 +457,28 @@ def generate_yaml_corpus(root: Path, files: int, items: int, corpus_shape: str) 
         shutil.rmtree(root)
     root.mkdir(parents=True)
     for file_idx in range(files):
-        subdir = root / f"service-{file_idx % 20:02d}"
-        subdir.mkdir(exist_ok=True)
-        (subdir / f"config-{file_idx:04d}.yaml").write_text(
-            render_yaml_file(file_idx, items, corpus_shape),
-            encoding="utf-8",
+        workload = (
+            WORKLOADS[file_idx % len(WORKLOADS)]
+            if corpus_shape == "representative" else corpus_shape
         )
+        subdir = root / (
+            workload if corpus_shape == "representative" else f"service-{file_idx % 20:02d}"
+        )
+        subdir.mkdir(exist_ok=True)
+        path = subdir / f"config-{file_idx:04d}.yaml"
+        content = render_yaml_file(file_idx, items, workload)
+        if corpus_shape in ("flow-heavy", "block-heavy", "mixed-node"):
+            path.write_text(content, encoding="utf-8")
+        else:
+            # Preserve the representative corpus's intentional LF/CRLF mix.
+            path.write_bytes(content.encode("utf-8"))
 
 
 def render_yaml_file(file_idx: int, items: int, corpus_shape: str) -> str:
     if corpus_shape == "mixed-node":
         return render_mixed_node_file(file_idx, items)
+    if corpus_shape in WORKLOADS and corpus_shape not in ("flow-heavy", "block-heavy"):
+        return render_representative_file(file_idx, items, corpus_shape)
 
     lines = [
         "# generated benchmark fixture",
@@ -1271,6 +1287,16 @@ def benchmark_document(
     results: list[dict[str, object]],
 ) -> dict[str, object]:
     git = git_metadata()
+    corpus = {
+        "kind": args.corpus,
+        "shape": args.corpus_shape,
+        "files": files,
+        "items_per_file": args.items,
+        "bytes": corpus_bytes,
+    }
+    if args.corpus_shape == "representative":
+        counts = Counter(path.parts[0] for path in target_relatives)
+        corpus["workloads"] = dict(sorted(counts.items()))
     return {
         "schema_version": 1,
         "benchmark": "yaml-formatting",
@@ -1283,13 +1309,7 @@ def benchmark_document(
             "cpu": cpu_brand(),
             "python": platform.python_version(),
         },
-        "corpus": {
-            "kind": args.corpus,
-            "shape": args.corpus_shape,
-            "files": files,
-            "items_per_file": args.items,
-            "bytes": corpus_bytes,
-        },
+        "corpus": corpus,
         "invocation": {
             "unit": invocation,
             "targets": [path.as_posix() for path in target_relatives],
@@ -1359,7 +1379,8 @@ def write_artifact(artifact_dir: Path, artifact: dict[str, object]) -> Path:
 def artifact_file_name(artifact: dict[str, object]) -> str:
     commit = artifact["git"]["commit"]
     shape = artifact["corpus"]["shape"]
-    if shape == DEFAULT_CORPUS_SHAPE:
+    # Preserve the historical flow-heavy artifact name when defaults change.
+    if shape == "flow-heavy":
         return f"{commit}.json"
     return f"{commit}-{shape}.json"
 

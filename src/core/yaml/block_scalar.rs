@@ -7,11 +7,14 @@ use super::scalar::{
     scalar_property_prefix, simple_quoted_scalar_inner,
 };
 use super::simple::{format_markdown_yaml_block_value, format_simple_yaml_line, strip_newline};
-use super::syntax::{find_trailing_comment, indentation, line_ending_for_span, scalar_metadata};
+use super::syntax::{
+    find_trailing_comment, indentation, line_ending_for_span, scalar_metadata, yaml_error_at,
+};
 use crate::core::document::{Document, FormatOptions};
-use crate::core::source::{SourceBuffer, Span};
+use crate::core::source::{SourceBuffer, SourceSpan, Span};
 use crate::core::yaml_model::{
     YamlAlias, YamlAstKind, YamlAstNode, YamlBlockChomp, YamlEmitPlan, YamlScalar, YamlScalarStyle,
+    YamlTriviaKind,
 };
 use crate::diagnostic::Result;
 use crate::plugins::PluginRegistry;
@@ -20,6 +23,17 @@ use std::borrow::Cow;
 pub(super) enum ExternalBlockScalarAction {
     Preserve,
     Formatted(String),
+}
+
+pub(super) fn yaml_scalar_keeps_parent_header(
+    node: &YamlAstNode,
+    parent_line: SourceSpan,
+    parent_comment: Option<SourceSpan>,
+) -> bool {
+    matches!(&node.kind, YamlAstKind::Scalar(scalar)
+        if scalar.value.start() >= parent_line.end()
+            && (parent_comment.is_some() || node.leading_trivia.iter().any(|trivia|
+                matches!(trivia.kind, YamlTriviaKind::Comment | YamlTriviaKind::Directive))))
 }
 
 pub(super) fn line_ending_or_default(
@@ -77,15 +91,13 @@ pub(super) fn render_inline_markdown_scalar(
         .expect("retained inline Markdown scalar")
         .fragment
         .as_ref()?;
-    let prefix = source
-        .slice(Span::new(scalar.value.start(), metadata.content.start))
-        .trim_ascii();
+    let prefix = scalar_property_prefix(source, scalar, metadata);
     let newline = line_ending_or_default(source, node.span, options);
 
     let mut out = String::new();
     if fragment.is_empty() {
         if !prefix.is_empty() {
-            out.push_str(prefix);
+            out.push_str(&prefix);
             out.push(' ');
         }
         out.push_str("\"\"");
@@ -95,7 +107,7 @@ pub(super) fn render_inline_markdown_scalar(
     }
 
     if !prefix.is_empty() {
-        out.push_str(prefix);
+        out.push_str(&prefix);
         out.push(' ');
     }
     out.push('|');
@@ -181,15 +193,40 @@ pub(super) fn explicit_block_scalar_body_indent(scalar: &YamlScalar) -> Option<u
 }
 
 pub(super) fn block_scalar_output_body_indent(
+    source: &SourceBuffer,
     scalar: &YamlScalar,
     body_indent: usize,
     options: FormatOptions,
 ) -> usize {
+    // Keep following YAML comments outside the scalar after reindentation.
+    // Containing collections retain their source indentation for this layout.
+    if block_scalar_following_comment_indent(source, scalar).is_some()
+        && let Some(indent) = explicit_block_scalar_body_indent(scalar).or_else(|| {
+            scalar
+                .body
+                .and_then(|body| block_scalar_body_indent(source.slice(body)))
+        })
+    {
+        return indent;
+    }
     scalar
         .block_header
         .and_then(|header| header.indent)
         .map(|indent| body_indent.saturating_sub(options.indent_width) + indent as usize)
         .unwrap_or(body_indent)
+}
+
+pub(super) fn block_scalar_following_comment_indent(
+    source: &SourceBuffer,
+    scalar: &YamlScalar,
+) -> Option<usize> {
+    let end = scalar.body?.end();
+    if end >= source.as_str().len() {
+        return None;
+    }
+    let following = source.line_text(source.line_at_byte(end));
+    let indent = indentation(following);
+    (following.as_bytes().get(indent) == Some(&b'#')).then_some(indent)
 }
 
 pub(super) fn block_scalar_body_reindent_is_safe(
@@ -210,7 +247,7 @@ pub(super) fn block_scalar_body_reindent_is_safe(
     else {
         return true;
     };
-    if source_indent == block_scalar_output_body_indent(scalar, body_indent, options) {
+    if source_indent == block_scalar_output_body_indent(source, scalar, body_indent, options) {
         return true;
     }
 
@@ -220,7 +257,7 @@ pub(super) fn block_scalar_body_reindent_is_safe(
     let mut saw_content = false;
     for line in body.split(['\r', '\n']) {
         let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-        if line.trim_ascii().is_empty() {
+        if line.trim_matches(' ').is_empty() {
             if implicit_indent && !saw_content && indent > source_indent {
                 return false;
             }
@@ -236,7 +273,7 @@ pub(super) fn block_scalar_body_reindent_is_safe(
 
 pub(super) fn block_scalar_body_indent(body: &str) -> Option<usize> {
     body.split(['\r', '\n'])
-        .find(|line| !line.trim_ascii().is_empty())
+        .find(|line| !line.trim_matches(' ').is_empty())
         .map(|line| line.bytes().take_while(|byte| *byte == b' ').count())
 }
 
@@ -249,7 +286,7 @@ pub(super) fn normalize_nontrailing_block_scalar_blank_lines(
     for line in body.split_inclusive(['\r', '\n']) {
         offset += line.len();
         let (line_body, _) = strip_newline(line);
-        if line_body.trim_ascii().is_empty() {
+        if line_body.trim_matches(' ').is_empty() {
             continue;
         }
         if line_body.bytes().take_while(|byte| *byte == b' ').count() < indent {
@@ -341,6 +378,19 @@ pub(super) fn emit_yaml_scalar_after_prefix(
             );
             Ok(())
         }
+        YamlEmitPlan::NestedMarkdownBlockScalar { nested } => {
+            emit_yaml_nested_markdown_block_scalar(
+                out,
+                source,
+                document,
+                scalar,
+                node,
+                options,
+                plugins,
+                *nested as usize,
+                body_indent,
+            )
+        }
         _ => emit_yaml_scalar(out, source, document, scalar, node, options, plugins),
     }
 }
@@ -350,11 +400,17 @@ pub(super) fn render_yaml_block_scalar_value_header(
     scalar: &YamlScalar,
 ) -> String {
     let header = scalar.header.expect("block scalars have headers");
-    let mut output = if scalar.nested.is_some() && scalar.style == YamlScalarStyle::FoldedBlock {
-        format_markdown_yaml_block_value(source.slice(scalar.value))
+    let metadata = scalar_metadata(source, scalar.value);
+    let mut output = scalar_property_prefix(source, scalar, metadata);
+    if !output.is_empty() {
+        output.push(' ');
+    }
+    let value = if scalar.nested.is_some() && scalar.style == YamlScalarStyle::FoldedBlock {
+        format_markdown_yaml_block_value(source.slice(metadata.content))
     } else {
-        source.slice(scalar.value).trim_ascii().to_owned()
+        source.slice(metadata.content).trim_ascii().to_owned()
     };
+    output.push_str(&value);
     emit_inline_comment(&mut output, source, scalar.trailing_comment);
     output.push_str(line_ending_for_span(source, header));
     output
@@ -370,6 +426,7 @@ pub(super) fn emit_yaml_nested_markdown_block_scalar(
     options: FormatOptions,
     plugins: &PluginRegistry,
     nested: usize,
+    body_indent: Option<usize>,
 ) -> Result<()> {
     let header_span = scalar.header.expect("block scalars have headers");
     out.push_str(&render_yaml_block_scalar_value_header(source, scalar));
@@ -385,12 +442,14 @@ pub(super) fn emit_yaml_nested_markdown_block_scalar(
     {
         nested_output.push_str(line_ending_for_span(source, header_span));
     }
-    out.push_str(&reindent_yaml_block_scalar_body(
-        source,
-        scalar,
-        node,
+    let body_indent = body_indent.unwrap_or_else(|| {
+        let line = source.line_at_byte(header_span.start());
+        indentation(source.line_text(line)) + options.indent_width
+    });
+    out.push_str(&reindent_block_lines(
         &nested_output,
-        options,
+        0,
+        block_scalar_output_body_indent(source, scalar, body_indent, options),
     ));
     Ok(())
 }
@@ -417,6 +476,25 @@ pub(super) fn external_block_scalar_action(
             );
             if !preamble.is_empty() {
                 formatted.insert_str(0, preamble);
+            }
+            // A blank block has no content indentation to keep an indented
+            // following comment outside its value. Retain the source on error.
+            if formatted
+                .bytes()
+                .all(|byte| matches!(byte, b' ' | b'\r' | b'\n'))
+                && block_scalar_following_comment_indent(source, scalar).is_some_and(|indent| {
+                    indent
+                        > scalar
+                            .block_header
+                            .expect("external block scalar header")
+                            .base_indent
+                })
+            {
+                return Err(yaml_error_at(
+                    source,
+                    scalar.value.start(),
+                    "blank embedded output would absorb a following YAML comment",
+                ));
             }
             ExternalBlockScalarAction::Formatted(formatted)
         }

@@ -168,7 +168,7 @@ def benchmark_steps(result_dir: Path) -> list[tuple[str, list[str]]]:
                 "--corpus",
                 "yaml",
                 "--corpus-shape",
-                "flow-heavy",
+                "representative",
                 "--invocation",
                 "per-file",
                 "--operation",
@@ -528,11 +528,17 @@ def validate_workload(path: Path, data: dict[str, object], label: str) -> None:
         corpus,
         {
             "kind": "yaml",
-            "shape": "flow-heavy",
+            "shape": "representative" if label == "default" else "flow-heavy",
             "files": files,
             "items_per_file": items,
         },
     )
+    if label == "default":
+        workloads = (
+            "ordinary-config", "flow-heavy", "block-heavy", "plain-prose",
+            "quoted-prose", "literal-scalars", "markdown-paragraphs", "markdown-rich",
+        )
+        require_fields(path, corpus, {"workloads": {name: 50 for name in workloads}})
     invocation = require_mapping(path, data, "invocation")
     require_fields(path, invocation, {"unit": invocation_unit})
     targets = invocation.get("targets")

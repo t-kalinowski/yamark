@@ -1,0 +1,24 @@
+-- args
+format --stdin-file-path lorem.yaml --prose-width 12 --verify
+-- stdin
+-1:
+  lorem ipsum
+---
+-lorem:
+  dolor sit
+---
+- -1:
+    lorem ipsum
+  -ipsum: [dolor,sit]
+- [amet,elit]
+-- stdout
+-1: lorem ipsum
+---
+-lorem: dolor sit
+---
+- -1: lorem ipsum
+  -ipsum: [dolor, sit]
+- [amet, elit]
+-- stderr
+-- status
+0

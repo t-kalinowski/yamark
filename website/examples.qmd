@@ -358,8 +358,9 @@ package:
 )
 ```
 
-Collections with comments, aliases, tags, anchors, multiline scalars, or
-block scalars stay in block style.
+Supported multiline quoted values can become single-line flow entries without
+changing their decoded values. Collections with comments, block scalars, or
+preserved or unsupported multiline values stay in block style.
 
 ### Collapse to flow by typing a bracket
 

@@ -1,0 +1,14 @@
+-- args
+format --stdin-file-path input.yaml --verify
+-- stdin
+lorem: !!str &ipsum Lorem ipsum
+  dolor sit amet.
+dolor: *ipsum
+sit: [lorem,ipsum]
+-- stdout
+lorem: !!str &ipsum Lorem ipsum dolor sit amet.
+dolor: *ipsum
+sit: [lorem, ipsum]
+-- stderr
+-- status
+0

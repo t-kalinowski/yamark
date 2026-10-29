@@ -1,0 +1,2 @@
+[embedded.lorem]
+formatter = { command = ["python", "-c", "import sys; sys.stdin.buffer.read()", "{path}"], path_suffix = ".txt" }

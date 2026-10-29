@@ -74,6 +74,9 @@ pub struct YamlAstNode {
     pub state: StateId,
     pub emit: YamlEmitPlan,
     pub must_preserve_source: Option<bool>,
+    // Retained descendants anchor collection indentation, including ancestors
+    // whose movement could otherwise cross a preserved child's source column.
+    pub(crate) requires_source_indent: bool,
     pub(crate) inline_markdown: Option<Box<crate::core::yaml::InlineMarkdownPlan>>,
     inline_width: Cell<u32>,
     flow_inline_width: Cell<u32>,
@@ -94,6 +97,7 @@ impl YamlAstNode {
             state,
             emit: YamlEmitPlan::None,
             must_preserve_source: None,
+            requires_source_indent: false,
             inline_markdown: None,
             inline_width: Cell::new(YAML_WIDTH_CACHE_EMPTY),
             flow_inline_width: Cell::new(YAML_WIDTH_CACHE_EMPTY),

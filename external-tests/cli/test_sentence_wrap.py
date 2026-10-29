@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -29,15 +30,52 @@ def format_markdown(source: str, wrap: str) -> str:
     return result.stdout
 
 
+@cache
+def pandoc_binary() -> Path:
+    name = "pandoc.exe" if os.name == "nt" else "pandoc"
+    if override := os.environ.get("QUARTO_PANDOC"):
+        binary = Path(override)
+        if binary.is_dir():
+            binary /= name
+    else:
+        # --paths bypasses Deno; tools/pandoc is Quarto's native binary link.
+        result = subprocess.run(
+            ["quarto", "--paths"], capture_output=True, text=True, check=False
+        )
+        assert result.returncode == 0, result.stderr
+        bin_path, _ = result.stdout.splitlines()
+        binary = Path(bin_path) / "tools" / name
+    assert binary.is_file(), f"Pandoc binary not found: {binary}"
+    return binary.resolve()
+
+
 def markdown_ast(source: str, reader: str) -> object:
     result = subprocess.run(
-        ["quarto", "pandoc", "--from", reader, "--to", "json"],
+        [os.fspath(pandoc_binary()), "--from", reader, "--to", "json"],
         input=source,
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Pandoc failed with exit code {result.returncode}\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
     )
     return canonicalize_quarto_json(json.loads(result.stdout))
+
+
+def test_sentence_semantics_do_not_launch_quarto_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("QUARTO_DENO", os.fspath(tmp_path / "unavailable-deno"))
+    source = "Lorem ipsum. (b) dolor \\) sit amet.\n"
+    output = format_markdown(source, "sentence")
+    assert output == "Lorem ipsum.\n(b\\) dolor \\) sit amet.\n"
+    assert format_markdown(output, "sentence") == output
+    assert markdown_ast(output, "markdown+tex_math_single_backslash") == markdown_ast(
+        source, "markdown+tex_math_single_backslash"
+    )
 
 
 @pytest.mark.parametrize("reader", ["markdown", "commonmark", "gfm"])
