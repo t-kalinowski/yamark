@@ -428,7 +428,7 @@ fn normalize_quoted_string_scalar(
         return None;
     }
     let raw = source.slice(scalar.value).trim_ascii();
-    if raw.contains(['\n', '\r']) {
+    if !flow_context && raw.contains(['\n', '\r']) {
         return None;
     }
     let decoded = if let Some(decoded) = simple_quoted_scalar_inner(raw) {
@@ -849,6 +849,9 @@ pub(super) fn emit_yaml_scalar_inline_into(
         out.push_str(&normalized);
         return Some(());
     }
+    if flow_context && raw.contains(['\n', '\r']) {
+        return None;
+    }
     if !flow_context || scalar.style != YamlScalarStyle::Plain || flow_plain_scalar_safe(raw) {
         out.push_str(raw);
         return Some(());
@@ -937,6 +940,9 @@ pub(super) fn render_yaml_scalar_inline_width(
     }
     if let Some(width) = normalize_quoted_string_scalar_width(source, scalar, flow_context) {
         return Some(width);
+    }
+    if flow_context && raw.contains(['\n', '\r']) {
+        return None;
     }
     if !flow_context || scalar.style != YamlScalarStyle::Plain || flow_plain_scalar_safe(raw) {
         return Some(raw.chars().count());
@@ -1238,7 +1244,7 @@ fn normalize_quoted_string_scalar_width(
         return None;
     }
     let raw = source.slice(scalar.value).trim_ascii();
-    if raw.contains(['\n', '\r']) {
+    if !flow_context && raw.contains(['\n', '\r']) {
         return None;
     }
     if let Some(decoded) = simple_quoted_scalar_inner(raw) {
@@ -1322,7 +1328,7 @@ pub(super) fn flow_plain_scalar_safe(value: &str) -> bool {
     for ch in value.chars() {
         if previous.is_none() && ch.is_whitespace()
             || yaml_scalar_character_requires_escape(ch)
-            || matches!(ch, ',' | '[' | ']' | '{' | '}')
+            || matches!(ch, ',' | '[' | ']' | '{' | '}' | '\'' | '"')
             || matches!((previous, ch), (Some(':'), ' ') | (Some(' '), '#'))
         {
             return false;
@@ -1610,7 +1616,7 @@ impl DecodedStringWidthState {
             self.single_quote_count += 1;
         }
         if yaml_scalar_character_requires_escape(ch)
-            || self.flow_context && matches!(ch, ',' | '[' | ']' | '{' | '}')
+            || self.flow_context && matches!(ch, ',' | '[' | ']' | '{' | '}' | '\'' | '"')
             || matches!((self.previous, ch), (Some(':'), ' ') | (Some(' '), '#'))
         {
             self.plain_unsafe = true;
