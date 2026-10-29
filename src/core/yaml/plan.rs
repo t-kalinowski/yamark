@@ -2,9 +2,9 @@
 
 use super::YamlParser;
 use super::block_scalar::{
-    block_scalar_body_reindent_is_safe, inline_markdown_scalar_is_renderable,
-    markdown_block_scalar_body_is_empty, resolve_inline_markdown_plan,
-    yaml_scalar_keeps_parent_header, yaml_tag_is_markdown,
+    block_scalar_body_reindent_is_safe, block_scalar_following_comment_indent,
+    inline_markdown_scalar_is_renderable, markdown_block_scalar_body_is_empty,
+    resolve_inline_markdown_plan, yaml_scalar_keeps_parent_header, yaml_tag_is_markdown,
 };
 use super::flow_emit::{
     flow_trailing_comment, mapping_pair_child_indent, planned_yaml_inline_width_or_source,
@@ -97,8 +97,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         })
                     }),
                     YamlAstKind::Opaque(_) => true,
+                    YamlAstKind::Scalar(scalar) => {
+                        block_scalar_following_comment_indent(self.source, scalar).is_some()
+                    }
                     YamlAstKind::Empty
-                    | YamlAstKind::Scalar(_)
                     | YamlAstKind::Alias(_)
                     | YamlAstKind::FlowSequence(_)
                     | YamlAstKind::FlowMapping(_) => false,

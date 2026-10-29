@@ -1107,17 +1107,26 @@ fn block_scalar_at_impl(
         return None;
     }
     header_info.base_indent = base_indent;
+    let mut content_indent = header_info
+        .indent
+        .map(|indent| base_indent + indent as usize);
     let mut i = line + 1;
     while i < end {
         let candidate = source.line_text(i);
-        if candidate.trim_ascii().is_empty() {
+        if candidate.bytes().all(|byte| byte == b' ') {
             i += 1;
             continue;
         }
         let indent = candidate.bytes().take_while(|byte| *byte == b' ').count();
-        if indent <= base_indent {
+        // Comments below the content indentation belong to YAML, even when
+        // they remain indented farther than the scalar's enclosing parent.
+        if indent <= base_indent
+            || candidate.as_bytes().get(indent) == Some(&b'#')
+                && content_indent.is_some_and(|content_indent| indent < content_indent)
+        {
             break;
         }
+        content_indent.get_or_insert(indent);
         i += 1;
     }
     let body = if i == line + 1 {

@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path lorem.yaml --config tests/fixtures/external_formatter_empty.toml --verify
+-- stdin
+# fmt: embedded lorem
+lorem: |
+    Lorem ipsum.
+  # Dolor sit amet.
+ipsum: [dolor,sit]
+-- stdout
+-- stderr
+lorem.yaml:2:8: error: blank embedded output would absorb a following YAML comment
+-- status
+1

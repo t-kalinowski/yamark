@@ -42,6 +42,8 @@ Compact sequence ancestors can share a physical header with a preserved child. E
 
 Markdown block scalars are prepared when their Markdown target becomes known, including tags attached from a parent line. Their owned source removes YAML indentation before Markdown parsing and retains an origin for diagnostic coordinates. Explicit indentation indicators use the enclosing YAML parent's indentation, including when the header starts on a later line. Emission restores YAML indentation around the formatted Markdown; byte spans and line indexes remain local to the owned source.
 
+Block scalar comments are content only at or beyond the explicit or inferred content indentation. A dedented comment ends the body and remains available to YAML directive processing. When a YAML comment follows a scalar, its content and containing collections retain their source indentation so formatting cannot absorb that comment into the value. Blank embedded output followed by a comment indented beyond the YAML parent is rejected: there is no content left to establish that boundary, and changing the comment's indentation or the embedded target's scalar style is unsupported.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.

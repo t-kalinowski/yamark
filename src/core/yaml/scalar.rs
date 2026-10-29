@@ -156,8 +156,9 @@ fn emit_yaml_scalar_plan_output_into(
 ) {
     if let Some(body) = scalar.body {
         output.push_str(&render_yaml_block_scalar_value_header(source, scalar));
-        let body_indent = body_indent
-            .map(|body_indent| block_scalar_output_body_indent(scalar, body_indent, options));
+        let body_indent = body_indent.map(|body_indent| {
+            block_scalar_output_body_indent(source, scalar, body_indent, options)
+        });
         if let Some(rewrapped) =
             render_rewrapped_folded_block_scalar(source, scalar, node, options, body_indent)
         {

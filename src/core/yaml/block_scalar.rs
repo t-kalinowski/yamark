@@ -7,7 +7,9 @@ use super::scalar::{
     scalar_property_prefix, simple_quoted_scalar_inner,
 };
 use super::simple::{format_markdown_yaml_block_value, format_simple_yaml_line, strip_newline};
-use super::syntax::{find_trailing_comment, indentation, line_ending_for_span, scalar_metadata};
+use super::syntax::{
+    find_trailing_comment, indentation, line_ending_for_span, scalar_metadata, yaml_error_at,
+};
 use crate::core::document::{Document, FormatOptions};
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
 use crate::core::yaml_model::{
@@ -191,15 +193,40 @@ pub(super) fn explicit_block_scalar_body_indent(scalar: &YamlScalar) -> Option<u
 }
 
 pub(super) fn block_scalar_output_body_indent(
+    source: &SourceBuffer,
     scalar: &YamlScalar,
     body_indent: usize,
     options: FormatOptions,
 ) -> usize {
+    // Keep following YAML comments outside the scalar after reindentation.
+    // Containing collections retain their source indentation for this layout.
+    if block_scalar_following_comment_indent(source, scalar).is_some()
+        && let Some(indent) = explicit_block_scalar_body_indent(scalar).or_else(|| {
+            scalar
+                .body
+                .and_then(|body| block_scalar_body_indent(source.slice(body)))
+        })
+    {
+        return indent;
+    }
     scalar
         .block_header
         .and_then(|header| header.indent)
         .map(|indent| body_indent.saturating_sub(options.indent_width) + indent as usize)
         .unwrap_or(body_indent)
+}
+
+pub(super) fn block_scalar_following_comment_indent(
+    source: &SourceBuffer,
+    scalar: &YamlScalar,
+) -> Option<usize> {
+    let end = scalar.body?.end();
+    if end >= source.as_str().len() {
+        return None;
+    }
+    let following = source.line_text(source.line_at_byte(end));
+    let indent = indentation(following);
+    (following.as_bytes().get(indent) == Some(&b'#')).then_some(indent)
 }
 
 pub(super) fn block_scalar_body_reindent_is_safe(
@@ -220,7 +247,7 @@ pub(super) fn block_scalar_body_reindent_is_safe(
     else {
         return true;
     };
-    if source_indent == block_scalar_output_body_indent(scalar, body_indent, options) {
+    if source_indent == block_scalar_output_body_indent(source, scalar, body_indent, options) {
         return true;
     }
 
@@ -422,7 +449,7 @@ pub(super) fn emit_yaml_nested_markdown_block_scalar(
     out.push_str(&reindent_block_lines(
         &nested_output,
         0,
-        block_scalar_output_body_indent(scalar, body_indent, options),
+        block_scalar_output_body_indent(source, scalar, body_indent, options),
     ));
     Ok(())
 }
@@ -449,6 +476,25 @@ pub(super) fn external_block_scalar_action(
             );
             if !preamble.is_empty() {
                 formatted.insert_str(0, preamble);
+            }
+            // A blank block has no content indentation to keep an indented
+            // following comment outside its value. Retain the source on error.
+            if formatted
+                .bytes()
+                .all(|byte| matches!(byte, b' ' | b'\r' | b'\n'))
+                && block_scalar_following_comment_indent(source, scalar).is_some_and(|indent| {
+                    indent
+                        > scalar
+                            .block_header
+                            .expect("external block scalar header")
+                            .base_indent
+                })
+            {
+                return Err(yaml_error_at(
+                    source,
+                    scalar.value.start(),
+                    "blank embedded output would absorb a following YAML comment",
+                ));
             }
             ExternalBlockScalarAction::Formatted(formatted)
         }
