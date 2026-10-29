@@ -146,6 +146,7 @@ fn emit_yaml_node(
         plugins,
     } = context;
     let node = ast.node(id);
+    let forced_indent = forced_indent.filter(|_| !node.requires_source_indent);
     emit_trivia(out, source, &node.leading_trivia);
     if matches!(node.emit, YamlEmitPlan::PreserveSource) {
         out.push_str(source.slice(node.span));
@@ -369,8 +370,23 @@ fn emit_yaml_node(
                 if let YamlAstKind::Mapping(mapping) = &value_node.kind
                     && item.value_on_marker_line
                 {
+                    let mapping_indent = if value_node.requires_source_indent {
+                        mapping.indent
+                    } else {
+                        indent + 2
+                    };
                     emit_yaml_inline_sequence_mapping(
-                        out, source, document, ast, mapping, item, indent, options, plugins, stats,
+                        out,
+                        source,
+                        document,
+                        ast,
+                        mapping,
+                        item,
+                        indent,
+                        mapping_indent,
+                        options,
+                        plugins,
+                        stats,
                     )?;
                     continue;
                 }
@@ -502,6 +518,7 @@ fn emit_yaml_inline_sequence_mapping(
     mapping: &YamlMapping,
     item: &YamlSequenceItem,
     indent: usize,
+    mapping_indent: usize,
     options: FormatOptions,
     plugins: &PluginRegistry,
     stats: &mut YamlEmissionStats,
@@ -514,8 +531,11 @@ fn emit_yaml_inline_sequence_mapping(
         return Ok(());
     };
 
-    let first_prefix = format!("{}- ", " ".repeat(indent));
-    let mapping_indent = indent + 2;
+    let first_prefix = format!(
+        "{}-{}",
+        " ".repeat(indent),
+        " ".repeat(mapping_indent - indent - 1)
+    );
     let child_indent = mapping_indent + options.indent_width;
     let continuation_prefix = " ".repeat(mapping_indent);
     let pair_child_indent = |pair: &YamlMappingPair| {

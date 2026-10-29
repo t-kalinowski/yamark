@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.yaml --verify
+-- stdin
+lorem:
+    ipsum: 'Lorem ipsum
+      {{ dolor }} sit amet.'
+    dolor: [lorem,ipsum]
+sit: [lorem,ipsum]
+-- stdout
+lorem:
+    ipsum: 'Lorem ipsum
+      {{ dolor }} sit amet.'
+    dolor: [lorem, ipsum]
+sit: [lorem, ipsum]
+-- stderr
+-- status
+0

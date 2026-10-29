@@ -64,6 +64,33 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 self.plan_yaml_node_emit(id);
             }
         }
+        // Children precede their containing block nodes in the parsed AST.
+        // Compute this once so nested containers do not rescan their subtrees.
+        for index in 0..node_count {
+            let id = YamlNodeId::new(index);
+            let node = self.ast.node(id);
+            let requires_source_indent = matches!(node.emit, YamlEmitPlan::PreserveSource)
+                || match &node.kind {
+                    YamlAstKind::Mapping(mapping) => mapping.pairs.iter().any(|pair| {
+                        pair.key_node
+                            .is_some_and(|key| self.ast.node(key).requires_source_indent)
+                            || pair
+                                .value
+                                .is_none_or(|value| self.ast.node(value).requires_source_indent)
+                    }),
+                    YamlAstKind::Sequence(sequence) => sequence.items.iter().any(|item| {
+                        item.value
+                            .is_none_or(|value| self.ast.node(value).requires_source_indent)
+                    }),
+                    YamlAstKind::Opaque(_) => true,
+                    YamlAstKind::Empty
+                    | YamlAstKind::Scalar(_)
+                    | YamlAstKind::Alias(_)
+                    | YamlAstKind::FlowSequence(_)
+                    | YamlAstKind::FlowMapping(_) => false,
+                };
+            self.ast.node_mut(id).requires_source_indent = requires_source_indent;
+        }
         let root_count = self.ast.roots.len();
         for index in 0..root_count {
             if let Some(root) = self.ast.roots[index].node {
@@ -216,6 +243,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn plan_yaml_contextual_subtree(&mut self, id: YamlNodeId, forced_indent: Option<usize>) {
         let node = self.ast.node(id);
+        let forced_indent = forced_indent.filter(|_| !node.requires_source_indent);
         let options = self.doc.state(node.state).yaml_options(self.options);
         match &node.kind {
             YamlAstKind::Mapping(mapping) => {

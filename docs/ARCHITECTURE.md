@@ -34,6 +34,8 @@ Wrapping must preserve Markdown structure as well as fit the requested width. Mo
 
 YAML formatting retains unsupported source and checks scalar semantics when choosing spelling, quoting, folding, or collection layout. `--verify` reparses formatted output and checks the supported equivalence contract. It complements exact transcripts and external parser comparisons; it does not replace them.
 
+Preserved YAML children retain their source prefixes. Planning propagates that indentation constraint through containing block collections, and emission keeps those collections at their source indentation while formatting editable siblings. Inline sequence mappings retain the corresponding marker-to-key spacing. Newly emitted literal scalar bodies use the emitted header's indentation rather than the original scalar's indentation.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.
