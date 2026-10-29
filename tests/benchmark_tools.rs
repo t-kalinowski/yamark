@@ -468,6 +468,51 @@ fn yaml_benchmark_default_path_is_yamark_per_file() {
     assert_eq!(rows[0]["invocation"], "per-file");
 }
 
+#[test]
+fn yaml_benchmark_module_entry_point_loads_local_workloads() {
+    let dir = tempdir().unwrap();
+    let artifacts = dir.path().join("artifacts");
+    let output = Command::new(python())
+        .args([
+            "-m",
+            "tools.bench.run",
+            "--corpus-shape",
+            "markdown-paragraphs",
+            "--files",
+            "1",
+            "--items",
+            "2",
+            "--reps",
+            "1",
+            "--warmups",
+            "0",
+            "--skip-yamark-build",
+            "--yamark-bin",
+        ])
+        .arg(assert_cmd::cargo::cargo_bin("yamark"))
+        .arg("--out-dir")
+        .arg(dir.path().join("raw"))
+        .arg("--artifact-dir")
+        .arg(&artifacts)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let artifact = fs::read_dir(artifacts)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let data: Value = serde_json::from_slice(&fs::read(artifact).unwrap()).unwrap();
+    assert_eq!(data["corpus"]["shape"], "markdown-paragraphs");
+    assert_eq!(data["results"][0]["status"], "ok");
+    assert_eq!(data["results"][0]["changed_files"], 1);
+}
+
 #[cfg(windows)]
 #[test]
 fn windows_batch_formatters_preserve_paths_and_exit_status() {

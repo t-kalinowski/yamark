@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Module execution and runpy loaders do not add this script's directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from representative import WORKLOADS, render_file as render_representative_file
 
 try:
