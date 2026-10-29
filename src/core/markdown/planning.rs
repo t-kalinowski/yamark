@@ -29,6 +29,9 @@ impl MarkdownPlans {
     }
 
     pub(crate) fn push_node(&mut self) {
+        if self.by_node.is_empty() {
+            self.by_node.reserve_exact(1);
+        }
         self.by_node.push(None);
     }
 
@@ -94,7 +97,7 @@ pub(crate) struct RetainedMarkdown {
 struct MarkdownPlanning {
     state: StateId,
     preserve_raw: bool,
-    options: Option<FormatOptions>,
+    options: FormatOptions,
     draft: Option<crate::core::wrap::Draft>,
     template_spans: Option<crate::core::wrap::ProseTemplateSpans>,
 }
@@ -144,7 +147,7 @@ impl MarkdownPlanning {
             .draft
             .as_mut()
             .and_then(|draft| draft.resolve_with_templates(input, options, delimiters));
-        self.options = Some(options);
+        self.options = options;
     }
 
     fn template_policy_changed(&self, node: &Node, doc: &Document) -> bool {
@@ -194,7 +197,6 @@ pub(super) fn push_structural_markdown_format_node(
             doc.state(state),
             options,
             format_kind,
-            true,
         ))
     } else {
         None
@@ -225,7 +227,6 @@ fn plan_markdown_block(
     state: &DirectiveState,
     options: FormatOptions,
     kind: MarkdownBlockFormatKind,
-    resolve: bool,
 ) -> (RetainedMarkdown, MarkdownPlanning) {
     let input = source.slice(node.span);
     let options = state.markdown_options(options);
@@ -238,7 +239,7 @@ fn plan_markdown_block(
     let mut planning = MarkdownPlanning {
         state: node.state,
         preserve_raw,
-        options: resolve.then_some(options),
+        options,
         draft: None,
         template_spans: None,
     };
@@ -247,9 +248,7 @@ fn plan_markdown_block(
     planning.draft = (!retained.preserve)
         .then(|| prepare_markdown_block(input, kind))
         .flatten();
-    if resolve {
-        planning.resolve_plan(&mut retained, input, options, &state.template_delimiters);
-    }
+    planning.resolve_plan(&mut retained, input, options, &state.template_delimiters);
     (retained, planning)
 }
 
@@ -267,28 +266,6 @@ fn prepare_markdown_block(
             crate::core::wrap::prepare_markdown_blockquote(input)
         }
         MarkdownBlockFormatKind::Table | MarkdownBlockFormatKind::PandocTable => None,
-    }
-}
-
-pub(super) fn retain_markdown_drafts(
-    source: &SourceBuffer,
-    doc: &mut Document,
-    options: FormatOptions,
-) {
-    if doc.skip_file {
-        return;
-    }
-    for (index, node) in doc.nodes.iter().enumerate() {
-        let state = doc.state(node.state);
-        if !state.preserve
-            && doc.markdown.get(index).is_none()
-            && let Some(kind) = markdown_block_kind(&node.emit)
-        {
-            doc.markdown.insert(
-                index,
-                plan_markdown_block(source, node, state, options, kind, false),
-            );
-        }
     }
 }
 
@@ -332,7 +309,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     planning.draft = prepare_markdown_block(source.slice(node.span), kind);
                 }
                 if !retained.preserve
-                    && (planning.options != Some(effective) || was_preserved || template_changed)
+                    && (planning.options != effective || was_preserved || template_changed)
                 {
                     planning.resolve_plan(
                         retained,
@@ -343,9 +320,13 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                 }
                 planning.state = node.state;
             } else {
+                // Ordinary blocks need no draft until their policy settles.
+                // Resolve one at a time instead of retaining every document's
+                // drafts together. Explicit targets retain their earlier plans
+                // so their diagnostic and skip precedence remain unchanged.
                 doc.markdown.insert(
                     index,
-                    plan_markdown_block(source, node, state, options, kind, true),
+                    plan_markdown_block(source, node, state, options, kind),
                 );
             }
             if matches!(
@@ -397,7 +378,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     MarkdownPlanning {
                         state: node.state,
                         preserve_raw: false,
-                        options: Some(options),
+                        options,
                         draft: None,
                         template_spans: None,
                     },

@@ -196,13 +196,14 @@ fn emit_yaml_scalar_plan_output_into(
     // A new literal header follows the emitted prefix, not the source indentation.
     let literal_body_indent =
         body_indent.unwrap_or_else(|| yaml_output_line_indent(output) + options.indent_width);
-    if let Some(rendered) =
-        render_quoted_literal_scalar(source, scalar, node, options, literal_body_indent)
-    {
-        output.push_str(&rendered);
-        return;
-    }
-    if let Some(rendered) = render_folded_prose_scalar(source, scalar, node, options, body_indent) {
+    if let Some(rendered) = render_scalar_block_layout(
+        source,
+        scalar,
+        node,
+        options,
+        body_indent,
+        literal_body_indent,
+    ) {
         output.push_str(&rendered);
         return;
     }
@@ -444,18 +445,37 @@ fn normalize_quoted_string_scalar(
     }
 }
 
-fn render_quoted_literal_scalar(
+fn render_scalar_block_layout(
     source: &SourceBuffer,
     scalar: &YamlScalar,
     node: &YamlAstNode,
     options: FormatOptions,
-    body_indent: usize,
+    body_indent: Option<usize>,
+    literal_body_indent: usize,
 ) -> Option<String> {
+    // Literal and folded layouts share the decoded value for this emission.
+    let text = scalar_text_for_block_layout(source, scalar)?;
     let newline = line_ending_or_default(source, node.span, options);
     let final_newline = !line_ending_for_span(source, node.span).is_empty();
-    render_quoted_literal_scalar_with_layout(
+    if matches!(
+        scalar.style,
+        YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted
+    ) && let Some(output) = render_decoded_literal_scalar(
         source,
         scalar,
+        &text,
+        options,
+        literal_body_indent,
+        newline,
+        final_newline,
+    ) {
+        return Some(output);
+    }
+    render_decoded_folded_scalar(
+        source,
+        scalar,
+        node,
+        &text,
         options,
         body_indent,
         newline,
@@ -474,16 +494,30 @@ pub(super) fn render_quoted_literal_scalar_with_layout(
     if !matches!(
         scalar.style,
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted
-    ) || scalar.tag.is_some_and(|tag| source.slice(tag) != "!!str")
-        || scalar.anchor.is_some()
-        || scalar.trailing_comment.is_some()
-        || scalar.header.is_some()
-    {
+    ) {
         return None;
     }
-    let metadata = scalar_metadata(source, scalar.value);
-    let raw = source.slice(metadata.content).trim_ascii();
-    let decoded = decode_quoted_scalar(raw)?;
+    let decoded = scalar_text_for_block_layout(source, scalar)?;
+    render_decoded_literal_scalar(
+        source,
+        scalar,
+        &decoded,
+        options,
+        body_indent,
+        newline,
+        final_newline,
+    )
+}
+
+fn render_decoded_literal_scalar(
+    source: &SourceBuffer,
+    scalar: &YamlScalar,
+    decoded: &str,
+    options: FormatOptions,
+    body_indent: usize,
+    newline: &str,
+    final_newline: bool,
+) -> Option<String> {
     if decoded == "\n" {
         return None;
     }
@@ -495,7 +529,7 @@ pub(super) fn render_quoted_literal_scalar_with_layout(
         return None;
     }
     if !decoded.contains('\n')
-        && (plain_string_safe(&decoded, false)
+        && (plain_string_safe(decoded, false)
             || !decoded.contains('\'')
             || !decoded.contains(['"', '\\']))
     {
@@ -568,36 +602,10 @@ pub(super) fn decode_quoted_scalar(raw: &str) -> Option<String> {
     yaml_scalar::decode_quoted(raw, DecodePolicy::Format)
 }
 
-fn render_folded_prose_scalar(
-    source: &SourceBuffer,
+fn scalar_text_for_block_layout<'a>(
+    source: &'a SourceBuffer,
     scalar: &YamlScalar,
-    node: &YamlAstNode,
-    options: FormatOptions,
-    body_indent: Option<usize>,
-) -> Option<String> {
-    let newline = line_ending_or_default(source, node.span, options);
-    let final_newline = !line_ending_for_span(source, node.span).is_empty();
-    render_folded_prose_scalar_with_layout(
-        source,
-        scalar,
-        node,
-        options,
-        body_indent,
-        newline,
-        final_newline,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn render_folded_prose_scalar_with_layout(
-    source: &SourceBuffer,
-    scalar: &YamlScalar,
-    node: &YamlAstNode,
-    options: FormatOptions,
-    body_indent: Option<usize>,
-    newline: &str,
-    final_newline: bool,
-) -> Option<String> {
+) -> Option<Cow<'a, str>> {
     if scalar.tag.is_some_and(|tag| source.slice(tag) != "!!str")
         || scalar.anchor.is_some()
         || scalar.trailing_comment.is_some()
@@ -607,37 +615,64 @@ pub(super) fn render_folded_prose_scalar_with_layout(
     }
     let metadata = scalar_metadata(source, scalar.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    let prose: Cow<'_, str> = match scalar.style {
+    match scalar.style {
         YamlScalarStyle::Plain => {
             if scalar.semantic != YamlScalarSemantic::String {
                 return None;
             }
-            let decoded = yaml_scalar::decode_plain(raw);
-            if !foldable_yaml_prose(&decoded) {
-                return None;
-            }
-            decoded
+            Some(yaml_scalar::decode_plain(raw))
         }
         YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted => {
             if let Some(decoded) = simple_quoted_scalar_inner(raw) {
-                if !foldable_yaml_prose(decoded) {
-                    return None;
-                }
-                Cow::Borrowed(decoded)
+                Some(Cow::Borrowed(decoded))
             } else {
-                let decoded = decode_quoted_scalar(raw)?;
-                if !foldable_yaml_prose(&decoded) {
-                    return None;
-                }
-                Cow::Owned(decoded)
+                decode_quoted_scalar(raw).map(Cow::Owned)
             }
         }
-        YamlScalarStyle::LiteralBlock | YamlScalarStyle::FoldedBlock => return None,
-    };
+        YamlScalarStyle::LiteralBlock | YamlScalarStyle::FoldedBlock => None,
+    }
+}
+
+pub(super) fn render_folded_prose_scalar_with_layout(
+    source: &SourceBuffer,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
+    options: FormatOptions,
+    body_indent: Option<usize>,
+    newline: &str,
+    final_newline: bool,
+) -> Option<String> {
+    let prose = scalar_text_for_block_layout(source, scalar)?;
+    render_decoded_folded_scalar(
+        source,
+        scalar,
+        node,
+        &prose,
+        options,
+        body_indent,
+        newline,
+        final_newline,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_decoded_folded_scalar(
+    source: &SourceBuffer,
+    scalar: &YamlScalar,
+    node: &YamlAstNode,
+    prose: &str,
+    options: FormatOptions,
+    body_indent: Option<usize>,
+    newline: &str,
+    final_newline: bool,
+) -> Option<String> {
+    if !foldable_yaml_prose(prose) {
+        return None;
+    }
     if prose.chars().count() <= options.prose_width {
         return None;
     }
-    let lines = wrap_yaml_prose(&prose, options.prose_width.max(1));
+    let lines = wrap_yaml_prose(prose, options.prose_width.max(1));
     if lines.len() <= 1 {
         return None;
     }
@@ -768,15 +803,28 @@ fn foldable_yaml_prose(source: &str) -> bool {
         && !source.chars().any(char::is_control)
 }
 
-fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
-    let chars = source.char_indices().collect::<Vec<_>>();
-    let mut breaks = safe_yaml_space_breaks(&chars).into_iter().peekable();
+fn wrap_yaml_prose(source: &str, width: usize) -> Vec<&str> {
+    let char_count = source.chars().count();
+    let mut breaks = source
+        .char_indices()
+        .enumerate()
+        .filter_map(|(char_index, (byte, ch))| {
+            // A break consumes one ASCII space. Adjacent spaces stay inside
+            // the borrowed line, including next to multibyte characters.
+            (ch == ' '
+                && byte > 0
+                && byte + 1 < source.len()
+                && source.as_bytes()[byte - 1] != b' '
+                && source.as_bytes()[byte + 1] != b' ')
+                .then_some(SafeYamlSpaceBreak { byte, char_index })
+        })
+        .peekable();
     let mut lines = Vec::new();
     let mut start_byte = 0;
     let mut start_char = 0;
     let width = width.max(1);
 
-    while chars.len().saturating_sub(start_char) > width {
+    while char_count.saturating_sub(start_char) > width {
         let target_char = start_char + width;
         let Some(mut break_at) = breaks.next() else {
             break;
@@ -788,13 +836,13 @@ fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
             break_at = breaks.next().expect("peeked prose break");
         }
 
-        lines.push(source[start_byte..break_at.byte].to_owned());
+        lines.push(&source[start_byte..break_at.byte]);
         start_byte = break_at.byte + 1;
         start_char = break_at.char_index + 1;
     }
 
     if start_byte < source.len() {
-        lines.push(source[start_byte..].to_owned());
+        lines.push(&source[start_byte..]);
     }
     lines
 }
@@ -803,27 +851,6 @@ fn wrap_yaml_prose(source: &str, width: usize) -> Vec<String> {
 struct SafeYamlSpaceBreak {
     byte: usize,
     char_index: usize,
-}
-
-fn safe_yaml_space_breaks(chars: &[(usize, char)]) -> Vec<SafeYamlSpaceBreak> {
-    chars
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (byte, ch))| {
-            if *ch != ' ' || index == 0 || index + 1 == chars.len() {
-                return None;
-            }
-            let previous = chars[index - 1].1;
-            let next = chars[index + 1].1;
-            if previous == ' ' || next == ' ' {
-                return None;
-            }
-            Some(SafeYamlSpaceBreak {
-                byte: *byte,
-                char_index: index,
-            })
-        })
-        .collect()
 }
 
 pub(super) fn emit_yaml_scalar_inline_into(

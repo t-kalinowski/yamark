@@ -223,6 +223,10 @@ impl Document {
     }
 
     pub fn push_node(&mut self, node: Node) {
+        if self.nodes.is_empty() {
+            // Embedded scalar documents commonly contain a single paragraph.
+            self.nodes.reserve_exact(1);
+        }
         self.nodes.push(node);
         self.markdown.push_node();
     }

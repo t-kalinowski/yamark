@@ -1,13 +1,12 @@
 //! Source-level YAML indicators, scalar boundaries, properties, and preservation checks.
 
-use super::scalar::decode_quoted_scalar;
 use super::simple::{simple_mapping_colon, strip_newline};
 use crate::core::directives::DirectiveTargetKind;
 use crate::core::source::{SourceBuffer, Span};
 use crate::core::yaml_model::{YamlBlockChomp, YamlBlockScalarHeader, YamlScalarStyle};
 use crate::core::yaml_scan::YamlLineScan;
 use crate::diagnostic::YamarkError;
-use memchr::memchr2;
+use memchr::{memchr, memchr2};
 
 pub(super) fn yaml_scan_has_active_fmt_directive(
     source: &SourceBuffer,
@@ -969,7 +968,11 @@ fn supported_quoted_scalar_block_from_value(
     let block = quoted_scalar_block_from_value(source, line, end, value_start, span_start)?;
     let metadata = scalar_metadata(source, block.value);
     let raw = source.slice(metadata.content).trim_ascii();
-    decode_quoted_scalar(raw)?;
+    crate::core::yaml_scalar::decode_quoted_chars(
+        raw,
+        crate::core::yaml_scalar::DecodePolicy::Format,
+        |_| {},
+    )?;
     Some(block)
 }
 
@@ -1014,33 +1017,28 @@ pub(super) fn quoted_scalar_block_from_value(
 }
 
 pub(super) fn quoted_scalar_close(text: &str, start: usize, quote: u8) -> Option<usize> {
+    let bytes = text.as_bytes();
     let mut pos = start + 1;
-    let mut escaped = false;
 
-    while pos < text.len() {
-        let ch = text[pos..].chars().next()?;
-        let ch_len = ch.len_utf8();
-        if quote == b'"' {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
+    if quote == b'"' {
+        while pos < bytes.len() {
+            pos += memchr2(b'"', b'\\', &bytes[pos..])?;
+            if bytes[pos] == b'"' {
                 return Some(pos);
             }
-            pos += ch_len;
-            continue;
+            // Skip the escaped byte. UTF-8 continuation bytes cannot contain
+            // either ASCII delimiter; escape validity is checked by decoding.
+            pos += 2;
         }
-
-        if ch == '\'' {
-            let next = pos + ch_len;
-            if text[next..].starts_with('\'') {
-                pos = next + '\''.len_utf8();
-                continue;
+    } else {
+        while pos < bytes.len() {
+            pos += memchr(b'\'', &bytes[pos..])?;
+            if bytes.get(pos + 1) == Some(&b'\'') {
+                pos += 2;
+            } else {
+                return Some(pos);
             }
-            return Some(pos);
         }
-        pos += ch_len;
     }
 
     None

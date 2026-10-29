@@ -33,7 +33,7 @@ use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_
 pub(crate) use planning::MarkdownPlans;
 pub(crate) use planning::{document_emit_options, finalize_document, release_planning};
 use planning::{
-    push_markdown_format_node, push_structural_markdown_format_node, retain_markdown_drafts,
+    push_markdown_format_node, push_structural_markdown_format_node,
     validate_markdown_format_target,
 };
 
@@ -121,8 +121,7 @@ fn parse_markdown_with_mode(
     }
     let mut doc = Document::new(DocumentKind::Markdown, range);
     doc.options = options;
-    let mut engine =
-        DirectiveEngine::new_with_template_delimiters(config.template_delimiters.clone());
+    let mut engine = DirectiveEngine::for_document(&mut doc, config.template_delimiters.clone());
     let start_line = first_line_index(source, range);
     let mut i = start_line;
     let end_line = end_line_index(source, range);
@@ -790,7 +789,6 @@ fn parse_markdown_with_mode(
         ));
     }
 
-    retain_markdown_drafts(source, &mut doc, options);
     Ok(doc)
 }
 

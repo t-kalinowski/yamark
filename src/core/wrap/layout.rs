@@ -553,12 +553,19 @@ impl<'a> WrapLineBuffer<'a> {
         &mut self,
         writer: &mut TokenLineWriter<'_, '_>,
         line: TokenLine<'a>,
-    ) -> Option<()> {
-        if let Some(pending) = self.pending.take() {
+    ) -> Option<TokenLine<'a>> {
+        let mut reusable = if let Some(pending) = self.pending.take() {
             writer.write_line(&pending, "")?;
-        }
+            pending
+        } else {
+            TokenLine::default()
+        };
+        // The writer has retained the text it needs. Keep the consumed line's
+        // token storage for the next line instead of allocating it again.
+        reusable.tokens.clear();
+        reusable.width = 0;
         self.pending = Some(line);
-        Some(())
+        Some(reusable)
     }
 
     fn commit_current(&mut self, writer: &mut TokenLineWriter<'_, '_>) -> Option<()> {
@@ -584,7 +591,7 @@ impl<'a> WrapLineBuffer<'a> {
             return Some(());
         }
         let line = std::mem::take(&mut self.current);
-        self.push_pending(writer, line)?;
+        self.current = self.push_pending(writer, line)?;
         self.width = self.continuation_width;
         Some(())
     }

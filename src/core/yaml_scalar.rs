@@ -12,7 +12,7 @@ pub(crate) enum DecodePolicy {
 }
 
 pub(crate) fn decode_quoted(raw: &str, policy: DecodePolicy) -> Option<String> {
-    let mut out = String::new();
+    let mut out = String::with_capacity(raw.len());
     decode_quoted_chars(raw, policy, |ch| out.push(ch))?;
     Some(out)
 }
@@ -122,11 +122,18 @@ pub(crate) fn decode_plain(raw: &str) -> Cow<'_, str> {
     if !raw.contains(['\r', '\n']) {
         return Cow::Borrowed(raw);
     }
-    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
-    let mut out = String::new();
+    let mut out = String::with_capacity(raw.len());
     let mut blank_lines = 0usize;
     let mut has_content = false;
-    for line in normalized.lines().map(str::trim_ascii) {
+    let mut previous_cr = false;
+    for line in raw.split_inclusive(['\r', '\n']) {
+        // The two bytes of CRLF delimit one physical line.
+        if previous_cr && line == "\n" {
+            previous_cr = false;
+            continue;
+        }
+        previous_cr = line.ends_with('\r');
+        let line = line.trim_ascii();
         if line.is_empty() {
             if has_content {
                 blank_lines += 1;

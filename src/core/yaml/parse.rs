@@ -1852,7 +1852,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let state = self
             .engine
             .state_for_yaml_node(&mut self.doc, DirectiveTargetKind::YamlScalar);
-        let state_value = self.doc.state(state).clone();
+        let state_value = self.doc.state(state);
         let metadata = scalar_metadata(self.source, block.value);
         let tagged_markdown = metadata
             .tag

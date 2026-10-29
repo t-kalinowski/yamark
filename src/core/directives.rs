@@ -408,6 +408,19 @@ impl DirectiveEngine {
         }
     }
 
+    pub(crate) fn for_document(
+        document: &mut Document,
+        template_delimiters: Vec<TemplateDelimiter>,
+    ) -> Self {
+        assert!(document.nodes.is_empty() && document.states.states.len() == 1);
+        let mut engine = Self::new_with_template_delimiters(template_delimiters);
+        // The configured policy is the first state of a fresh document. Keeping
+        // an unused empty state would grow every small nested document's table.
+        document.states.states[0] = engine.active.clone();
+        engine.active_id = Some(StateId(0));
+        engine
+    }
+
     pub fn state_for_node(&mut self, document: &mut Document, target: bool) -> StateId {
         self.state_for_target_kind(document, target.then_some(DirectiveTargetKind::General))
     }

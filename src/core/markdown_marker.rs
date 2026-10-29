@@ -76,7 +76,7 @@ fn ordered_parenthesized_marker(marker: &str) -> bool {
     marker.bytes().all(|byte| byte.is_ascii_digit()) || ordered_alpha_marker(marker)
 }
 
-fn ordered_alpha_marker(marker: &str) -> bool {
+pub(crate) fn ordered_alpha_marker(marker: &str) -> bool {
     marker.len() == 1 && marker.as_bytes()[0].is_ascii_alphabetic() || valid_roman_marker(marker)
 }
 
