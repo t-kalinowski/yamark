@@ -77,15 +77,13 @@ pub(super) fn render_inline_markdown_scalar(
         .expect("retained inline Markdown scalar")
         .fragment
         .as_ref()?;
-    let prefix = source
-        .slice(Span::new(scalar.value.start(), metadata.content.start))
-        .trim_ascii();
+    let prefix = scalar_property_prefix(source, scalar, metadata);
     let newline = line_ending_or_default(source, node.span, options);
 
     let mut out = String::new();
     if fragment.is_empty() {
         if !prefix.is_empty() {
-            out.push_str(prefix);
+            out.push_str(&prefix);
             out.push(' ');
         }
         out.push_str("\"\"");
@@ -95,7 +93,7 @@ pub(super) fn render_inline_markdown_scalar(
     }
 
     if !prefix.is_empty() {
-        out.push_str(prefix);
+        out.push_str(&prefix);
         out.push(' ');
     }
     out.push('|');
@@ -350,11 +348,17 @@ pub(super) fn render_yaml_block_scalar_value_header(
     scalar: &YamlScalar,
 ) -> String {
     let header = scalar.header.expect("block scalars have headers");
-    let mut output = if scalar.nested.is_some() && scalar.style == YamlScalarStyle::FoldedBlock {
-        format_markdown_yaml_block_value(source.slice(scalar.value))
+    let metadata = scalar_metadata(source, scalar.value);
+    let mut output = scalar_property_prefix(source, scalar, metadata);
+    if !output.is_empty() {
+        output.push(' ');
+    }
+    let value = if scalar.nested.is_some() && scalar.style == YamlScalarStyle::FoldedBlock {
+        format_markdown_yaml_block_value(source.slice(metadata.content))
     } else {
-        source.slice(scalar.value).trim_ascii().to_owned()
+        source.slice(metadata.content).trim_ascii().to_owned()
     };
+    output.push_str(&value);
     emit_inline_comment(&mut output, source, scalar.trailing_comment);
     output.push_str(line_ending_for_span(source, header));
     output

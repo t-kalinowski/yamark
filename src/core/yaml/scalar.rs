@@ -1199,7 +1199,12 @@ fn scalar_property_prefix_width(
     let inline_prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
         .trim_ascii();
-    if !inline_prefix.is_empty() {
+    if !inline_prefix.is_empty()
+        && [scalar.tag, scalar.anchor]
+            .into_iter()
+            .flatten()
+            .all(|property| property.start() >= scalar.value.start())
+    {
         return inline_prefix.chars().count();
     }
     match (scalar.tag, scalar.anchor) {
@@ -1258,7 +1263,12 @@ pub(super) fn scalar_property_prefix(
     let inline_prefix = source
         .slice(Span::new(scalar.value.start(), metadata.content.start))
         .trim_ascii();
-    if !inline_prefix.is_empty() {
+    if !inline_prefix.is_empty()
+        && [scalar.tag, scalar.anchor]
+            .into_iter()
+            .flatten()
+            .all(|property| property.start() >= scalar.value.start())
+    {
         return inline_prefix.to_owned();
     }
     let mut properties = [scalar.tag, scalar.anchor]

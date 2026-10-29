@@ -36,6 +36,8 @@ YAML formatting retains unsupported source and checks scalar semantics when choo
 
 Preserved YAML children retain their source prefixes. Planning propagates that indentation constraint through containing block collections, and emission keeps those collections at their source indentation while formatting editable siblings. Inline sequence mappings retain the corresponding marker-to-key spacing. Newly emitted literal scalar bodies use the emitted header's indentation rather than the original scalar's indentation.
 
+Preserving a mapping value or sequence item includes its parent entry header, even when the scalar starts on a later line. Ordinary out-of-line scalars retain that layout when parent properties or comments would be lost by moving the value inline. Tags and anchors belong to the scalar's semantic model regardless of which line contains them; their source spans remain separate from the scalar content used for verification.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.

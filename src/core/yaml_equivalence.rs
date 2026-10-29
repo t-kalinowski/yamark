@@ -639,9 +639,12 @@ fn before_source_scalar_text<'a>(
         .map(SourceSpan::end)
         .max()
         .unwrap_or_else(|| scalar.value.start());
-    Span::new(start.min(scalar.value.end()), scalar.value.end())
-        .slice(context.source)
-        .trim_ascii()
+    Span::new(
+        start.clamp(scalar.value.start(), scalar.value.end()),
+        scalar.value.end(),
+    )
+    .slice(context.source)
+    .trim_ascii()
 }
 
 fn after_source_scalar_text<'a>(context: AfterYamlContext<'a>, scalar: &YamlScalar) -> &'a str {
@@ -653,7 +656,10 @@ fn after_source_scalar_text<'a>(context: AfterYamlContext<'a>, scalar: &YamlScal
         .unwrap_or_else(|| scalar.value.start());
     context
         .source
-        .slice(Span::new(start.min(scalar.value.end()), scalar.value.end()))
+        .slice(Span::new(
+            start.clamp(scalar.value.start(), scalar.value.end()),
+            scalar.value.end(),
+        ))
         .trim_ascii()
 }
 

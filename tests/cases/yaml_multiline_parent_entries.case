@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path lorem.yaml --verify
+-- stdin
+lorem:
+  'Lorem ipsum
+    {{ dolor }} sit amet.'
+ipsum:
+  -
+    "Lorem ipsum
+      {{ dolor }} sit amet."
+dolor: [lorem,ipsum]
+-- stdout
+lorem:
+  'Lorem ipsum
+    {{ dolor }} sit amet.'
+ipsum:
+  -
+    "Lorem ipsum
+      {{ dolor }} sit amet."
+dolor: [lorem, ipsum]
+-- stderr
+-- status
+0

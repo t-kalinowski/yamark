@@ -277,14 +277,15 @@ fn emit_yaml_node(
                     continue;
                 };
                 let value_node = ast.node(value);
+                let entry_span = Span::new(item.line.start(), value_node.span.end());
                 if matches!(value_node.kind, YamlAstKind::Opaque(_)) {
-                    out.push_str(source.slice(Span::new(item.line.start(), value_node.span.end())));
+                    out.push_str(source.slice(entry_span));
                     continue;
                 }
                 if yaml_block_collection_has_flow_collapse_hint(value_node)
                     && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
                 {
-                    out.push_str(source.slice(value_node.span));
+                    out.push_str(source.slice(entry_span));
                     continue;
                 }
                 if matches!(
@@ -295,7 +296,7 @@ fn emit_yaml_node(
                         | YamlAstKind::FlowMapping(_)
                 ) && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
                 {
-                    out.push_str(source.slice(value_node.span));
+                    out.push_str(source.slice(entry_span));
                     continue;
                 }
                 if document.state(value_node.state).preserve {
@@ -306,7 +307,7 @@ fn emit_yaml_node(
                             | YamlAstKind::FlowSequence(_)
                             | YamlAstKind::FlowMapping(_)
                     ) {
-                        out.push_str(source.slice(value_node.span));
+                        out.push_str(source.slice(entry_span));
                     } else {
                         emit_spaces(out, indent);
                         out.push('-');
@@ -337,7 +338,7 @@ fn emit_yaml_node(
                 {
                     match action {
                         ExternalBlockScalarAction::Preserve => {
-                            out.push_str(source.slice(value_node.span));
+                            out.push_str(source.slice(entry_span));
                         }
                         ExternalBlockScalarAction::Formatted(formatted) => {
                             emit_spaces(out, indent);
@@ -677,7 +678,7 @@ fn emit_yaml_mapping_pair(
             | YamlAstKind::FlowMapping(_)
     ) && matches!(value_node.emit, YamlEmitPlan::PreserveSource)
     {
-        out.push_str(source.slice(value_node.span));
+        out.push_str(source.slice(pair.source));
         return Ok(());
     }
     if let (YamlAstKind::Scalar(scalar), YamlEmitPlan::ExternalBlockScalar) =
@@ -691,7 +692,7 @@ fn emit_yaml_mapping_pair(
     {
         match action {
             ExternalBlockScalarAction::Preserve => {
-                out.push_str(source.slice(value_node.span));
+                out.push_str(source.slice(pair.source));
             }
             ExternalBlockScalarAction::Formatted(formatted) => {
                 emit_yaml_line_prefix(out, prefix);
@@ -714,7 +715,7 @@ fn emit_yaml_mapping_pair(
                 | YamlAstKind::FlowSequence(_)
                 | YamlAstKind::FlowMapping(_)
         ) {
-            out.push_str(source.slice(value_node.span));
+            out.push_str(source.slice(pair.source));
         } else {
             emit_yaml_line_prefix(out, prefix);
             out.push_str(source.slice(pair.key).trim_ascii());

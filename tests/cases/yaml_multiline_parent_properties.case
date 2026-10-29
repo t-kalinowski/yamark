@@ -1,0 +1,53 @@
+-- args
+format --stdin-file-path lorem.yaml --verify
+-- stdin
+lorem: &ipsum
+  'Lorem ipsum
+    dolor sit amet.'
+dolor: *ipsum
+sit: !!str
+  "Lorem ipsum
+    dolor sit amet."
+amet: &consectetur
+  !!str 'Lorem ipsum
+    dolor sit amet.'
+adipiscing: !!str
+  &elit 'Lorem ipsum
+    dolor sit amet.'
+sed: [lorem,ipsum]
+---
+- &ipsum
+  'Lorem ipsum
+    dolor sit amet.'
+- *ipsum
+- !lorem
+  'Lorem ipsum
+    dolor sit amet.'
+- [lorem,ipsum]
+-- stdout
+lorem: &ipsum
+  'Lorem ipsum
+    dolor sit amet.'
+dolor: *ipsum
+sit: !!str
+  "Lorem ipsum
+    dolor sit amet."
+amet: &consectetur
+  !!str 'Lorem ipsum
+    dolor sit amet.'
+adipiscing: !!str
+  &elit 'Lorem ipsum
+    dolor sit amet.'
+sed: [lorem, ipsum]
+---
+- &ipsum
+  'Lorem ipsum
+    dolor sit amet.'
+- *ipsum
+- !lorem
+  'Lorem ipsum
+    dolor sit amet.'
+- [lorem, ipsum]
+-- stderr
+-- status
+0
