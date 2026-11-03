@@ -310,7 +310,18 @@ fn yaml_scalar_continuation_indent_delta(
     } else {
         yaml_output_line_indent(output)
     };
-    output_indent as isize - source_indent as isize
+    let delta = output_indent as isize - source_indent as isize;
+    if matches!(
+        scalar.style,
+        YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted
+    ) {
+        // Quoted continuations can start left of the opening quote. Keeping
+        // their indentation when the parent moves left preserves the value and
+        // avoids moving quoted --- or ... content to the document-marker column.
+        delta.max(0)
+    } else {
+        delta
+    }
 }
 
 fn yaml_output_line_indent(output: &str) -> usize {
@@ -445,6 +456,27 @@ fn normalize_quoted_string_scalar(
     }
 }
 
+enum ScalarLayoutContext {
+    Block,
+    // The enclosing flow emitter checks the boundary after removing delimiters.
+    Flow,
+}
+
+impl ScalarLayoutContext {
+    fn following_comment_enters_body(
+        self,
+        source: &SourceBuffer,
+        scalar: &YamlScalar,
+        body_indent: usize,
+    ) -> bool {
+        match self {
+            Self::Block => following_comment_indent(source, scalar.value.end())
+                .is_some_and(|indent| indent >= body_indent),
+            Self::Flow => false,
+        }
+    }
+}
+
 fn render_scalar_block_layout(
     source: &SourceBuffer,
     scalar: &YamlScalar,
@@ -466,6 +498,7 @@ fn render_scalar_block_layout(
         &text,
         options,
         literal_body_indent,
+        ScalarLayoutContext::Block,
         newline,
         final_newline,
     ) {
@@ -478,6 +511,7 @@ fn render_scalar_block_layout(
         &text,
         options,
         body_indent,
+        ScalarLayoutContext::Block,
         newline,
         final_newline,
     )
@@ -504,17 +538,20 @@ pub(super) fn render_quoted_literal_scalar_with_layout(
         &decoded,
         options,
         body_indent,
+        ScalarLayoutContext::Flow,
         newline,
         final_newline,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_decoded_literal_scalar(
     source: &SourceBuffer,
     scalar: &YamlScalar,
     decoded: &str,
     options: FormatOptions,
     body_indent: usize,
+    context: ScalarLayoutContext,
     newline: &str,
     final_newline: bool,
 ) -> Option<String> {
@@ -542,6 +579,9 @@ fn render_decoded_literal_scalar(
         .chars()
         .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\t'))
     {
+        return None;
+    }
+    if context.following_comment_enters_body(source, scalar, body_indent) {
         return None;
     }
 
@@ -650,6 +690,7 @@ pub(super) fn render_folded_prose_scalar_with_layout(
         &prose,
         options,
         body_indent,
+        ScalarLayoutContext::Flow,
         newline,
         final_newline,
     )
@@ -663,6 +704,7 @@ fn render_decoded_folded_scalar(
     prose: &str,
     options: FormatOptions,
     body_indent: Option<usize>,
+    context: ScalarLayoutContext,
     newline: &str,
     final_newline: bool,
 ) -> Option<String> {
@@ -672,14 +714,17 @@ fn render_decoded_folded_scalar(
     if prose.chars().count() <= options.prose_width {
         return None;
     }
-    let lines = wrap_yaml_prose(prose, options.prose_width.max(1));
-    if lines.len() <= 1 {
-        return None;
-    }
     let indent = body_indent.unwrap_or_else(|| {
         let line_index = source.line_at_byte(node.span.start());
         indentation(source.line_text(line_index)) + options.indent_width
     });
+    if context.following_comment_enters_body(source, scalar, indent) {
+        return None;
+    }
+    let lines = wrap_yaml_prose(prose, options.prose_width.max(1));
+    if lines.len() <= 1 {
+        return None;
+    }
     let indent = " ".repeat(indent);
     let mut out = String::new();
     out.push_str(&render_explicit_core_scalar(source, scalar, ">-"));
@@ -692,6 +737,21 @@ fn render_decoded_folded_scalar(
         }
     }
     Some(out)
+}
+
+pub(super) fn following_comment_indent(source: &SourceBuffer, value_end: usize) -> Option<usize> {
+    // Blank lines do not end a block scalar. Its first following nonblank line
+    // must remain outside the new body, including after the parent is reindented.
+    let last_line = source.line_at_byte(value_end - 1);
+    for line in &source.lines[last_line + 1..] {
+        let text = source.slice(line.text);
+        if text.trim_ascii().is_empty() {
+            continue;
+        }
+        let indent = indentation(text);
+        return (text.as_bytes().get(indent) == Some(&b'#')).then_some(indent);
+    }
+    None
 }
 
 fn render_rewrapped_folded_block_scalar(

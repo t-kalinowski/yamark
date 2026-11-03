@@ -46,6 +46,12 @@ Ordinary Markdown wrapping plans are created and resolved one node at a time aft
 
 Block scalar comments are content only at or beyond the explicit or inferred content indentation. A dedented comment ends the body and remains available to YAML directive processing. When a YAML comment follows a scalar, its content and containing collections retain their source indentation so formatting cannot absorb that comment into the value. Blank embedded output followed by a comment indented beyond the YAML parent is rejected: there is no content left to establish that boundary, and changing the comment's indentation or the embedded target's scalar style is unsupported.
 
+Ordinary conversion from plain or quoted scalars to block style checks the first following nonblank line against the emitted body indentation. If that line is a comment at or beyond the body indentation, the scalar remains plain or quoted. This check runs only for eligible block layouts and uses the source line index without allocating another buffer. Flow expansion carries the enclosing collection's following comment boundary through its final descendants, since emission removes the closing delimiters.
+
+Explicit inline Markdown targets still format when followed by an indented comment. Their new block content uses indentation beyond the comment, keeping the comment outside the value. Empty targets remain quoted empty strings.
+
+Retained quoted continuations keep their source indentation when the parent moves left. YAML quoted line folding discards that physical indentation; retaining it accommodates continuations left of the opening quote and keeps indented document-marker text inside the scalar. Moving the parent right still shifts the continuation lines with it.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.

@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.yaml --verify
+-- stdin
+    'hello
+world'
+-- stdout
+'hello
+world'
+-- stderr
+-- status
+0

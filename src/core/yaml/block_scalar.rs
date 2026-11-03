@@ -4,7 +4,7 @@ use super::emit::{IntoOptionalSpan, YamlEmitContext};
 use super::flow_emit::emit_inline_comment;
 use super::scalar::{
     YamlScalarEmitPosition, decode_quoted_scalar, emit_yaml_rendered_scalar_plan, emit_yaml_scalar,
-    scalar_property_prefix, simple_quoted_scalar_inner,
+    following_comment_indent, scalar_property_prefix, simple_quoted_scalar_inner,
 };
 use super::simple::{format_markdown_yaml_block_value, format_simple_yaml_line, strip_newline};
 use super::syntax::{
@@ -122,6 +122,10 @@ pub(super) fn render_inline_markdown_scalar(
         let line_index = source.line_at_byte(node.span.start());
         indentation(source.line_text(line_index)) + options.indent_width
     });
+    // The following comment retains its source indentation. Indent the new
+    // content beyond it so it cannot become part of the Markdown value.
+    let indent = following_comment_indent(source, scalar.value.end())
+        .map_or(indent, |comment_indent| indent.max(comment_indent + 1));
     emit_indented_block(&mut out, &formatted, indent, newline);
     Some(out)
 }

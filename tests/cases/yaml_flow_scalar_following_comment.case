@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.yaml --prose-width 36 --verify
+-- stdin
+literal: ["line one\nline two"
+]
+    # outside literal
+folded: {prose: 'Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod.'
+}
+
+    # outside folded
+sibling: [x,y]
+-- stdout
+literal:
+  - "line one\nline two"
+    # outside literal
+folded:
+  prose: Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod.
+
+    # outside folded
+sibling: [x, y]
+-- stderr
+-- status
+0
