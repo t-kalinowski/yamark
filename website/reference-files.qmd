@@ -131,7 +131,7 @@ languages Yamark preserves safely: `bash`, `sh`, `shell`, `zsh`, `ojs`, `text`,
 | UTF-8 BOM and line endings | Preserves | Preserves a UTF-8 BOM and the dominant CRLF or CR line ending. Rejects UTF-16 BOM input. |
 | Tab indentation | Preserves or rejects | Preserves tab-indented YAML when no active target requires interpreting it. Rejects targeted formatting that would need to parse the unsupported indentation. |
 
-Ordinary plain and quoted scalars retain their spelling when conversion to block style would absorb a following indented comment into the value, including across blank lines. Explicit Markdown targets still format; their block content uses deeper indentation when needed to keep the following comment outside the value.
+Ordinary scalars remain plain or quoted when conversion to block style would absorb a following indented comment into the value, including across blank lines. Explicit Markdown targets still format; their block content uses deeper indentation when needed to keep the following comment outside the value.
 
 ### JSON Lines (JSONL) as YAML streams
 
