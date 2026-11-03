@@ -1,0 +1,12 @@
+-- args
+format --stdin-file-path input.yaml --compact --verify
+-- stdin
+- lorem: 'lorem''ipsum
+    dolor'
+  ipsum: "lorem\"ipsum
+    dolor"
+-- stdout
+- {lorem: "lorem'ipsum dolor", ipsum: 'lorem"ipsum dolor'}
+-- stderr
+-- status
+0

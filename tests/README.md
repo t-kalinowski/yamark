@@ -26,3 +26,5 @@ Keep test bodies near their owning contract. `spec_cli/support.rs` contains only
 Review transcript expectations explicitly. Do not regenerate unrelated cases or normalize away complete diagnostics, meaningful ordering, or newline bytes. Fixture paths under `tests/fixtures/` have Git attributes for byte-sensitive data.
 
 Use temporary repositories and directories for writes. Preserve the caller's `HOME` and tool environment. Capability-specific cases must explain and exercise the difference; shared behavior should use shared cases. See [Development](../docs/DEVELOPMENT.md) for prerequisites and the final gate.
+
+Sentence-wrap semantic checks invoke Quarto's bundled Pandoc directly, avoiding a Deno startup for each AST comparison. `QUARTO_PANDOC` can select a binary or its directory. Full Quarto document comparisons still use `quarto render`.

@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path lorem.yaml --verify
+-- stdin
+lorem:
+  |
+    Lorem ipsum.
+  # fmt: skip scope=file
+ipsum: [dolor,sit]
+-- stdout
+lorem:
+  |
+    Lorem ipsum.
+  # fmt: skip scope=file
+ipsum: [dolor,sit]
+-- stderr
+-- status
+0

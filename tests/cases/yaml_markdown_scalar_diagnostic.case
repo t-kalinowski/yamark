@@ -1,0 +1,10 @@
+-- args
+format --stdin-file-path lorem.yaml
+-- stdin
+lorem: !md |
+  <!-- fmt: lorem -->
+-- stdout
+-- stderr
+lorem.yaml:2:8: error: invalid fmt directive: lorem
+-- status
+1

@@ -119,9 +119,10 @@ languages Yamark preserves safely: `bash`, `sh`, `shell`, `zsh`, `ojs`, `text`,
 | Block mappings and sequences | Formats | Normalizes indentation and spacing. Does not reorder keys. |
 | Flow mappings and sequences | Formats | Normalizes spacing. Expands multiline or over-width collections to block style when safe. |
 | Compact collections | Formats when enabled | Collapses eligible block collections to flow style with `--compact`, `[format].compact`, or `fmt: compact`. |
-| Scalar folding | Formats when safe | Can emit and rewrap folded prose scalars at the active prose width. |
+| Scalar folding | Formats when safe | Can emit and rewrap folded prose scalars at the active prose width, including prose already split across plain or quoted continuation lines. Preserves decoded whitespace and comments. |
 | Literal scalars | Preserves by default | Changes a literal scalar only when it is explicitly marked as Markdown or an embedded formatter target. |
 | Quoted scalars with hard newlines | Formats when safe | Can emit literal block style when the YAML value stays unchanged. |
+| Scalars below a mapping key or sequence marker | Formats when safe | Retains the complete entry when preserving a value. Ordinary scalar entries with parent tags, anchors, or comments retain their layout; editable siblings still format. |
 | Unsafe plain scalars | Quotes | Quotes scalars whose meaning would change in block or flow context. |
 | Core booleans and nulls | Formats | Normalizes plain values to YAML 1.2 spellings such as `true`, `false`, and `null`. Normalizes explicit core tags when safe. |
 | Tags and anchors | Preserves | Preserves custom tags, anchors, aliases, and tag/anchor order. May remove a redundant core collection tag when syntax already implies the type. |

@@ -151,6 +151,8 @@ pub struct Line {
 #[derive(Debug, Clone)]
 pub struct SourceBuffer {
     text: String,
+    diagnostic_line_offset: usize,
+    diagnostic_column_offset: usize,
     pub bom: Option<Span>,
     pub lines: Vec<Line>,
     pub dominant_line_ending: LineEnding,
@@ -204,6 +206,8 @@ impl SourceBuffer {
 
         Self {
             text,
+            diagnostic_line_offset: 0,
+            diagnostic_column_offset: 0,
             bom,
             lines,
             dominant_line_ending,
@@ -212,6 +216,14 @@ impl SourceBuffer {
 
     pub fn as_str(&self) -> &str {
         &self.text
+    }
+
+    /// Retain original diagnostic coordinates for a dedented owned source.
+    /// Byte spans and line indexes continue to address this buffer locally.
+    pub(crate) fn with_diagnostic_origin(mut self, line: usize, column: usize) -> Self {
+        self.diagnostic_line_offset = line - 1;
+        self.diagnostic_column_offset = column - 1;
+        self
     }
 
     pub(crate) fn into_string(self) -> String {
@@ -251,6 +263,9 @@ impl SourceBuffer {
             .chars()
             .count()
             + 1;
-        (line_index + 1, column)
+        (
+            line_index + 1 + self.diagnostic_line_offset,
+            column + self.diagnostic_column_offset,
+        )
     }
 }

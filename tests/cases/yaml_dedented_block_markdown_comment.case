@@ -1,0 +1,16 @@
+-- args
+format --stdin-file-path lorem.yaml --canonical --wrap none --verify
+-- stdin
+lorem: !md
+  |
+    Lorem __ipsum__.
+  # Dolor sit amet.
+ipsum: [dolor,sit]
+-- stdout
+lorem: !md |
+    Lorem **ipsum**.
+  # Dolor sit amet.
+ipsum: [dolor, sit]
+-- stderr
+-- status
+0

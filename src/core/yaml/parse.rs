@@ -1,10 +1,10 @@
 //! Block mappings, sequences, scalar nodes, and source-preserving parse boundaries.
 
 use super::YamlParser;
-use super::block_scalar::yaml_tag_is_markdown;
+use super::block_scalar::{block_scalar_body_indent, reindent_block_lines, yaml_tag_is_markdown};
 use super::flow_emit::source_may_contain_template_span;
 use super::flow_parse::{parse_flow_collection, recognize_flow_collection};
-use super::scalar::scalar_semantic_with_tag;
+use super::scalar::{scalar_semantic_with_tag, scalar_semantic_with_tag_and_style};
 use super::syntax::{
     BlockScalar, FlowCollapseHint, FlowCollapseRest, FlowCollectionBlock, FlowCollectionScan,
     PlainScalarContinuation, PlainScalarExtension, QuotedScalarBlock, alias_scalar,
@@ -21,11 +21,11 @@ use super::syntax::{
 };
 use crate::config::Config;
 use crate::core::directives::{DirectiveState, DirectiveTargetKind, StateId};
-use crate::core::source::{SourceSpan, Span};
+use crate::core::source::{SourceBuffer, SourceSpan, Span};
 use crate::core::yaml_model::{
-    YamlAlias, YamlAstKind, YamlAstNode, YamlMapping, YamlMappingPair, YamlNodeId, YamlOpaque,
-    YamlOpaqueReason, YamlScalar, YamlScalarSemantic, YamlScalarStyle, YamlSequence,
-    YamlSequenceItem, YamlTrivia, YamlTriviaKind,
+    YamlAlias, YamlAstKind, YamlAstNode, YamlBlockScalarHeader, YamlEmitPlan, YamlMapping,
+    YamlMappingPair, YamlNodeId, YamlOpaque, YamlOpaqueReason, YamlScalar, YamlScalarSemantic,
+    YamlScalarStyle, YamlSequence, YamlSequenceItem, YamlTrivia, YamlTriviaKind,
 };
 use crate::core::yaml_scan::scan_yaml_lines;
 use crate::diagnostic::{Result, YamarkError};
@@ -109,8 +109,19 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 .map(Some);
         }
 
-        if let Some(block) = block_scalar_at(self.source, self.line, self.end) {
-            return self.parse_block_scalar(block).map(Some);
+        // Child blocks are entered at their parent's indentation plus one;
+        // root blocks use zero. An explicit block-scalar indicator is relative
+        // to that parent, even when the scalar header is indented farther.
+        if let Some(block) = block_scalar_at_value(
+            self.source,
+            self.line,
+            self.end,
+            actual_indent,
+            indent.saturating_sub(1),
+        ) {
+            let id = self.parse_block_scalar(block)?;
+            self.ast.node_mut(id).leading_trivia = leading.into();
+            return Ok(Some(id));
         }
 
         if let Some(block) = flow_collection_block_from_value(
@@ -476,14 +487,14 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         nested_is_target,
                     )?;
                     if property_only_value {
-                        self.attach_collection_properties(nested, metadata.tag, metadata.anchor);
+                        self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                     }
                     end = self.ast.node(nested).span.end();
                     Some(nested)
                 } else if self.next_line_has_tab_indentation() {
                     let nested = self.parse_tab_indented_opaque(nested_leading)?;
                     if property_only_value {
-                        self.attach_collection_properties(nested, metadata.tag, metadata.anchor);
+                        self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                     }
                     end = self.ast.node(nested).span.end();
                     Some(nested)
@@ -500,11 +511,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         self.parse_block(nested_indent, nested_leading, nested_is_target)?;
                     if let Some(nested) = nested {
                         if property_only_value {
-                            self.attach_collection_properties(
-                                nested,
-                                metadata.tag,
-                                metadata.anchor,
-                            );
+                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                         }
                         end = self.ast.node(nested).span.end();
                     } else {
@@ -543,6 +550,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             }
         };
 
+        self.preserve_scalar_entry_header(value, value_line.full.into(), pair_trailing_comment);
         Ok((
             YamlMappingPair {
                 leading_trivia: leading.into(),
@@ -732,14 +740,14 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         nested_is_target,
                     )?;
                     if property_only_value {
-                        self.attach_collection_properties(nested, metadata.tag, metadata.anchor);
+                        self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                     }
                     end = self.ast.node(nested).span.end();
                     Some(nested)
                 } else if self.next_line_has_tab_indentation() {
                     let nested = self.parse_tab_indented_opaque(nested_leading)?;
                     if property_only_value {
-                        self.attach_collection_properties(nested, metadata.tag, metadata.anchor);
+                        self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                     }
                     end = self.ast.node(nested).span.end();
                     Some(nested)
@@ -756,11 +764,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                         self.parse_block(nested_indent, nested_leading, nested_is_target)?;
                     if let Some(nested) = nested {
                         if property_only_value {
-                            self.attach_collection_properties(
-                                nested,
-                                metadata.tag,
-                                metadata.anchor,
-                            );
+                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                         }
                         end = self.ast.node(nested).span.end();
                     } else {
@@ -798,6 +802,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             }
         };
 
+        self.preserve_scalar_entry_header(value, line.full.into(), pair_trailing_comment);
         Ok((
             YamlMappingPair {
                 leading_trivia: leading.into(),
@@ -814,15 +819,17 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         ))
     }
 
-    fn attach_collection_properties(
+    fn attach_node_properties(
         &mut self,
         node: YamlNodeId,
         tag: Option<Span>,
         anchor: Option<Span>,
-    ) {
+    ) -> Result<()> {
         let tag = tag.map(SourceSpan::new);
         let anchor = anchor.map(SourceSpan::new);
-        match &mut self.ast.node_mut(node).kind {
+        let node_id = node;
+        let node = self.ast.node_mut(node);
+        match &mut node.kind {
             YamlAstKind::Mapping(mapping) => {
                 mapping.tag = tag;
                 mapping.anchor = anchor;
@@ -839,8 +846,80 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 sequence.tag = tag;
                 sequence.anchor = anchor;
             }
-            _ => {}
+            YamlAstKind::Scalar(scalar) => {
+                scalar.tag = tag.or(scalar.tag);
+                scalar.anchor = anchor.or(scalar.anchor);
+                let metadata = scalar_metadata(self.source, scalar.value);
+                scalar.semantic = scalar_semantic_with_tag_and_style(
+                    self.source.slice(metadata.content),
+                    scalar.tag.map(|tag| self.source.slice(tag)),
+                    scalar.style,
+                );
+                // Parent properties arrive after the child was initially
+                // planned; tags can make it an explicit Markdown target.
+                node.must_preserve_source = None;
+                node.clear_inline_width();
+                node.clear_flow_inline_width();
+            }
+            YamlAstKind::Empty | YamlAstKind::Alias(_) | YamlAstKind::Opaque(_) => {}
         }
+        if let YamlAstKind::Scalar(scalar) = &node.kind
+            && scalar.nested.is_none()
+            && scalar
+                .tag
+                .is_some_and(|tag| yaml_tag_is_markdown(self.source.slice(tag)))
+            && let Some(body) = scalar.body
+        {
+            let header = scalar.block_header.expect("block scalars have headers");
+            let state = node.state;
+            let nested = self.parse_markdown_block_scalar(body.span(), header, state)?;
+            let YamlAstKind::Scalar(scalar) = &mut self.ast.node_mut(node_id).kind else {
+                unreachable!("scalar properties do not change node kind");
+            };
+            scalar.nested = nested;
+        }
+        Ok(())
+    }
+
+    fn preserve_scalar_entry_header(
+        &mut self,
+        value: Option<YamlNodeId>,
+        parent_line: Span,
+        parent_comment: Option<Span>,
+    ) {
+        let Some(value) = value else {
+            return;
+        };
+        let node = self.ast.node(value);
+        let YamlAstKind::Scalar(scalar) = &node.kind else {
+            return;
+        };
+        let state = self.doc.state(node.state);
+        if scalar.value.start() < parent_line.end
+            || state.markdown_target
+            || state.embedded_formatter.is_some()
+            || scalar
+                .tag
+                .is_some_and(|tag| yaml_tag_is_markdown(self.source.slice(tag)))
+        {
+            return;
+        }
+        let parent_properties = [scalar.tag, scalar.anchor]
+            .into_iter()
+            .flatten()
+            .any(|property| property.start() < parent_line.end);
+        if parent_comment.is_none() && node.leading_trivia.is_empty() && !parent_properties {
+            return;
+        }
+        // The scalar span starts below its parent entry. Keep the complete entry
+        // when moving the value inline would lose its header or leading trivia.
+        // Do this before container planning so compact layouts and indentation
+        // propagation observe the same source-preservation boundary.
+        let node = self.ast.node_mut(value);
+        node.must_preserve_source = Some(true);
+        node.emit = YamlEmitPlan::PreserveSource;
+        node.clear_inline_width();
+        node.clear_flow_inline_width();
     }
 
     fn push_mapping_key_node(&mut self, key: Span) -> Option<YamlNodeId> {
@@ -1023,11 +1102,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     if self.next_line_has_tab_indentation() {
                         let nested = self.parse_tab_indented_opaque(nested_leading)?;
                         if property_only_value {
-                            self.attach_collection_properties(
-                                nested,
-                                metadata.tag,
-                                metadata.anchor,
-                            );
+                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                         }
                         end = self.ast.node(nested).span.end();
                         Some(nested)
@@ -1038,11 +1113,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                             self.parse_block(indent + 1, nested_leading, nested_is_target)?;
                         if let Some(nested) = nested {
                             if property_only_value {
-                                self.attach_collection_properties(
-                                    nested,
-                                    metadata.tag,
-                                    metadata.anchor,
-                                );
+                                self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                             }
                             end = self.ast.node(nested).span.end();
                         } else {
@@ -1081,6 +1152,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 }
             };
 
+            self.preserve_scalar_entry_header(value, line.full.into(), item_trailing_comment);
             items.push(YamlSequenceItem {
                 leading_trivia: std::mem::take(&mut leading).into(),
                 marker: SourceSpan::new(marker),
@@ -1251,11 +1323,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     if self.next_line_has_tab_indentation() {
                         let nested = self.parse_tab_indented_opaque(nested_leading)?;
                         if property_only_value {
-                            self.attach_collection_properties(
-                                nested,
-                                metadata.tag,
-                                metadata.anchor,
-                            );
+                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                         }
                         end = self.ast.node(nested).span.end();
                         Some(nested)
@@ -1266,11 +1334,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                             self.parse_block(indent + 1, nested_leading, nested_is_target)?;
                         if let Some(nested) = nested {
                             if property_only_value {
-                                self.attach_collection_properties(
-                                    nested,
-                                    metadata.tag,
-                                    metadata.anchor,
-                                );
+                                self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
                             }
                             end = self.ast.node(nested).span.end();
                         } else {
@@ -1309,6 +1373,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 }
             };
 
+            self.preserve_scalar_entry_header(value, line.full.into(), item_trailing_comment);
             items.push(YamlSequenceItem {
                 leading_trivia: std::mem::take(&mut leading).into(),
                 marker: SourceSpan::new(marker),
@@ -1787,7 +1852,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let state = self
             .engine
             .state_for_yaml_node(&mut self.doc, DirectiveTargetKind::YamlScalar);
-        let state_value = self.doc.state(state).clone();
+        let state_value = self.doc.state(state);
         let metadata = scalar_metadata(self.source, block.value);
         let tagged_markdown = metadata
             .tag
@@ -1797,26 +1862,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return Err(self.embedded_formatter_target_error(state, block.value));
         }
         let nested = if state_value.markdown_target || tagged_markdown {
-            let nested = if self.plan_emits {
-                crate::core::markdown::parse_markdown(
-                    self.source,
-                    block.body,
-                    state_value.markdown_options(self.options),
-                    self.config,
-                )?
-            } else {
-                crate::core::markdown::parse_markdown_for_concrete_validation(
-                    self.source,
-                    block.body,
-                    state_value.markdown_options(self.options),
-                    self.config,
-                )?
-            };
-            Some(self.doc.push_nested(nested))
+            self.parse_markdown_block_scalar(block.body, block.header_info, state)?
         } else {
             None
         };
-        let nested = nested.map(compact_nested_document_index);
         self.line = self.source.line_at_byte(block.full.end().saturating_sub(1)) + 1;
         Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
             YamlAstKind::Scalar(YamlScalar {
@@ -1834,6 +1883,44 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             block.full,
             Vec::new(),
             state,
+        )))
+    }
+
+    fn parse_markdown_block_scalar(
+        &mut self,
+        body: Span,
+        header: YamlBlockScalarHeader,
+        state: StateId,
+    ) -> Result<Option<u32>> {
+        if self.doc.state(state).preserve {
+            return Ok(None);
+        }
+        // YAML indentation is structural, not Markdown code indentation. Keep
+        // the content layout in its own source before parsing nested Markdown.
+        let source_body = self.source.slice(body);
+        let indent = header
+            .indent
+            .map(|indent| header.base_indent + indent as usize)
+            .or_else(|| block_scalar_body_indent(source_body))
+            .unwrap_or(0);
+        let (line, column) = self.source.line_column_at_byte(body.start);
+        let nested_source = SourceBuffer::new(reindent_block_lines(source_body, indent, 0))
+            .with_diagnostic_origin(line, column + indent);
+        let range = Span::new(0, nested_source.as_str().len());
+        let options = self.doc.state(state).markdown_options(self.options);
+        let mut nested = if self.plan_emits {
+            crate::core::markdown::parse_markdown(&nested_source, range, options, self.config)?
+        } else {
+            crate::core::markdown::parse_markdown_for_concrete_validation(
+                &nested_source,
+                range,
+                options,
+                self.config,
+            )?
+        };
+        nested.source = Some(nested_source);
+        Ok(Some(compact_nested_document_index(
+            self.doc.push_nested(nested),
         )))
     }
 
@@ -1865,7 +1952,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         &mut self,
         mut span: Span,
         mut value: Span,
-        trailing_comment: Option<Span>,
+        mut trailing_comment: Option<Span>,
         continuation: PlainScalarContinuation,
     ) -> Result<YamlNodeId> {
         let mut metadata = scalar_metadata(self.source, value);
@@ -1911,6 +1998,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             span.end = extension.span_end;
             value.end = extension.value_end;
             metadata.content.end = extension.value_end;
+            trailing_comment = extension.trailing_comment;
+            self.reject_same_line_yaml_directive(trailing_comment)?;
         }
         let source = self.source.slice(metadata.content).trim_ascii();
         Ok(self.push_planned_yaml_node(YamlAstNode::semantic(
@@ -1948,6 +2037,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let mut final_line = self.line;
         let mut span_end = None;
         let mut value_end = None;
+        let mut trailing_comment = None;
 
         while scan < self.end {
             let line = self.source.lines[scan];
@@ -1962,6 +2052,21 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
             final_line = scan + 1;
             span_end = Some(line.full.end());
+            // Quotes and flow delimiters inside a plain continuation are text;
+            // a separated hash still starts a comment and ends the scalar.
+            if let Some(comment_start) = text
+                .as_bytes()
+                .windows(2)
+                .position(|pair| matches!(pair[0], b' ' | b'\t') && pair[1] == b'#')
+                .map(|offset| offset + 1)
+            {
+                value_end = Some(line.text.start() + text[..comment_start].trim_ascii_end().len());
+                trailing_comment = Some(Span::new(
+                    line.text.start() + comment_start,
+                    line.text.end(),
+                ));
+                break;
+            }
             value_end = Some(line.text.end());
             scan += 1;
         }
@@ -1974,6 +2079,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         Some(PlainScalarExtension {
             span_end: span_end.expect("continuation has a final line"),
             value_end: value_end.expect("continuation has a final line"),
+            trailing_comment,
         })
     }
 

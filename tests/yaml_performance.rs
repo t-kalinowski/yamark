@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yamark::config::Config;
-use yamark::core::document::{DocumentKind, FileKind, FormatOptions};
+use yamark::core::document::{DocumentKind, FileKind, FormatOptions, MarkdownWrap};
 use yamark::core::parser::{format_source_report, parse_source};
 use yamark::core::source::{Line, SourceBuffer, SourceSpan, Span};
 use yamark::core::yaml_model::YamlAstNode;
@@ -614,6 +614,184 @@ fn yaml_block_plain_scalar_formatting_keeps_allocation_count_bounded() {
     assert!(
         ALLOCATIONS.load(Ordering::Relaxed) <= 52_000,
         "block plain scalar formatting allocated {} times",
+        ALLOCATIONS.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
+fn yaml_multiline_prose_keeps_allocations_bounded() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let config = Config::default();
+    let plugins = PluginRegistry::default();
+    let options = FormatOptions::default();
+    let expected = concat!(
+        "- lorem: >-\n",
+        "    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod\n",
+        "    tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim\n",
+        "    veniam, quis nostrud exercitation ullamco laboris.\n",
+        "  ipsum: [dolor, sit]\n",
+    )
+    .repeat(400);
+    let mut measurements = Vec::new();
+    for quote in ["", "\""] {
+        let input = format!(
+            "- lorem: {quote}Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n    Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.{quote}\n  ipsum: [dolor,sit]\n"
+        )
+        .repeat(400);
+        let warmup =
+            format_source_report(FileKind::Yaml, input.clone(), options, &config, &plugins)
+                .unwrap();
+        assert_eq!(warmup.output, expected);
+
+        ALLOCATIONS.store(0, Ordering::Relaxed);
+        ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+        set_count_thread_allocations(true);
+        let formatted = format_source_report(FileKind::Yaml, input, options, &config, &plugins);
+        set_count_thread_allocations(false);
+
+        let formatted = formatted.unwrap();
+        assert_eq!(formatted.output, expected);
+        let second =
+            format_source_report(FileKind::Yaml, formatted.output, options, &config, &plugins)
+                .unwrap();
+        assert_eq!(second.output, expected);
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let bytes = ALLOCATED_BYTES.load(Ordering::Relaxed);
+        measurements.push((quote, allocations, bytes));
+    }
+    assert!(
+        measurements
+            .iter()
+            .all(|(_, count, bytes)| *count <= 12_000 && *bytes <= 2_500_000),
+        "multiline prose allocation measurements: {measurements:?}"
+    );
+}
+
+#[test]
+fn yaml_markdown_scalars_keep_allocations_bounded() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let config = Config::default();
+    let plugins = PluginRegistry::default();
+    let options = FormatOptions::default();
+    let expected = concat!(
+        "- lorem: !md |\n",
+        "    Lorem ipsum dolor sit amet, consectetur adipiscing elit. __Dolor__ sit\n",
+        "    amet. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
+        "  ipsum: [dolor, sit]\n",
+    )
+    .repeat(400);
+    let mut measurements = Vec::new();
+    for header in ["!md |\n", "!md\n    |\n"] {
+        let indent = if header.contains("    ") {
+            "      "
+        } else {
+            "    "
+        };
+        let input = format!(
+            "- lorem: {header}{indent}Lorem ipsum dolor sit amet, consectetur adipiscing elit. __Dolor__ sit amet.\n{indent}Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n  ipsum: [dolor,sit]\n"
+        )
+        .repeat(400);
+        let warmup =
+            format_source_report(FileKind::Yaml, input.clone(), options, &config, &plugins)
+                .unwrap();
+        assert_eq!(warmup.output, expected);
+
+        ALLOCATIONS.store(0, Ordering::Relaxed);
+        ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+        set_count_thread_allocations(true);
+        let formatted = format_source_report(FileKind::Yaml, input, options, &config, &plugins);
+        set_count_thread_allocations(false);
+
+        let formatted = formatted.unwrap();
+        assert_eq!(formatted.output, expected);
+        let second =
+            format_source_report(FileKind::Yaml, formatted.output, options, &config, &plugins)
+                .unwrap();
+        assert_eq!(second.output, expected);
+        measurements.push((
+            header,
+            ALLOCATIONS.load(Ordering::Relaxed),
+            ALLOCATED_BYTES.load(Ordering::Relaxed),
+        ));
+    }
+    assert!(
+        measurements
+            .iter()
+            .all(|(_, count, bytes)| *count <= 28_500 && *bytes <= 3_200_000),
+        "Markdown scalar allocation measurements: {measurements:?}"
+    );
+}
+
+#[test]
+fn yaml_markdown_parsing_defers_ordinary_wrap_storage() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = concat!(
+        "- lorem: !md |\n",
+        "    Lorem ipsum dolor sit amet, consectetur adipiscing elit. __Dolor__ sit amet.\n",
+        "    Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
+        "  ipsum: [dolor,sit]\n",
+    )
+    .repeat(400);
+    let range = Span::new(0, input.len());
+    let source = SourceBuffer::new(input);
+    let config = Config::default();
+    let options = FormatOptions::default();
+    ALLOCATIONS.store(0, Ordering::Relaxed);
+    ALLOCATED_BYTES.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let parsed = parse_source(source, range, DocumentKind::Yaml, options, &config);
+    set_count_thread_allocations(false);
+    let bytes = ALLOCATED_BYTES.load(Ordering::Relaxed);
+    let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+    let output = parsed
+        .unwrap()
+        .finalize(options)
+        .emit(&PluginRegistry::default())
+        .unwrap();
+    assert_eq!(
+        output,
+        concat!(
+            "- lorem: !md |\n",
+            "    Lorem ipsum dolor sit amet, consectetur adipiscing elit. __Dolor__ sit\n",
+            "    amet. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n",
+            "  ipsum: [dolor, sit]\n",
+        )
+        .repeat(400)
+    );
+    assert!(
+        bytes <= 1_500_000,
+        "Markdown scalar parsing allocated {allocations} times and {bytes} bytes"
+    );
+}
+
+#[test]
+fn markdown_wrapping_reuses_line_storage() {
+    let _lock = ALLOCATION_LOCK.lock().unwrap();
+    let input = vec!["Lorem ipsum dolor sit amet."; 500].join(" ") + "\n";
+    let options = FormatOptions {
+        markdown_wrap: MarkdownWrap::Column(27),
+        ..FormatOptions::default()
+    };
+    let config = Config::default();
+    let plugins = PluginRegistry::default();
+    let expected = "Lorem ipsum dolor sit amet.\n".repeat(500);
+    let warmup = format_source_report(
+        FileKind::Markdown,
+        input.clone(),
+        options,
+        &config,
+        &plugins,
+    )
+    .unwrap();
+    assert_eq!(warmup.output, expected);
+    ALLOCATIONS.store(0, Ordering::Relaxed);
+    set_count_thread_allocations(true);
+    let formatted = format_source_report(FileKind::Markdown, input, options, &config, &plugins);
+    set_count_thread_allocations(false);
+    assert_eq!(formatted.unwrap().output, expected);
+    assert!(
+        ALLOCATIONS.load(Ordering::Relaxed) <= 400,
+        "wrapped paragraph allocated {} times",
         ALLOCATIONS.load(Ordering::Relaxed)
     );
 }

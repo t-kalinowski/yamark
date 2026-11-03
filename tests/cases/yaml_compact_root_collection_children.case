@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.yaml --compact --verify
+-- stdin
+- {lorem: ipsum, dolor: sit}
+- [lorem, ipsum]
+-- stdout
+- {lorem: ipsum, dolor: sit}
+- [lorem, ipsum]
+-- stderr
+-- status
+0

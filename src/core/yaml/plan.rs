@@ -2,8 +2,9 @@
 
 use super::YamlParser;
 use super::block_scalar::{
-    block_scalar_body_reindent_is_safe, inline_markdown_scalar_is_renderable,
-    markdown_block_scalar_body_is_empty, resolve_inline_markdown_plan, yaml_tag_is_markdown,
+    block_scalar_body_reindent_is_safe, block_scalar_following_comment_indent,
+    inline_markdown_scalar_is_renderable, markdown_block_scalar_body_is_empty,
+    resolve_inline_markdown_plan, yaml_scalar_keeps_parent_header, yaml_tag_is_markdown,
 };
 use super::flow_emit::{
     flow_trailing_comment, mapping_pair_child_indent, planned_yaml_inline_width_or_source,
@@ -63,6 +64,48 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             if needs_plan {
                 self.plan_yaml_node_emit(id);
             }
+        }
+        // Children precede their containing block nodes in the parsed AST.
+        // Compute this once so nested containers do not rescan their subtrees.
+        for index in 0..node_count {
+            let id = YamlNodeId::new(index);
+            let node = self.ast.node(id);
+            let requires_source_indent = matches!(node.emit, YamlEmitPlan::PreserveSource)
+                || match &node.kind {
+                    YamlAstKind::Mapping(mapping) => mapping.pairs.iter().any(|pair| {
+                        pair.key_node
+                            .is_some_and(|key| self.ast.node(key).requires_source_indent)
+                            || pair.value.is_none_or(|value| {
+                                let value = self.ast.node(value);
+                                value.requires_source_indent
+                                    || yaml_scalar_keeps_parent_header(
+                                        value,
+                                        pair.line,
+                                        pair.trailing_comment,
+                                    )
+                            })
+                    }),
+                    YamlAstKind::Sequence(sequence) => sequence.items.iter().any(|item| {
+                        item.value.is_none_or(|value| {
+                            let value = self.ast.node(value);
+                            value.requires_source_indent
+                                || yaml_scalar_keeps_parent_header(
+                                    value,
+                                    item.line,
+                                    item.trailing_comment,
+                                )
+                        })
+                    }),
+                    YamlAstKind::Opaque(_) => true,
+                    YamlAstKind::Scalar(scalar) => {
+                        block_scalar_following_comment_indent(self.source, scalar).is_some()
+                    }
+                    YamlAstKind::Empty
+                    | YamlAstKind::Alias(_)
+                    | YamlAstKind::FlowSequence(_)
+                    | YamlAstKind::FlowMapping(_) => false,
+                };
+            self.ast.node_mut(id).requires_source_indent = requires_source_indent;
         }
         let root_count = self.ast.roots.len();
         for index in 0..root_count {
@@ -216,6 +259,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn plan_yaml_contextual_subtree(&mut self, id: YamlNodeId, forced_indent: Option<usize>) {
         let node = self.ast.node(id);
+        let forced_indent = forced_indent.filter(|_| !node.requires_source_indent);
         let options = self.doc.state(node.state).yaml_options(self.options);
         match &node.kind {
             YamlAstKind::Mapping(mapping) => {

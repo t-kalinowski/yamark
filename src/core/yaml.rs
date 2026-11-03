@@ -31,7 +31,8 @@ use flow_parse::RecognizedFlowCollection;
 pub use simple::{format_flow_table, format_simple_yaml_line};
 use std::cell::RefCell;
 use syntax::{
-    yaml_error_at, yaml_scan_has_active_fmt_directive, yaml_scan_has_unsupported_preserve_syntax,
+    yaml_error_at, yaml_scan_has_active_fmt_directive, yaml_scan_has_tab_indentation,
+    yaml_scan_has_unsupported_preserve_syntax,
 };
 
 pub(crate) fn parse_yaml(
@@ -153,7 +154,10 @@ fn parse_yaml_impl(
         options.default_line_ending = source.dominant_line_ending.as_str();
     }
     let mut scan = scan_yaml_lines_basic(source, range);
-    if mode.preserve_unsupported_for_formatting && scan.has_tab_indentation(source).is_some() {
+    if mode.preserve_unsupported_for_formatting
+        && scan.has_tab_indentation(source).is_some()
+        && yaml_scan_has_tab_indentation(source, &scan)
+    {
         scan = scan_yaml_lines(source, range);
         scan.source_scans += 1;
         if !yaml_scan_has_active_fmt_directive(source, &scan) {
