@@ -1,0 +1,33 @@
+-- args
+format --stdin-file-path input.yaml --prose-width 36
+-- stdin
+literal: 'line one
+
+  line two'
+  # outside literal
+folded: 'Lorem ipsum dolor sit amet,
+  consectetur adipiscing elit, sed do eiusmod.'
+
+    # outside folded
+safe: 'line one
+
+  line two'
+ # outside safe
+sibling: [x,y]
+-- stdout
+literal: 'line one
+
+  line two'
+  # outside literal
+folded: 'Lorem ipsum dolor sit amet,
+  consectetur adipiscing elit, sed do eiusmod.'
+
+    # outside folded
+safe: |-
+  line one
+  line two
+ # outside safe
+sibling: [x, y]
+-- stderr
+-- status
+0

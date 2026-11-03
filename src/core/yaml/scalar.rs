@@ -544,6 +544,9 @@ fn render_decoded_literal_scalar(
     {
         return None;
     }
+    if following_comment_enters_scalar_body(source, scalar, body_indent) {
+        return None;
+    }
 
     let indent = " ".repeat(body_indent);
 
@@ -672,14 +675,17 @@ fn render_decoded_folded_scalar(
     if prose.chars().count() <= options.prose_width {
         return None;
     }
-    let lines = wrap_yaml_prose(prose, options.prose_width.max(1));
-    if lines.len() <= 1 {
-        return None;
-    }
     let indent = body_indent.unwrap_or_else(|| {
         let line_index = source.line_at_byte(node.span.start());
         indentation(source.line_text(line_index)) + options.indent_width
     });
+    if following_comment_enters_scalar_body(source, scalar, indent) {
+        return None;
+    }
+    let lines = wrap_yaml_prose(prose, options.prose_width.max(1));
+    if lines.len() <= 1 {
+        return None;
+    }
     let indent = " ".repeat(indent);
     let mut out = String::new();
     out.push_str(&render_explicit_core_scalar(source, scalar, ">-"));
@@ -692,6 +698,25 @@ fn render_decoded_folded_scalar(
         }
     }
     Some(out)
+}
+
+fn following_comment_enters_scalar_body(
+    source: &SourceBuffer,
+    scalar: &YamlScalar,
+    body_indent: usize,
+) -> bool {
+    // Blank lines do not end a block scalar. Its first following nonblank line
+    // must remain outside the new body, including after the parent is reindented.
+    let last_line = source.line_at_byte(scalar.value.end() - 1);
+    for line in &source.lines[last_line + 1..] {
+        let text = source.slice(line.text);
+        if text.trim_ascii().is_empty() {
+            continue;
+        }
+        let indent = indentation(text);
+        return indent >= body_indent && text.as_bytes().get(indent) == Some(&b'#');
+    }
+    false
 }
 
 fn render_rewrapped_folded_block_scalar(
