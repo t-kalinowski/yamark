@@ -310,7 +310,18 @@ fn yaml_scalar_continuation_indent_delta(
     } else {
         yaml_output_line_indent(output)
     };
-    output_indent as isize - source_indent as isize
+    let delta = output_indent as isize - source_indent as isize;
+    if matches!(
+        scalar.style,
+        YamlScalarStyle::SingleQuoted | YamlScalarStyle::DoubleQuoted
+    ) {
+        // Quoted continuations can start left of the opening quote. Keeping
+        // their indentation when the parent moves left preserves the value and
+        // avoids moving quoted --- or ... content to the document-marker column.
+        delta.max(0)
+    } else {
+        delta
+    }
 }
 
 fn yaml_output_line_indent(output: &str) -> usize {

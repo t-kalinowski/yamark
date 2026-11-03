@@ -48,6 +48,8 @@ Block scalar comments are content only at or beyond the explicit or inferred con
 
 Conversion from plain or quoted scalars to block style checks the first following nonblank line against the emitted body indentation. If that line is a comment at or beyond the body indentation, the scalar retains its existing spelling. This check runs only for eligible block layouts and uses the source line index without allocating another buffer.
 
+Retained quoted continuations keep their source indentation when the parent moves left. YAML quoted line folding discards that physical indentation; retaining it accommodates continuations left of the opening quote and keeps indented document-marker text inside the scalar. Moving the parent right still shifts the continuation lines with it.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.
