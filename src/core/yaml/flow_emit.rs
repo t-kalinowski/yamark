@@ -3,7 +3,7 @@
 use super::block_scalar::{line_ending_or_default, yaml_scalar_is_markdown_target};
 use super::emit::IntoOptionalSpan;
 use super::scalar::{
-    emit_yaml_scalar_inline_into, render_folded_prose_scalar_with_layout,
+    emit_yaml_scalar_inline_into, following_comment_indent, render_folded_prose_scalar_with_layout,
     render_quoted_literal_scalar_with_layout, render_yaml_scalar_inline_width,
 };
 use super::syntax::{indentation, line_ending_for_span, preserves_yaml_template_span};
@@ -503,6 +503,9 @@ pub(super) fn emit_yaml_flow_collection_block_into(
 ) -> Option<()> {
     let start_len = out.len();
     let mut first_line_prefix = first_line_prefix;
+    // Expansion removes the closing delimiters. Only the final emitted child
+    // can absorb the comment following the enclosing source collection.
+    let following_comment_indent = following_comment_indent(source, ast.node(id).span.end());
     if emit_yaml_flow_collection_block_lines(
         out,
         source,
@@ -513,6 +516,7 @@ pub(super) fn emit_yaml_flow_collection_block_into(
         newline,
         options,
         &mut first_line_prefix,
+        following_comment_indent,
     )
     .is_none()
     {
@@ -533,6 +537,7 @@ fn emit_yaml_flow_collection_block_lines(
     newline: &str,
     options: FormatOptions,
     first_line_prefix: &mut Option<&str>,
+    following_comment_indent: Option<usize>,
 ) -> Option<()> {
     let node = ast.node(id);
     if yaml_node_should_preserve(source, document, node) {
@@ -554,7 +559,12 @@ fn emit_yaml_flow_collection_block_lines(
             {
                 return None;
             }
-            for entry in &sequence.entries {
+            for (index, entry) in sequence.entries.iter().enumerate() {
+                let following_comment_indent = if index + 1 == sequence.entries.len() {
+                    following_comment_indent
+                } else {
+                    None
+                };
                 if let Some(rendered) = render_yaml_flow_block_scalar(
                     source,
                     ast,
@@ -562,6 +572,7 @@ fn emit_yaml_flow_collection_block_lines(
                     indent + options.indent_width,
                     newline,
                     options,
+                    following_comment_indent,
                 ) {
                     emit_yaml_flow_block_line_prefix(out, indent, first_line_prefix);
                     out.push_str("- ");
@@ -587,6 +598,7 @@ fn emit_yaml_flow_collection_block_lines(
                             newline,
                             options,
                             &mut mapping_first_line_prefix,
+                            following_comment_indent,
                         )?;
                     } else {
                         out.push_str(newline);
@@ -600,6 +612,7 @@ fn emit_yaml_flow_collection_block_lines(
                             newline,
                             options,
                             first_line_prefix,
+                            following_comment_indent,
                         )?;
                     }
                 } else {
@@ -623,7 +636,12 @@ fn emit_yaml_flow_collection_block_lines(
             {
                 return None;
             }
-            for pair in &mapping.pairs {
+            for (index, pair) in mapping.pairs.iter().enumerate() {
+                let following_comment_indent = if index + 1 == mapping.pairs.len() {
+                    following_comment_indent
+                } else {
+                    None
+                };
                 let key_width =
                     render_yaml_inline_node_width_for_flow(source, document, ast, pair.key)?;
                 let value_action = if let Some(value_id) = pair.value {
@@ -634,6 +652,7 @@ fn emit_yaml_flow_collection_block_lines(
                         indent + options.indent_width,
                         newline,
                         options,
+                        following_comment_indent,
                     ) {
                         Some((value_id, false, Some(rendered)))
                     } else {
@@ -669,6 +688,7 @@ fn emit_yaml_flow_collection_block_lines(
                             newline,
                             options,
                             first_line_prefix,
+                            following_comment_indent,
                         )?;
                     } else {
                         out.push(' ');
@@ -692,7 +712,11 @@ fn render_yaml_flow_block_scalar(
     body_indent: usize,
     newline: &str,
     options: FormatOptions,
+    following_comment_indent: Option<usize>,
 ) -> Option<String> {
+    if following_comment_indent.is_some_and(|indent| indent >= body_indent) {
+        return None;
+    }
     let node = ast.node(id);
     let YamlAstKind::Scalar(scalar) = &node.kind else {
         return None;
