@@ -48,6 +48,8 @@ Block scalar comments are content only at or beyond the explicit or inferred con
 
 Ordinary conversion from plain or quoted scalars to block style checks the first following nonblank line against the emitted body indentation. If that line is a comment at or beyond the body indentation, the scalar retains its existing spelling. This check runs only for eligible block layouts and uses the source line index without allocating another buffer. Flow expansion carries the enclosing collection's following comment boundary through its final descendants, since emission removes the closing delimiters.
 
+Explicit inline Markdown targets still format when followed by an indented comment. Their new block content uses indentation beyond the comment, keeping the comment outside the value. Empty targets remain quoted empty strings.
+
 Retained quoted continuations keep their source indentation when the parent moves left. YAML quoted line folding discards that physical indentation; retaining it accommodates continuations left of the opening quote and keeps indented document-marker text inside the scalar. Moving the parent right still shifts the continuation lines with it.
 
 ## Process and file boundaries

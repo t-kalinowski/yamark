@@ -1,0 +1,36 @@
+-- args
+format --stdin-file-path lorem.yaml --wrap none --canonical --verify
+-- stdin
+lorem: !md 'Lorem __ipsum__.'
+  # Outside the scalar.
+ipsum: [dolor,sit]
+---
+# fmt: markdown
+lorem: "Lorem __ipsum__."
+
+    # Outside the scalar.
+ipsum: [dolor,sit]
+---
+lorem: !md Lorem __ipsum__.
+ # Outside the scalar.
+ipsum: [dolor,sit]
+-- stdout
+lorem: !md |
+   Lorem **ipsum**.
+  # Outside the scalar.
+ipsum: [dolor, sit]
+---
+# fmt: markdown
+lorem: |
+     Lorem **ipsum**.
+
+    # Outside the scalar.
+ipsum: [dolor, sit]
+---
+lorem: !md |
+  Lorem **ipsum**.
+ # Outside the scalar.
+ipsum: [dolor, sit]
+-- stderr
+-- status
+0

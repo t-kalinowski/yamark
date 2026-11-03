@@ -3,7 +3,7 @@
 - **YAML formatting**
   - Yamark can now rewrap long YAML strings written across multiple lines without `|` or `>` block syntax, whether unquoted, single-quoted, or double-quoted. It can also format more documents containing multiline quoted strings while preserving comments and string values.
   - Fixed a case where formatting YAML twice could produce different layouts. It affected lists and mappings containing escaped strings that look like numbers.
-  - Plain and quoted YAML scalars retain their spelling when conversion to block style would absorb a following indented comment into the value.
+  - Ordinary plain and quoted YAML scalars retain their spelling when conversion to block style would absorb a following indented comment into the value. Explicit Markdown targets use deeper content indentation when needed to keep the following comment outside the value.
   - Removing YAML parent indentation now preserves quoted continuation indentation, avoiding a panic on low-indented continuations and keeping quoted document-marker text inside the value.
 
 - **Command line**
