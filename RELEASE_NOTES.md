@@ -1,12 +1,17 @@
 <!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
 
-- Relative file, directory, and stdin paths now discover `yamark.toml` in ancestor directories above the working directory.
-- Diffs merge overlapping context so nearby changes produce applicable patches.
-- Git filter adoption, joining, and checking handle filenames that Git would quote in line-oriented output, including non-UTF-8 names on Unix.
-- Git filter verification with `--repo` reads formatting configuration from the selected repository, including nested configuration files.
-- YAML flow layout accounts for required quotes around escaped numeric-looking strings, keeping the layout stable on a second formatting pass.
-- YAML prose already split across plain or quoted continuation lines can be wrapped into folded blocks. Supported multiline quoted values allow the surrounding document to be formatted while preserving comments and scalar values.
+- **YAML formatting**
+  - Yamark can now rewrap long YAML strings written across multiple lines without `|` or `>` block syntax, whether unquoted, single-quoted, or double-quoted. It can also format more documents containing multiline quoted strings while preserving comments and string values.
+  - Fixed a case where formatting YAML twice could produce different layouts. It affected lists and mappings containing escaped strings that look like numbers.
 
-## Editor integration
+- **Command line**
+  - Yamark now finds `yamark.toml` above the current directory when you pass a relative file or directory path, including a relative `--stdin-file-path`.
+  - `--diff` now produces patches that apply correctly when changes are close together.
 
-Formatting discards pending results when the document changes. Selection formatting retains the range selected when the command started, so moving the selection while formatting does not replace a different range.
+- **Git filters**
+  - `adopt`, `join`, and `check` now handle filenames that Git prints with quotes or escape sequences, including non-UTF-8 filenames on Unix.
+  - `check --repo PATH` now uses the selected repository's formatting settings, including settings in its subdirectories.
+
+- **Editor integration**
+  - If you edit a document while formatting is running, the editor discards the outdated result.
+  - Selection formatting applies to the text selected when formatting started, even if you move the selection before it finishes.
