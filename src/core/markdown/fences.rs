@@ -30,10 +30,25 @@ pub(super) fn code_fence_at(text: &str) -> Option<Fence> {
         len += 1;
     }
     // Pandoc Markdown does not open a fence whose info string contains
-    // non-ASCII whitespace; such a line is paragraph text.
-    let info = &text[indent + len..];
-    (len >= 3 && !info.contains(|ch: char| ch.is_whitespace() && !ch.is_ascii_whitespace()))
-        .then_some(Fence { marker, len })
+    // non-ASCII whitespace, except inside a quoted attribute value; such a
+    // line is paragraph text. Backslash escapes inside quotes are not tracked.
+    let info = text[indent + len..].trim_ascii_start();
+    let attributes = info.starts_with('{');
+    let mut quote = None;
+    let unquoted_unicode_space = info.chars().any(|ch| match quote {
+        Some(open) => {
+            if ch == open {
+                quote = None;
+            }
+            false
+        }
+        None if attributes && matches!(ch, '"' | '\'') => {
+            quote = Some(ch);
+            false
+        }
+        None => ch.is_whitespace() && !ch.is_ascii_whitespace(),
+    });
+    (len >= 3 && !unquoted_unicode_space).then_some(Fence { marker, len })
 }
 
 pub(super) fn find_code_fence_closing(

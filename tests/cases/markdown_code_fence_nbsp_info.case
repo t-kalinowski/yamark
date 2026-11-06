@@ -5,6 +5,11 @@ format --stdin-file-path input.md --wrap sentence
 a:   1
 ```
 
+```{.text title="a b"}
+---
+body
+```
+
 ~~~yaml 
 
 ~~~
@@ -21,12 +26,21 @@ a:   1
 
 ```{md} 
 Two  spaces. Two sentences.
+```
+
+```{.text title="x"}
+body
 ```
 -- stdout
 ```yaml
 a: 1
 ```
 
+```{.text title="a b"}
+---
+body
+```
+
 ~~~yaml 
 
 ~~~
@@ -43,6 +57,10 @@ a:   1
 
 ```{md} 
 Two  spaces. Two sentences.
+```
+
+```{.text title="x"}
+body
 ```
 -- stderr
 -- status
