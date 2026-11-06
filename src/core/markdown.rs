@@ -655,24 +655,6 @@ fn parse_markdown_with_mode(
                 });
                 break;
             };
-            if text.trim_ascii_start()[fence.len..]
-                .contains(|ch: char| ch.is_whitespace() && !ch.is_ascii_whitespace())
-            {
-                // Pandoc Markdown does not open a fence when the info string
-                // contains non-ASCII whitespace, while CommonMark trims it.
-                // Keeping the block unchanged preserves both readings.
-                let state = engine.state_for_node(&mut doc, true);
-                let span = Span::new(line.full.start(), source.lines[closing].full.end());
-                validate_markdown_format_target(source, &doc, state, span, false)?;
-                doc.push_node(Node {
-                    kind: NodeKind::Markdown(MarkdownNodeKind::Raw),
-                    span,
-                    state,
-                    emit: EmitPlan::Copy,
-                });
-                i = closing + 1;
-                continue;
-            }
             let opening = line.full;
             let closing_span = source.lines[closing].full;
             let content = Span::new(opening.end(), source.lines[closing].full.start());

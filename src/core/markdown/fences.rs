@@ -29,7 +29,11 @@ pub(super) fn code_fence_at(text: &str) -> Option<Fence> {
     while indent + len < bytes.len() && bytes[indent + len] == marker {
         len += 1;
     }
-    (len >= 3).then_some(Fence { marker, len })
+    // Pandoc Markdown does not open a fence whose info string contains
+    // non-ASCII whitespace; such a line is paragraph text.
+    let info = &text[indent + len..];
+    (len >= 3 && !info.contains(|ch: char| ch.is_whitespace() && !ch.is_ascii_whitespace()))
+        .then_some(Fence { marker, len })
 }
 
 pub(super) fn find_code_fence_closing(
