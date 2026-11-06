@@ -721,14 +721,14 @@ pub(super) struct LinkTarget<'a> {
 }
 
 pub(super) fn parse_simple_link_target(target: &str) -> Option<LinkTarget<'_>> {
-    let target = target.trim();
+    let target = target.trim_ascii();
     if target.is_empty() {
         return Some(LinkTarget {
             destination: target,
             title: None,
         });
     }
-    let Some(split) = target.find(char::is_whitespace) else {
+    let Some(split) = target.find(|ch: char| ch.is_ascii_whitespace()) else {
         return simple_link_destination_atom_supported(target).then_some(LinkTarget {
             destination: target,
             title: None,
@@ -738,7 +738,7 @@ pub(super) fn parse_simple_link_target(target: &str) -> Option<LinkTarget<'_>> {
     if !simple_link_destination_atom_supported(destination) {
         return None;
     }
-    let title = target[split..].trim();
+    let title = target[split..].trim_ascii();
     simple_link_title_supported(title).then_some(LinkTarget {
         destination,
         title: Some(title),
@@ -753,8 +753,8 @@ pub(super) fn render_link_target(target: LinkTarget<'_>) -> String {
 }
 
 pub(super) fn render_existing_split_link_target(raw: &str, target: LinkTarget<'_>) -> String {
-    let leading = raw.len() - raw.trim_start().len();
-    let trailing = raw.trim_end().len();
+    let leading = raw.len() - raw.trim_ascii_start().len();
+    let trailing = raw.trim_ascii_end().len();
     format!(
         "{}{}{}",
         &raw[..leading],
@@ -778,7 +778,7 @@ pub(super) fn split_link_target_lines(target: LinkTarget<'_>, width: usize) -> V
 }
 
 fn simple_link_destination_atom_supported(destination: &str) -> bool {
-    let destination = destination.trim();
+    let destination = destination.trim_ascii();
     let mut index = 0usize;
     while index < destination.len() {
         let ch = destination[index..]

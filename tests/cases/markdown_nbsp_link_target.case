@@ -1,0 +1,9 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+See [a](x "t") and [b]( y).
+-- stdout
+See [a](x "t") and [b]( y).
+-- stderr
+-- status
+0
