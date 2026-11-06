@@ -3,9 +3,18 @@ format --stdin-file-path input.md --wrap sentence
 -- stdin
 ﻿   
 ---
+
+Intro
+
+﻿
+Next
 -- stdout
 ﻿
 ---
+
+Intro
+
+﻿ Next
 -- stderr
 -- status
 0

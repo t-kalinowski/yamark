@@ -201,8 +201,13 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        // Only the first line can hold a byte order mark; Pandoc drops it.
-        if text.trim_start_matches('\u{feff}').trim_ascii().is_empty() {
+        // Pandoc drops a byte order mark only at the start of the input.
+        let bom = if line.full.start() == 0 && text.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8()
+        } else {
+            0
+        };
+        if text[bom..].trim_ascii().is_empty() {
             let state = engine.state_for_node(&mut doc, false);
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::Blank),
