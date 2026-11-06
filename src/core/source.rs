@@ -158,8 +158,8 @@ pub struct SourceBuffer {
     pub dominant_line_ending: LineEnding,
     /// Built on first use by setext heading detection. Boxed so the many
     /// buffers that never need it stay small.
-    pub(crate) markdown_literal_closers:
-        std::sync::OnceLock<Box<crate::core::markdown::LiteralClosers>>,
+    pub(crate) markdown_code_span_closers:
+        std::sync::OnceLock<Box<crate::core::markdown::CodeSpanClosers>>,
 }
 
 impl SourceBuffer {
@@ -215,7 +215,7 @@ impl SourceBuffer {
             bom,
             lines,
             dominant_line_ending,
-            markdown_literal_closers: std::sync::OnceLock::new(),
+            markdown_code_span_closers: std::sync::OnceLock::new(),
         }
     }
 

@@ -2,10 +2,10 @@
 //! recognize fences and containers; planning resolves the final policy before
 //! emission consumes the document.
 
+mod code_span_closers;
 mod containers;
 mod fences;
 mod frontmatter;
-mod literal_closers;
 mod planning;
 
 use crate::config::Config;
@@ -19,6 +19,7 @@ use crate::core::document::{
 };
 use crate::core::source::{SourceBuffer, Span};
 use crate::diagnostic::Result;
+pub(crate) use code_span_closers::CodeSpanClosers;
 use containers::{
     blockquote_at, blockquote_block_supported, definition_list_at, definition_list_end,
     definition_list_supported, footnote_block_end, footnote_definition_at, list_block_end,
@@ -31,7 +32,6 @@ use fences::{
     find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
-pub(crate) use literal_closers::LiteralClosers;
 pub(crate) use planning::MarkdownPlans;
 pub(crate) use planning::{document_emit_options, finalize_document, release_planning};
 use planning::{
@@ -1390,7 +1390,7 @@ fn setext_heading_at(
     } else {
         return None;
     };
-    if literal_closers::inline_literal_crosses_line_end(source, line_index, end) {
+    if code_span_closers::code_span_crosses_line_end(source, line_index, end) {
         return None;
     }
     let line = source.lines[line_index];
