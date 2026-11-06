@@ -1823,7 +1823,11 @@ fn pandoc_attribute_token(token: &str) -> bool {
         return true;
     }
     if let Some(value) = token.strip_prefix('#').or_else(|| token.strip_prefix('.')) {
-        return !value.is_empty() && !value.contains(['{', '}', '"', '\'']);
+        // Pandoc ids and classes end at any whitespace, so a non-ASCII space
+        // left inside the token makes the braces paragraph text.
+        return !value.is_empty()
+            && !value.contains(['{', '}', '"', '\''])
+            && !value.contains(char::is_whitespace);
     }
     let Some((key, value)) = token.split_once('=') else {
         return false;

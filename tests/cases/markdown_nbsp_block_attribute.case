@@ -4,8 +4,14 @@ format --stdin-file-path input.md
 { .x}
 Heading
 ---
+
+{ .x .y }
+Heading
+---
 -- stdout
 { .x} Heading ---
+
+{ .x .y } Heading ---
 -- stderr
 -- status
 0
