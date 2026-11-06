@@ -201,7 +201,8 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if text.trim_ascii().is_empty() {
+        // Only the first line can hold a byte order mark; Pandoc drops it.
+        if text.trim_start_matches('\u{feff}').trim_ascii().is_empty() {
             let state = engine.state_for_node(&mut doc, false);
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::Blank),
@@ -1324,7 +1325,7 @@ fn setext_heading_at(
         return None;
     }
     let text = source.line_text(line_index);
-    if text.trim_start_matches('\u{feff}').trim_ascii().is_empty()
+    if text.trim_ascii().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()

@@ -1,5 +1,5 @@
 -- args
-format --stdin-file-path input.md
+format --stdin-file-path input.md --wrap sentence
 -- stdin
 ﻿   
 ---
