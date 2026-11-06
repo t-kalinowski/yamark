@@ -1,0 +1,37 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+```yaml 
+a:   1
+```
+
+``` yaml
+a:   1
+```
+
+```{md} 
+Two  spaces. Two sentences.
+```
+
+```yaml
+a:   1
+```
+-- stdout
+```yaml 
+a:   1
+```
+
+``` yaml
+a:   1
+```
+
+```{md} 
+Two  spaces. Two sentences.
+```
+
+```yaml
+a: 1
+```
+-- stderr
+-- status
+0
