@@ -29,42 +29,66 @@ pub(super) fn code_fence_at(text: &str) -> Option<Fence> {
     while indent + len < bytes.len() && bytes[indent + len] == marker {
         len += 1;
     }
-    (len >= 3 && !info_has_unicode_space(&text[indent + len..])).then_some(Fence { marker, len })
+    (len >= 3 && !scan_info(&text[indent + len..]).has_unicode_space)
+        .then_some(Fence { marker, len })
 }
 
-/// Pandoc Markdown does not open a fence whose info string contains a Unicode
-/// space separator outside an attribute value; such a line is paragraph text.
+/// How Pandoc's attribute reader sees a fence info string.
+struct InfoScan {
+    /// A Unicode space separator outside an attribute value. Pandoc Markdown
+    /// does not open such a fence; the line is paragraph text.
+    has_unicode_space: bool,
+    /// The byte offset just past the `}` closing the first attribute block.
+    first_attributes_end: Option<usize>,
+}
+
 /// Values follow Pandoc's attribute reader: after `=`, a quoted value runs to
 /// its closing quote and an unquoted one to ASCII space, tab, or `}`, both
 /// with backslash escapes. Line and paragraph separators are not spaces.
-fn info_has_unicode_space(info: &str) -> bool {
+fn scan_info(info: &str) -> InfoScan {
     enum State {
         Text,
         Attributes,
         Value { quote: Option<char>, escaped: bool },
     }
+    let mut scan = InfoScan {
+        has_unicode_space: false,
+        first_attributes_end: None,
+    };
     let mut state = State::Text;
-    let mut chars = info.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match &mut state {
+    let mut chars = info.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        let closes = match &mut state {
             State::Value {
                 escaped: escaped @ true,
                 ..
-            } => *escaped = false,
+            } => {
+                *escaped = false;
+                false
+            }
             State::Value { quote, escaped } => match (ch, *quote) {
-                ('\\', _) => *escaped = true,
-                (ch, Some(open)) if ch == open => state = State::Attributes,
-                (' ' | '\t', None) => state = State::Attributes,
-                ('}', None) => state = State::Text,
-                _ => {}
+                ('\\', _) => {
+                    *escaped = true;
+                    false
+                }
+                (ch, Some(open)) if ch == open => {
+                    state = State::Attributes;
+                    false
+                }
+                (' ' | '\t', None) => {
+                    state = State::Attributes;
+                    false
+                }
+                ('}', None) => true,
+                _ => false,
             },
             State::Text | State::Attributes => {
                 if ch == '{' {
                     state = State::Attributes;
-                } else if ch == '}' {
-                    state = State::Text;
                 } else if ch == '=' && matches!(state, State::Attributes) {
-                    let quote = chars.next_if(|next| matches!(next, '"' | '\''));
+                    let quote = chars
+                        .next_if(|(_, next)| matches!(next, '"' | '\''))
+                        .map(|(_, quote)| quote);
                     state = State::Value {
                         quote,
                         escaped: false,
@@ -73,12 +97,17 @@ fn info_has_unicode_space(info: &str) -> bool {
                     && ch.is_whitespace()
                     && !matches!(ch, '\u{85}' | '\u{2028}' | '\u{2029}')
                 {
-                    return true;
+                    scan.has_unicode_space = true;
                 }
+                ch == '}'
             }
+        };
+        if closes {
+            state = State::Text;
+            scan.first_attributes_end.get_or_insert(index + 1);
         }
     }
-    false
+    scan
 }
 
 pub(super) fn find_code_fence_closing(
@@ -484,22 +513,8 @@ pub(super) fn code_fence_info_read_by_pandoc(text: &str) -> bool {
             None => return true,
         }
     };
-    let mut quote = None;
-    let mut escaped = false;
-    for (index, ch) in attributes.char_indices() {
-        match quote {
-            Some(_) if escaped => escaped = false,
-            Some(_) if ch == '\\' => escaped = true,
-            Some(open) if ch == open => quote = None,
-            Some(_) => {}
-            None if matches!(ch, '"' | '\'') => quote = Some(ch),
-            None if ch == '}' => {
-                return index + 1 == attributes.len() && attributes.starts_with('{');
-            }
-            None => {}
-        }
-    }
-    false
+    attributes.starts_with('{')
+        && scan_info(attributes).first_attributes_end == Some(attributes.len())
 }
 
 pub(super) fn code_fence_local_skip(text: &str) -> bool {
