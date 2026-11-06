@@ -1346,7 +1346,7 @@ fn setext_heading_at(
             .bytes()
             .take_while(|byte| byte.is_ascii_whitespace())
             .count();
-    let end = body.trim_end().len();
+    let end = body.trim_ascii_end().len();
     Some((
         Span::new(line.text.start() + start, line.text.start() + end),
         depth,

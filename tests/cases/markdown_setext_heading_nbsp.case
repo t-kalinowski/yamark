@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+  
+---
+
+  Title 
+===
+-- stdout
+##  
+
+# Title 
+-- stderr
+-- status
+0
