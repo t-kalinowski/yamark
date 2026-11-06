@@ -54,12 +54,15 @@ fn info_has_unicode_space(info: &str) -> bool {
             State::Value { quote, escaped } => match (ch, *quote) {
                 ('\\', _) => *escaped = true,
                 (ch, Some(open)) if ch == open => state = State::Attributes,
-                (' ' | '\t' | '}', None) => state = State::Attributes,
+                (' ' | '\t', None) => state = State::Attributes,
+                ('}', None) => state = State::Text,
                 _ => {}
             },
             State::Text | State::Attributes => {
                 if ch == '{' {
                     state = State::Attributes;
+                } else if ch == '}' {
+                    state = State::Text;
                 } else if ch == '=' && matches!(state, State::Attributes) {
                     let quote = chars.next_if(|next| matches!(next, '"' | '\''));
                     state = State::Value {
