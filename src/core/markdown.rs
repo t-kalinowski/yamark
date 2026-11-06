@@ -1076,8 +1076,10 @@ pub(crate) fn render_markdown_setext_heading(
     let mut output = String::new();
     // Keep a leading BOM but not the underline paragraph's indentation:
     // Pandoc does not read an indented `#` line as a heading.
-    if span.start == 0 && source.slice(span).starts_with('\u{feff}') {
-        output.push('\u{feff}');
+    if span.start == 0
+        && let Some(bom) = source.bom
+    {
+        output.push_str(source.slice(bom));
     }
     output.push_str(&"#".repeat(depth));
     if !text.is_empty() {
@@ -1172,8 +1174,10 @@ fn infer_markdown_directive_scope(
 /// Pandoc drops a byte order mark only at the start of the input; a later
 /// U+FEFF is content.
 fn bom_len(source: &SourceBuffer, line: usize) -> usize {
-    if line == 0 && source.line_text(0).starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
+    if line == 0
+        && let Some(bom) = source.bom
+    {
+        bom.len()
     } else {
         0
     }

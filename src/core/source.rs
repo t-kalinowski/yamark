@@ -218,6 +218,15 @@ impl SourceBuffer {
         &self.text
     }
 
+    /// A buffer holding a container's dedented content. Its first byte is not
+    /// the start of the input, so a leading U+FEFF is content, not a BOM.
+    pub(crate) fn nested(text: String) -> Self {
+        Self {
+            bom: None,
+            ..Self::new(text)
+        }
+    }
+
     /// Retain original diagnostic coordinates for a dedented owned source.
     /// Byte spans and line indexes continue to address this buffer locally.
     pub(crate) fn with_diagnostic_origin(mut self, line: usize, column: usize) -> Self {

@@ -1,0 +1,14 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+> ﻿Title
+> ---
+>
+> b
+-- stdout
+> ## ﻿Title
+>
+> b
+-- stderr
+-- status
+0
