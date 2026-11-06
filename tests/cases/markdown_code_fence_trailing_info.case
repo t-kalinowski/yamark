@@ -1,0 +1,45 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+```yaml {.x}
+a:   1
+```
+
+```yaml foo
+a:   1
+```
+
+```yaml {.x} suffix
+a:   1
+```
+
+~~~yaml foo
+a:   1
+~~~
+
+```yaml {title=a b} suffix
+a:   1
+```
+-- stdout
+```yaml {.x}
+a: 1
+```
+
+```yaml foo
+a:   1
+```
+
+```yaml {.x} suffix
+a:   1
+```
+
+~~~yaml foo
+a:   1
+~~~
+
+```yaml {title=a b} suffix
+a:   1
+```
+-- stderr
+-- status
+0

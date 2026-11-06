@@ -25,7 +25,7 @@ use containers::{
 };
 use fences::{
     code_cell_formatter_body, code_fence_at, code_fence_code_cell_without_language,
-    code_fence_info, code_fence_is_code_cell, code_fence_language,
+    code_fence_info, code_fence_info_read_by_pandoc, code_fence_is_code_cell, code_fence_language,
     code_fence_language_supported_opaque, code_fence_local_skip, code_fence_raw_format,
     find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
 };
@@ -662,8 +662,9 @@ fn parse_markdown_with_mode(
             let language = code_fence_language(text);
             let raw_format = code_fence_raw_format(text);
             let code_cell_without_language = code_fence_code_cell_without_language(text);
-            let local_skip =
-                code_fence_local_skip(text) || quarto_fence_skip(source, i + 1, closing);
+            let local_skip = code_fence_local_skip(text)
+                || quarto_fence_skip(source, i + 1, closing)
+                || !code_fence_info_read_by_pandoc(text);
             let language_has_formatter = language.as_deref().is_some_and(|language| {
                 crate::plugins::PluginRegistry::is_known_formatter(config, language)
             });

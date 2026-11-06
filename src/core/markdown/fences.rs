@@ -464,6 +464,44 @@ fn split_line_ending(text: &str) -> (&str, &str) {
     }
 }
 
+/// Pandoc opens a fence only when the info string is a language word, an
+/// attribute block, or a word followed by an attribute block. yamark still
+/// pairs other fences as GitHub-style code blocks but copies them unchanged,
+/// since Pandoc reads the same bytes as an inline code span. MyST
+/// `{code-cell}` headers are formatted deliberately.
+pub(super) fn code_fence_info_read_by_pandoc(text: &str) -> bool {
+    let Some(info) = code_fence_info(text) else {
+        return false;
+    };
+    if info.starts_with("{code-cell}") {
+        return true;
+    }
+    let attributes = if info.starts_with('{') {
+        info
+    } else {
+        match info.split_once(|ch: char| ch.is_ascii_whitespace()) {
+            Some((_, rest)) => rest.trim_ascii_start(),
+            None => return true,
+        }
+    };
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, ch) in attributes.char_indices() {
+        match quote {
+            Some(_) if escaped => escaped = false,
+            Some(_) if ch == '\\' => escaped = true,
+            Some(open) if ch == open => quote = None,
+            Some(_) => {}
+            None if matches!(ch, '"' | '\'') => quote = Some(ch),
+            None if ch == '}' => {
+                return index + 1 == attributes.len() && attributes.starts_with('{');
+            }
+            None => {}
+        }
+    }
+    false
+}
+
 pub(super) fn code_fence_local_skip(text: &str) -> bool {
     let Some(fence) = code_fence_at(text) else {
         return false;
