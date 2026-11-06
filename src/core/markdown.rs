@@ -1069,6 +1069,14 @@ pub(crate) fn render_markdown_setext_heading(
         text = crate::core::wrap::canonicalize_inline(&text);
     }
     text = crate::core::wrap::normalize_heading_content(&text);
+    // Pandoc drops trailing `#`s from an ATX heading, so escape them to keep
+    // them as heading text.
+    let hashes = text.len() - text.trim_end_matches('#').len();
+    if hashes > 0 {
+        let start = text.len() - hashes;
+        let start = start + usize::from(text[..start].ends_with('\\'));
+        text = format!("{}{}", &text[..start], "\\#".repeat(text.len() - start));
+    }
 
     let mut output = String::new();
     // Keep a leading BOM but not the underline paragraph's indentation:

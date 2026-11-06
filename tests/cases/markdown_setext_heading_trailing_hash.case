@@ -1,0 +1,20 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+Hello #
+---
+
+  Indented ##
+===
+
+Hello#
+---
+-- stdout
+## Hello \#
+
+# Indented \#\#
+
+## Hello\#
+-- stderr
+-- status
+0
