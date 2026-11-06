@@ -3,9 +3,7 @@ format --stdin-file-path input.md --wrap 20
 -- stdin
 ![alt](image.png){ width=10}
 -- stdout
-![alt](
-  image.png
-){ width=10}
+![alt](image.png){ width=10}
 -- stderr
 -- status
 0

@@ -1286,6 +1286,11 @@ fn attribute_tokens(inner: &str) -> Option<Vec<String>> {
                     current.clear();
                 }
             }
+            // Pandoc allows other whitespace only inside a key's value; in an
+            // id or class it makes the braces literal text.
+            ch if ch.is_whitespace() && !in_double_quote && !current.contains('=') => {
+                return None;
+            }
             _ => current.push(ch),
         }
     }

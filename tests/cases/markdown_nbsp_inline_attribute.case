@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+![alt](image.png){ .x .y }
+
+![alt](image.png){ title=a b }
+
+![alt](image.png){ fig-alt="a b" }
+-- stdout
+![alt](image.png){ .x .y }
+
+![alt](image.png){title=a b}
+
+![alt](image.png){fig-alt="a b"}
+-- stderr
+-- status
+0
