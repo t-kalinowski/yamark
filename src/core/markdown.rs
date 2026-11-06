@@ -1078,7 +1078,7 @@ pub(crate) fn render_markdown_setext_heading(
     let mut output = String::new();
     // Keep a leading BOM but not the underline paragraph's indentation:
     // Pandoc does not read an indented `#` line as a heading.
-    if source.slice(span).starts_with('\u{feff}') {
+    if span.start == 0 && source.slice(span).starts_with('\u{feff}') {
         output.push('\u{feff}');
     }
     output.push_str(&"#".repeat(depth));
@@ -1348,7 +1348,7 @@ fn setext_heading_at(
     };
     let line = source.lines[line_index];
     let body = source.line_text(line_index);
-    let bom = if body.starts_with('\u{feff}') {
+    let bom = if line_index == 0 && body.starts_with('\u{feff}') {
         '\u{feff}'.len_utf8()
     } else {
         0
@@ -1369,7 +1369,7 @@ fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Spa
     let line = source.lines[line_index];
     let text = source.line_text(line_index);
     let bytes = text.as_bytes();
-    let bom = if text.starts_with('\u{feff}') {
+    let bom = if line_index == 0 && text.starts_with('\u{feff}') {
         '\u{feff}'.len_utf8()
     } else {
         0
