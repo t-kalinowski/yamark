@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+ One space
+===
+
+   Three spaces
+---
+
+  # Indented ATX
+-- stdout
+# One space
+
+## Three spaces
+
+  # Indented ATX
+-- stderr
+-- status
+0

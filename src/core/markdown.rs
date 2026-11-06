@@ -1070,7 +1070,11 @@ pub(crate) fn render_markdown_setext_heading(
     text = crate::core::wrap::normalize_heading_content(&text);
 
     let mut output = String::new();
-    output.push_str(source.slice(Span::new(span.start, content.start)));
+    // Keep a leading BOM but not the underline paragraph's indentation:
+    // Pandoc does not read an indented `#` line as a heading.
+    if source.slice(span).starts_with('\u{feff}') {
+        output.push('\u{feff}');
+    }
     output.push_str(&"#".repeat(depth));
     if !text.is_empty() {
         output.push(' ');
