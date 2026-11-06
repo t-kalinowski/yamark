@@ -1346,6 +1346,7 @@ fn setext_heading_at(
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
         || list_item_at(text)
+        || inline_literal_crosses_line_end(source, line_index, end)
     {
         return None;
     }
@@ -1370,6 +1371,20 @@ fn setext_heading_at(
         Span::new(line.text.start() + start, line.text.start() + end),
         depth,
     ))
+}
+
+/// Pandoc reads inline content before a setext underline, so a code span or
+/// math opened on the line and closed later in the paragraph spans the
+/// underline, and the line is not a heading.
+fn inline_literal_crosses_line_end(source: &SourceBuffer, line: usize, end: usize) -> bool {
+    let mut last = line;
+    while last + 1 < end && !source.line_text(last + 1).trim_ascii().is_empty() {
+        last += 1;
+    }
+    let start = source.lines[line].text.start();
+    let line_end = source.lines[line].text.end() - start;
+    let paragraph = source.slice(Span::new(start, source.lines[last].text.end()));
+    crate::core::wrap::markdown_multiline_literal_spans(paragraph).any(|span| span.start < line_end)
 }
 
 fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Span)> {
