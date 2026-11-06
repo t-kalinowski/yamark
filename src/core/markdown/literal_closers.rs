@@ -95,7 +95,7 @@ pub(super) fn inline_literal_crosses_line_end(
 ) -> bool {
     let closers = source
         .markdown_literal_closers
-        .get_or_init(|| LiteralClosers::new(source));
+        .get_or_init(|| Box::new(LiteralClosers::new(source)));
     let line_start = source.lines[line].text.start();
     let line_end = source.lines[line].text.end();
     let blank = first_from(&closers.blank_lines, line + 2).unwrap_or(usize::MAX);
