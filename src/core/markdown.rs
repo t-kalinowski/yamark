@@ -2079,7 +2079,7 @@ fn contains_html_closing_tag(text: &str, tag: &str) -> bool {
 }
 
 fn grid_table_separator(text: &str) -> bool {
-    let trimmed = text.trim();
+    let trimmed = text.trim_ascii();
     trimmed.len() >= 3
         && trimmed
             .chars()
