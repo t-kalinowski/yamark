@@ -1354,7 +1354,6 @@ fn setext_heading_at(
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
         || list_item_at(text)
-        || inline_literal_crosses_line_end(source, line_index, end)
     {
         return None;
     }
@@ -1366,6 +1365,9 @@ fn setext_heading_at(
     } else {
         return None;
     };
+    if inline_literal_crosses_line_end(source, line_index, end) {
+        return None;
+    }
     let line = source.lines[line_index];
     let body = source.line_text(line_index);
     let bom = bom_len(source, line_index);
