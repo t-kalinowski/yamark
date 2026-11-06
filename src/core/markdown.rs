@@ -201,7 +201,7 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if text.trim().is_empty() {
+        if text.trim_ascii().is_empty() {
             let state = engine.state_for_node(&mut doc, false);
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::Blank),
@@ -1138,14 +1138,14 @@ fn infer_markdown_directive_scope(
 }
 
 fn directive_is_isolated(source: &SourceBuffer, start: usize, line: usize, end: usize) -> bool {
-    let before_blank = line == start || source.line_text(line - 1).trim().is_empty();
-    let after_blank = line + 1 >= end || source.line_text(line + 1).trim().is_empty();
+    let before_blank = line == start || source.line_text(line - 1).trim_ascii().is_empty();
+    let after_blank = line + 1 >= end || source.line_text(line + 1).trim_ascii().is_empty();
     before_blank && after_blank
 }
 
 fn markdown_line_starts_target(source: &SourceBuffer, line: usize, end: usize) -> bool {
     let text = source.line_text(line);
-    !text.trim().is_empty()
+    !text.trim_ascii().is_empty()
         && parse_markdown_html_directive(text).is_none()
         && paired_html_block_start(text).is_none()
         && (pandoc_table_at(source, line, end)
@@ -1196,7 +1196,7 @@ fn paragraph_should_end_before(
     if !line_may_start_markdown_block(source, line, text) {
         return false;
     }
-    text.trim().is_empty()
+    text.trim_ascii().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || pandoc_table_at(source, line, source.lines.len())
         || definition_list_at(source, line, source.lines.len())
@@ -1264,7 +1264,7 @@ fn line_may_start_markdown_block(source: &SourceBuffer, line: usize, text: &str)
     let Some(first) = trimmed.as_bytes().first().copied() else {
         return true;
     };
-    if indent >= 4 || text.trim().is_empty() || list_item_at(text) {
+    if indent >= 4 || text.trim_ascii().is_empty() || list_item_at(text) {
         return true;
     }
     if trimmed.starts_with("Table:") {
@@ -1314,7 +1314,7 @@ fn setext_heading_at(
         return None;
     }
     let text = source.line_text(line_index);
-    if text.trim().is_empty()
+    if text.trim_ascii().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
@@ -1524,7 +1524,9 @@ fn pandoc_multiline_table_end(source: &SourceBuffer, line: usize, end: usize) ->
     while i < end {
         let trimmed = source.line_text(i).trim();
         if pandoc_table_separator(trimmed) {
-            if headerless_end.is_some() || i + 1 == end || source.line_text(i + 1).trim().is_empty()
+            if headerless_end.is_some()
+                || i + 1 == end
+                || source.line_text(i + 1).trim_ascii().is_empty()
             {
                 return Some(i + 1);
             }
@@ -1772,7 +1774,7 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     let trimmed = source.line_text(line).trim_start();
     if pandoc_table_at(source, line, end) {
         let mut i = line + 1;
-        while i < end && !source.line_text(i).trim().is_empty() {
+        while i < end && !source.line_text(i).trim_ascii().is_empty() {
             i += 1;
         }
         return i;
@@ -1808,7 +1810,7 @@ fn raw_sensitive_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
     let mut i = line + 1;
     while i < end {
         let text = source.line_text(i);
-        if text.trim().is_empty() {
+        if text.trim_ascii().is_empty() {
             break;
         }
         if raw_continuation(source.line_text(line), text) {
@@ -1919,7 +1921,7 @@ fn pandoc_table_at(source: &SourceBuffer, line: usize, end: usize) -> bool {
     }
     let current = source.line_text(line);
     let next = source.line_text(line + 1);
-    if current.trim().is_empty() || table_caption_at(current) {
+    if current.trim_ascii().is_empty() || table_caption_at(current) {
         return false;
     }
     pandoc_table_separator(next.trim())
@@ -1929,7 +1931,7 @@ fn pandoc_simple_table_end(source: &SourceBuffer, line: usize, end: usize) -> us
     let mut i = line + 2;
     while i < end {
         let text = source.line_text(i);
-        if text.trim().is_empty() || table_caption_at(text) {
+        if text.trim_ascii().is_empty() || table_caption_at(text) {
             break;
         }
         i += 1;

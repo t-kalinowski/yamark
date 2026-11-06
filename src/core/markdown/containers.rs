@@ -31,7 +31,7 @@ pub(super) fn list_block_end(source: &SourceBuffer, start: usize, end: usize) ->
     let mut line = start + 1;
     while line < end {
         let text = source.line_text(line);
-        if text.trim().is_empty() {
+        if text.trim_ascii().is_empty() {
             let Some(next) = next_nonblank_line(source, line + 1, end) else {
                 line = end;
                 break;
@@ -115,7 +115,7 @@ pub(super) fn list_block_end(source: &SourceBuffer, start: usize, end: usize) ->
 
 fn next_nonblank_line(source: &SourceBuffer, mut line: usize, end: usize) -> Option<usize> {
     while line < end {
-        if !source.line_text(line).trim().is_empty() {
+        if !source.line_text(line).trim_ascii().is_empty() {
             return Some(line);
         }
         line += 1;
@@ -141,7 +141,7 @@ pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usi
     let mut code_fence_end = start;
     for line in start + 1..end {
         let text = source.line_text(line);
-        if text.trim().is_empty() {
+        if text.trim_ascii().is_empty() {
             continue;
         }
         if list_item_at(text) {
@@ -385,7 +385,7 @@ pub(super) fn footnote_block_end(source: &SourceBuffer, start: usize, end: usize
     let mut line = start + 1;
     while line < end {
         let text = source.line_text(line);
-        if text.trim().is_empty() {
+        if text.trim_ascii().is_empty() {
             let Some(next) = next_nonblank_line(source, line + 1, end) else {
                 break;
             };
@@ -408,7 +408,7 @@ pub(super) fn footnote_block_end(source: &SourceBuffer, start: usize, end: usize
 }
 
 pub(super) fn definition_list_at(source: &SourceBuffer, line: usize, end: usize) -> bool {
-    if line + 1 >= end || source.line_text(line).trim().is_empty() {
+    if line + 1 >= end || source.line_text(line).trim_ascii().is_empty() {
         return false;
     }
     let marker = source.line_text(line + 1).trim_ascii_start();
@@ -426,7 +426,7 @@ pub(super) fn definition_list_end(source: &SourceBuffer, start: usize, end: usiz
         .expect("definition_list_at validated the definition marker");
     let mut line = start + 2;
     while line < end {
-        if !source.line_text(line).trim().is_empty() {
+        if !source.line_text(line).trim_ascii().is_empty() {
             line += 1;
             continue;
         }
@@ -460,7 +460,7 @@ pub(super) fn definition_list_end(source: &SourceBuffer, start: usize, end: usiz
 pub(super) fn definition_list_supported(source: &SourceBuffer, start: usize, end: usize) -> bool {
     for line in start..end {
         let text = source.line_text(line);
-        if text.trim().is_empty() {
+        if text.trim_ascii().is_empty() {
             continue;
         }
         if let Some(content) = definition_marker_content(text) {

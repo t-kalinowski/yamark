@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+First paragraph.
+ 
+Same paragraph.
+
+Second paragraph.
+  
+Third paragraph.
+-- stdout
+First paragraph.
+ 
+Same paragraph.
+
+Second paragraph.
+
+Third paragraph.
+-- stderr
+-- status
+0
