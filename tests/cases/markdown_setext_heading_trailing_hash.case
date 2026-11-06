@@ -9,12 +9,27 @@ Hello #
 
 Hello#
 ---
+
+Title # {#id}
+---
+
+Even \\#
+---
+
+Odd \#
+---
 -- stdout
 ## Hello \#
 
 # Indented \#\#
 
 ## Hello\#
+
+## Title \# {#id}
+
+## Even \\\#
+
+## Odd \#
 -- stderr
 -- status
 0

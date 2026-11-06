@@ -1068,15 +1068,9 @@ pub(crate) fn render_markdown_setext_heading(
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
+    // Escape before normalizing: the ATX normalizer strips closing hashes.
+    text = escape_atx_closing_hashes(&text);
     text = crate::core::wrap::normalize_heading_content(&text);
-    // Pandoc drops trailing `#`s from an ATX heading, so escape them to keep
-    // them as heading text.
-    let hashes = text.len() - text.trim_end_matches('#').len();
-    if hashes > 0 {
-        let start = text.len() - hashes;
-        let start = start + usize::from(text[..start].ends_with('\\'));
-        text = format!("{}{}", &text[..start], "\\#".repeat(text.len() - start));
-    }
 
     let mut output = String::new();
     // Keep a leading BOM but not the underline paragraph's indentation:
@@ -1091,6 +1085,30 @@ pub(crate) fn render_markdown_setext_heading(
     }
     output.push_str(line_ending_for_span(source, span));
     output
+}
+
+/// Pandoc drops trailing `#`s, before any trailing attribute block, from an
+/// ATX heading, so escape them to keep them as heading text.
+fn escape_atx_closing_hashes(text: &str) -> String {
+    let (body, attribute) = match text.rfind('{') {
+        Some(open) if text.ends_with('}') => text.split_at(open),
+        _ => (text, ""),
+    };
+    let content = body.trim_end_matches([' ', '\t']);
+    let mut start = content.trim_end_matches('#').len();
+    let backslashes = content[..start].len() - content[..start].trim_end_matches('\\').len();
+    if backslashes % 2 == 1 {
+        start += 1;
+    }
+    if start >= content.len() {
+        return text.to_owned();
+    }
+    format!(
+        "{}{}{}{attribute}",
+        &content[..start],
+        "\\#".repeat(content.len() - start),
+        &body[content.len()..],
+    )
 }
 
 pub(crate) fn render_markdown_thematic_break(
