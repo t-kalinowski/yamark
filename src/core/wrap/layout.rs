@@ -1076,7 +1076,7 @@ fn simple_image_attribute_parts(token: &str) -> Option<(&str, &str, &str)> {
     {
         return None;
     }
-    let attributes = token[attribute_open + 1..attribute_close - 1].trim();
+    let attributes = token[attribute_open + 1..attribute_close - 1].trim_ascii();
     if !is_pandoc_attribute_content(attributes) {
         return None;
     }
@@ -1166,6 +1166,9 @@ fn wrap_single_spaced_words(
     Some(lines)
 }
 
+/// Pandoc attributes start with an id, a class, or a key, and keys start
+/// with a letter; a leading non-ASCII space makes the braces literal text.
 pub(super) fn is_pandoc_attribute_content(value: &str) -> bool {
-    !value.is_empty() && (value.starts_with(['#', '.']) || value.contains('='))
+    value.starts_with(['#', '.'])
+        || (value.starts_with(|ch: char| ch.is_ascii_alphabetic()) && value.contains('='))
 }
