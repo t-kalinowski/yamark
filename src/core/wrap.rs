@@ -1135,7 +1135,7 @@ fn normalize_link_label(label: &str, allow_nested_image: bool) -> Option<String>
         out.push(ch);
         index += ch.len_utf8();
     }
-    Some(normalize_spaces_preserving_protected_spans(out.trim()).into_owned())
+    Some(normalize_spaces_preserving_protected_spans(out.trim_ascii()).into_owned())
 }
 
 fn link_label_protected_span_end(scan: &mut InlineScan<'_>, index: usize) -> Option<usize> {
@@ -1252,7 +1252,7 @@ fn attribute_tokens(inner: &str) -> Option<Vec<String>> {
                 in_double_quote = !in_double_quote;
                 current.push(ch);
             }
-            ch if ch.is_whitespace() && !in_double_quote => {
+            ch if ch.is_ascii_whitespace() && !in_double_quote => {
                 if !current.is_empty() {
                     tokens.push(normalize_attribute_token(&current));
                     current.clear();

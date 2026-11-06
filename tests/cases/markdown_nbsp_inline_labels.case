@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+See [link ](https://example.com) and [ ref][r].
+
+![alt ](image.png)
+
+![alt](image.png){ width=10}
+
+![alt](image.png){ width=10 }
+
+[r]: https://example.com
+-- stdout
+See [link ](https://example.com) and [ ref][r].
+
+![alt ](image.png)
+
+![alt](image.png){ width=10}
+
+![alt](image.png){width=10}
+
+[r]: https://example.com
+-- stderr
+-- status
+0
