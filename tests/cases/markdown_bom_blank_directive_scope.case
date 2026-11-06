@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+﻿
+<!-- fmt: template.delimiters "<<" ">>" -->
+
+Some <<x>>   text.
+-- stdout
+﻿
+<!-- fmt: template.delimiters "<<" ">>" -->
+
+Some <<x>> text.
+-- stderr
+-- status
+0
