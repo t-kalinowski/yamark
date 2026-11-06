@@ -1,0 +1,36 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Dashes
+- - -
+
+Equals after
+=== 
+
+Equals before
+ ===
+
+* * * 
+
+Heading
+===
+
+* * *
+-- stdout
+Dashes
+- - -
+
+Equals after
+=== 
+
+Equals before
+ ===
+
+* * * 
+
+# Heading
+
+---
+-- stderr
+-- status
+0

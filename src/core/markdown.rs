@@ -1322,7 +1322,7 @@ fn setext_heading_at(
     {
         return None;
     }
-    let underline = source.line_text(line_index + 1).trim();
+    let underline = source.line_text(line_index + 1).trim_ascii();
     let depth = if !underline.is_empty() && underline.chars().all(|ch| ch == '=') {
         1
     } else if !underline.is_empty() && underline.chars().all(|ch| ch == '-') {
@@ -1411,11 +1411,11 @@ fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Spa
 }
 
 fn thematic_break_at(text: &str) -> bool {
-    let trimmed = text.trim_start_matches('\u{feff}').trim();
+    let trimmed = text.trim_start_matches('\u{feff}').trim_ascii();
     let mut marker = None;
     let mut count = 0usize;
     for ch in trimmed.chars() {
-        if ch.is_whitespace() {
+        if matches!(ch, ' ' | '\t') {
             continue;
         }
         if !matches!(ch, '-' | '*' | '_') {
