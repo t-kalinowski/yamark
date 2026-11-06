@@ -25,7 +25,7 @@ pub(super) struct ListBlock {
 
 pub(super) fn list_block_end(source: &SourceBuffer, start: usize, end: usize) -> ListBlock {
     let first = source.line_text(start);
-    let mut base_indent = first.len() - first.trim_start().len();
+    let mut base_indent = first.len() - first.trim_ascii_start().len();
     let mut item_content_indent = list_marker_content_indent(first);
     let mut block_openers = Vec::new();
     let mut line = start + 1;
@@ -43,7 +43,7 @@ pub(super) fn list_block_end(source: &SourceBuffer, start: usize, end: usize) ->
             break;
         }
         if list_item_at(text) {
-            let indent = text.len() - text.trim_start().len();
+            let indent = text.len() - text.trim_ascii_start().len();
             // Nested items do not change where the outer item can resume
             // after a blank line. Only a sibling starts a new boundary.
             if item_content_indent.is_some_and(|content_indent| indent < content_indent) {
@@ -54,7 +54,7 @@ pub(super) fn list_block_end(source: &SourceBuffer, start: usize, end: usize) ->
             line += 1;
             continue;
         }
-        let indent = text.len() - text.trim_start().len();
+        let indent = text.len() - text.trim_ascii_start().len();
         if indent > base_indent {
             if item_content_indent.is_some_and(|content_indent| indent < content_indent)
                 && !markdown_indented_code_at(text)
@@ -127,14 +127,14 @@ fn blank_line_continues_list_item(text: &str, item_content_indent: Option<usize>
     let Some(item_content_indent) = item_content_indent else {
         return false;
     };
-    let indent = text.len() - text.trim_start().len();
+    let indent = text.len() - text.trim_ascii_start().len();
     indent >= item_content_indent
 }
 
 pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool {
     let first = source.line_text(start);
     let mut previous_item = first;
-    let base_indent = first.len() - first.trim_start().len();
+    let base_indent = first.len() - first.trim_ascii_start().len();
     let mut item_content_indent = list_item_content_indent(first);
     let mut task_continuation = task_list_continuation_range(first);
     let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
@@ -145,8 +145,8 @@ pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usi
             continue;
         }
         if list_item_at(text) {
-            let indent = text.len() - text.trim_start().len();
-            let previous_indent = previous_item.len() - previous_item.trim_start().len();
+            let indent = text.len() - text.trim_ascii_start().len();
+            let previous_indent = previous_item.len() - previous_item.trim_ascii_start().len();
             if indent > previous_indent
                 && list_marker_content_indent(previous_item)
                     .is_some_and(|content_indent| indent < content_indent)
@@ -160,7 +160,7 @@ pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usi
             task_continuation = task_list_continuation_range(text);
             continue;
         }
-        let indent = text.len() - text.trim_start().len();
+        let indent = text.len() - text.trim_ascii_start().len();
         if line >= code_fence_end
             && let Some(content_indent) = item_content_indent
             && indent >= content_indent
@@ -214,7 +214,7 @@ pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usi
             if list_rich_child_line(text, item_content_indent) {
                 continue;
             }
-            if list_item_at(text.trim_start()) {
+            if list_item_at(text.trim_ascii_start()) {
                 return false;
             }
             // Multiline links and literals are rare. Keep this whole-block
@@ -256,7 +256,7 @@ fn list_rich_child_line(text: &str, item_content_indent: Option<usize>) -> bool 
     let Some(item_content_indent) = item_content_indent else {
         return false;
     };
-    let indent = text.len() - text.trim_start().len();
+    let indent = text.len() - text.trim_ascii_start().len();
     if indent < item_content_indent {
         return false;
     }
@@ -265,7 +265,7 @@ fn list_rich_child_line(text: &str, item_content_indent: Option<usize>) -> bool 
 }
 
 fn rich_child_block_start(text: &str) -> bool {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     trimmed.starts_with('|')
         || trimmed.starts_with("```")
         || trimmed.starts_with("~~~")
@@ -280,11 +280,11 @@ fn rich_child_block_start(text: &str) -> bool {
 }
 
 fn list_marker_content_indent(text: &str) -> Option<usize> {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     let indent = text.len() - trimmed.len();
     let marker_len = markdown_list_marker_len(trimmed)?;
     let after_marker = &trimmed[marker_len..];
-    let marker_gap = after_marker.len() - after_marker.trim_start().len();
+    let marker_gap = after_marker.len() - after_marker.trim_ascii_start().len();
     // Pandoc permits a paragraph at the source end of an empty marker.
     Some(indent + marker_len + marker_gap)
 }
@@ -294,7 +294,7 @@ fn list_item_content_indent(text: &str) -> Option<usize> {
     let rest = &text[content_indent..];
     if let Some(checkbox) = task_list_checkbox(rest) {
         let after_checkbox = &rest[checkbox.len()..];
-        let checkbox_gap = after_checkbox.len() - after_checkbox.trim_start().len();
+        let checkbox_gap = after_checkbox.len() - after_checkbox.trim_ascii_start().len();
         content_indent += checkbox.len() + checkbox_gap;
     }
     Some(content_indent)
@@ -313,10 +313,10 @@ fn list_continuation_matches_item_content(
 }
 
 fn task_list_continuation_range(text: &str) -> Option<(usize, usize)> {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     let indent = text.len() - trimmed.len();
     let marker_len = markdown_list_marker_len(trimmed)?;
-    let rest = trimmed[marker_len..].trim_start();
+    let rest = trimmed[marker_len..].trim_ascii_start();
     let checkbox = task_list_checkbox(rest)?;
     let continuation = indent + marker_len + 1 + checkbox.len() + 1;
     Some((continuation, continuation + 4))
@@ -375,7 +375,7 @@ fn blockquote_plain_body(text: &str) -> Option<&str> {
 }
 
 pub(super) fn footnote_definition_at(text: &str) -> bool {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     text.len() - trimmed.len() <= 3
         && trimmed.starts_with("[^")
         && crate::core::wrap::markdown_reference_definition_start(trimmed)
@@ -389,14 +389,15 @@ pub(super) fn footnote_block_end(source: &SourceBuffer, start: usize, end: usize
             let Some(next) = next_nonblank_line(source, line + 1, end) else {
                 break;
             };
-            let indent = source.line_text(next).len() - source.line_text(next).trim_start().len();
+            let indent =
+                source.line_text(next).len() - source.line_text(next).trim_ascii_start().len();
             if indent >= 4 {
                 line = next + 1;
                 continue;
             }
             break;
         }
-        let indent = text.len() - text.trim_start().len();
+        let indent = text.len() - text.trim_ascii_start().len();
         if indent >= 2 {
             line += 1;
             continue;
@@ -410,7 +411,7 @@ pub(super) fn definition_list_at(source: &SourceBuffer, line: usize, end: usize)
     if line + 1 >= end || source.line_text(line).trim().is_empty() {
         return false;
     }
-    let marker = source.line_text(line + 1).trim_start();
+    let marker = source.line_text(line + 1).trim_ascii_start();
     let indent = source.line_text(line + 1).len() - marker.len();
     indent <= 3
         && matches!(marker.as_bytes().first(), Some(b':' | b'~'))
@@ -435,7 +436,7 @@ pub(super) fn definition_list_end(source: &SourceBuffer, start: usize, end: usiz
             return blank_start;
         };
         let next_text = source.line_text(next);
-        let next_indent = next_text.len() - next_text.trim_start().len();
+        let next_indent = next_text.len() - next_text.trim_ascii_start().len();
         if next_indent >= content_indent {
             line = next + 1;
             continue;
@@ -468,7 +469,7 @@ pub(super) fn definition_list_supported(source: &SourceBuffer, start: usize, end
             }
             continue;
         }
-        let trimmed = text.trim_start();
+        let trimmed = text.trim_ascii_start();
         let indent = text.len() - trimmed.len();
         if indent >= 4 {
             if raw_sensitive_at(trimmed) || code_fence_at(trimmed).is_some() {
@@ -484,7 +485,7 @@ pub(super) fn definition_list_supported(source: &SourceBuffer, start: usize, end
 }
 
 fn definition_marker_content(text: &str) -> Option<&str> {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     let indent = text.len() - trimmed.len();
     if indent > 3 || !matches!(trimmed.as_bytes().first(), Some(b':' | b'~')) {
         return None;
@@ -496,11 +497,11 @@ fn definition_marker_content(text: &str) -> Option<&str> {
     {
         return None;
     }
-    Some(trimmed[1..].trim_start())
+    Some(trimmed[1..].trim_ascii_start())
 }
 
 fn definition_marker_content_indent(text: &str) -> Option<usize> {
-    let trimmed = text.trim_start();
+    let trimmed = text.trim_ascii_start();
     let indent = text.len() - trimmed.len();
     if indent > 3 || !matches!(trimmed.as_bytes().first(), Some(b':' | b'~')) {
         return None;
