@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+```
+code  x
+``` 
+still  code.
+```
+
+After  fence.
+-- stdout
+```
+code  x
+``` 
+still  code.
+```
+
+After fence.
+-- stderr
+-- status
+0

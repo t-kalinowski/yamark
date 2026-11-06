@@ -56,7 +56,7 @@ pub(super) fn find_code_fence_closing_at_indent(
             let rest = &text.trim_start()[candidate.len..];
             if candidate.marker == fence.marker
                 && candidate.len >= fence.len
-                && rest.trim().is_empty()
+                && rest.trim_ascii().is_empty()
             {
                 return Some(i);
             }
