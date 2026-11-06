@@ -309,12 +309,12 @@ This [" keep   spacing "] paragraph.
 #[test]
 fn markdown_code_fence_local_skip_requires_exact_supported_forms() {
     let input = "\
-```yaml fmt: skip-extra
+```{.yaml fmt: skip-extra}
 a:    1
 ```
 ";
     let expected = "\
-```yaml fmt: skip-extra
+```{.yaml fmt: skip-extra}
 a: 1
 ```
 ";
