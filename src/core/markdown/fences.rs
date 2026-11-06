@@ -29,24 +29,29 @@ pub(super) fn code_fence_at(text: &str) -> Option<Fence> {
     while indent + len < bytes.len() && bytes[indent + len] == marker {
         len += 1;
     }
-    // Pandoc Markdown does not open a fence whose info string contains
-    // non-ASCII whitespace, except inside a quoted attribute value; such a
-    // line is paragraph text. Backslash escapes inside quotes are not tracked.
-    let info = text[indent + len..].trim_ascii_start();
-    let attributes = info.starts_with('{');
+    // Pandoc Markdown does not open a fence whose info string contains a
+    // Unicode space separator outside a quoted attribute value; such a line
+    // is paragraph text. Line and paragraph separators are not spaces there.
+    let mut in_attributes = false;
     let mut quote = None;
-    let unquoted_unicode_space = info.chars().any(|ch| match quote {
-        Some(open) => {
-            if ch == open {
+    let mut escaped = false;
+    let unquoted_unicode_space = text[indent + len..].chars().any(|ch| {
+        if let Some(open) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == open {
                 quote = None;
             }
-            false
+            return false;
         }
-        None if attributes && matches!(ch, '"' | '\'') => {
-            quote = Some(ch);
-            false
+        match ch {
+            '{' => in_attributes = true,
+            '"' | '\'' if in_attributes => quote = Some(ch),
+            _ => {}
         }
-        None => ch.is_whitespace() && !ch.is_ascii_whitespace(),
+        !ch.is_ascii() && ch.is_whitespace() && !matches!(ch, '\u{85}' | '\u{2028}' | '\u{2029}')
     });
     (len >= 3 && !unquoted_unicode_space).then_some(Fence { marker, len })
 }

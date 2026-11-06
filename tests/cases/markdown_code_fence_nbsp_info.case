@@ -10,6 +10,20 @@ a:   1
 body
 ```
 
+```python {title="a b"}
+---
+body
+```
+
+```{.text title="a\" b"}
+---
+body
+```
+
+```a b
+body
+```
+
 ~~~yaml 
 
 ~~~
@@ -38,6 +52,20 @@ a: 1
 
 ```{.text title="a b"}
 ---
+body
+```
+
+```python {title="a b"}
+---
+body
+```
+
+```{.text title="a\" b"}
+---
+body
+```
+
+```a b
 body
 ```
 
