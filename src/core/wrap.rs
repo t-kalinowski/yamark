@@ -86,6 +86,34 @@ pub(crate) fn markdown_multiline_literal_spans(
     std::iter::from_fn(move || scan.next_literal_before(source.len()))
 }
 
+/// Whether `line` has a code span or math opener that does not close on the
+/// line itself, so a literal could continue onto later lines. Callers use this
+/// to skip scanning the rest of the paragraph in the common case.
+pub(crate) fn markdown_line_has_unclosed_literal(line: &str) -> bool {
+    let mut scan = InlineScan::new(line);
+    let mut index = 0;
+    while index < line.len() {
+        let byte = line.as_bytes()[index];
+        if escaped_at(line, index) {
+            index += if byte == b'`' {
+                delimiter_run_len_at(line, index, b'`')
+            } else {
+                line[index..].chars().next().unwrap().len_utf8()
+            };
+        } else if let Some(end) = scan.literal_span_end(index) {
+            index = end;
+            if byte == b'`' {
+                index += delimiter_run_len_at(line, index, b'`');
+            }
+        } else if matches!(byte, b'`' | b'$') || line[index..].starts_with("\\(") {
+            return true;
+        } else {
+            index += line[index..].chars().next().unwrap().len_utf8();
+        }
+    }
+    false
+}
+
 // Query in source order and skip confirmed raw blocks so their delimiters
 // cannot pair with inline content in later list items.
 pub(crate) struct MarkdownMultilineInlineScan<'a> {

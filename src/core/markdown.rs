@@ -1387,6 +1387,9 @@ fn setext_heading_at(
 /// math opened on the line and closed later in the paragraph spans the
 /// underline, and the line is not a heading.
 fn inline_literal_crosses_line_end(source: &SourceBuffer, line: usize, end: usize) -> bool {
+    if !crate::core::wrap::markdown_line_has_unclosed_literal(source.line_text(line)) {
+        return false;
+    }
     let mut last = line;
     while last + 1 < end && !source.line_text(last + 1).trim_ascii().is_empty() {
         last += 1;
