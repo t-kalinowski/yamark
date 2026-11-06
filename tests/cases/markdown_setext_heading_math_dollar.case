@@ -1,0 +1,44 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+Price $5
+===
+Price $6
+===
+
+Foo \(
+===
+bar \)
+
+a $b
+===
+c$
+
+d $$e
+===
+f$$
+
+g ``h
+===
+i`
+-- stdout
+# Price $5
+# Price $6
+
+# Foo \(
+bar \)
+
+a $b
+===
+c$
+
+d $$e
+===
+f$$
+
+g ``h
+===
+i`
+-- stderr
+-- status
+0

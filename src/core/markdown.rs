@@ -5,6 +5,7 @@
 mod containers;
 mod fences;
 mod frontmatter;
+mod literal_closers;
 mod planning;
 
 use crate::config::Config;
@@ -30,6 +31,7 @@ use fences::{
     find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
+pub(crate) use literal_closers::LiteralClosers;
 pub(crate) use planning::MarkdownPlans;
 pub(crate) use planning::{document_emit_options, finalize_document, release_planning};
 use planning::{
@@ -1388,7 +1390,7 @@ fn setext_heading_at(
     } else {
         return None;
     };
-    if inline_literal_crosses_line_end(source, line_index, end) {
+    if literal_closers::inline_literal_crosses_line_end(source, line_index, end) {
         return None;
     }
     let line = source.lines[line_index];
@@ -1404,23 +1406,6 @@ fn setext_heading_at(
         Span::new(line.text.start() + start, line.text.start() + end),
         depth,
     ))
-}
-
-/// Pandoc reads inline content before a setext underline, so a code span or
-/// math opened on the line and closed later in the paragraph spans the
-/// underline, and the line is not a heading.
-fn inline_literal_crosses_line_end(source: &SourceBuffer, line: usize, end: usize) -> bool {
-    if !crate::core::wrap::markdown_line_has_unclosed_literal(source.line_text(line)) {
-        return false;
-    }
-    let mut last = line;
-    while last + 1 < end && !source.line_text(last + 1).trim_ascii().is_empty() {
-        last += 1;
-    }
-    let start = source.lines[line].text.start();
-    let line_end = source.lines[line].text.end() - start;
-    let paragraph = source.slice(Span::new(start, source.lines[last].text.end()));
-    crate::core::wrap::markdown_multiline_literal_spans(paragraph).any(|span| span.start < line_end)
 }
 
 fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Span)> {

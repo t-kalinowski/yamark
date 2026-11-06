@@ -156,6 +156,7 @@ pub struct SourceBuffer {
     pub bom: Option<Span>,
     pub lines: Vec<Line>,
     pub dominant_line_ending: LineEnding,
+    pub(crate) markdown_literal_closers: std::sync::OnceLock<crate::core::markdown::LiteralClosers>,
 }
 
 impl SourceBuffer {
@@ -211,6 +212,7 @@ impl SourceBuffer {
             bom,
             lines,
             dominant_line_ending,
+            markdown_literal_closers: std::sync::OnceLock::new(),
         }
     }
 

@@ -23,14 +23,25 @@ fn measure_format(input: String) -> Duration {
     started.elapsed()
 }
 
-#[test]
-fn adjacent_setext_headings_format_near_linearly() {
-    let small = measure_format("Heading text\n---\n".repeat(1_000));
-    let large = measure_format("Heading text\n---\n".repeat(4_000));
+fn assert_near_linear(heading: &str) {
+    let small = measure_format(heading.repeat(1_000));
+    let large = measure_format(heading.repeat(4_000));
 
     assert!(
         large.as_nanos() <= small.as_nanos().max(1) * 8,
-        "adjacent setext headings should format near-linearly: \
+        "adjacent setext headings {heading:?} should format near-linearly: \
          1000 headings took {small:?}, 4000 headings took {large:?}"
     );
+}
+
+#[test]
+fn adjacent_setext_headings_format_near_linearly() {
+    assert_near_linear("Heading text\n---\n");
+}
+
+#[test]
+fn adjacent_setext_headings_with_unclosed_literals_format_near_linearly() {
+    assert_near_linear("Price $5\n---\n");
+    assert_near_linear("Paren \\(\n---\n");
+    assert_near_linear("Tick ``a\n---\nTick `b\n---\n");
 }
