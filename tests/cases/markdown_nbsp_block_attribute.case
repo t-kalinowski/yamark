@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+{ .x}
+Heading
+---
+-- stdout
+{ .x} Heading ---
+-- stderr
+-- status
+0

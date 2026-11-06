@@ -1773,7 +1773,7 @@ fn pandoc_block_attribute_line(trimmed: &str) -> bool {
     if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
         return false;
     }
-    let inner = trimmed[1..trimmed.len() - 1].trim();
+    let inner = trimmed[1..trimmed.len() - 1].trim_ascii();
     if inner.is_empty() {
         return false;
     }
@@ -1795,7 +1795,7 @@ fn pandoc_attribute_tokens(inner: &str) -> Option<Vec<&str>> {
                 }
                 in_double_quote = !in_double_quote;
             }
-            ch if ch.is_whitespace() && !in_double_quote => {
+            ch if ch.is_ascii_whitespace() && !in_double_quote => {
                 if let Some(token_start) = start.take() {
                     tokens.push(&inner[token_start..index]);
                 }
