@@ -1218,14 +1218,20 @@ fn paragraph_should_end_before(
     if !line_may_start_markdown_block(source, line, text) {
         return false;
     }
-    text.trim_ascii().is_empty()
+    // Pandoc setext headings have a single content line, and thematic breaks
+    // do not interrupt paragraphs, so a later `---` or `===` line is text.
+    let trimmed = text.trim_ascii();
+    if !trimmed.is_empty()
+        && (trimmed.bytes().all(|byte| byte == b'-') || trimmed.bytes().all(|byte| byte == b'='))
+    {
+        return false;
+    }
+    trimmed.is_empty()
         || parse_markdown_html_directive(text).is_some()
         || pandoc_table_at(source, line, source.lines.len())
         || definition_list_at(source, line, source.lines.len())
         || paired_html_block_start(text).is_some()
-        || setext_heading_at(source, line, source.lines.len()).is_some()
         || heading_ranges(source, line).is_some()
-        || thematic_break_at(text)
         || quarto_div_opening(text).is_some()
         || pandoc_grid_table_at(source, line, source.lines.len())
         || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
