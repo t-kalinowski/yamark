@@ -1,6 +1,18 @@
 -- args
 format --stdin-file-path input.md --wrap sentence
 -- stdin
+```{.text title=a b}
+---
+```
+
+```text {title="a b"}
+x
+```
+
+```text foo
+x
+```
+
 ```yaml
 a:   1
 ```
@@ -46,6 +58,18 @@ Two  spaces. Two sentences.
 body
 ```
 -- stdout
+```{.text title=a b}
+---
+```
+
+```text {title="a b"}
+x
+```
+
+```text foo
+x
+```
+
 ```yaml
 a: 1
 ```

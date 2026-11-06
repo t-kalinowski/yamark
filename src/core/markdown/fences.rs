@@ -29,31 +29,53 @@ pub(super) fn code_fence_at(text: &str) -> Option<Fence> {
     while indent + len < bytes.len() && bytes[indent + len] == marker {
         len += 1;
     }
-    // Pandoc Markdown does not open a fence whose info string contains a
-    // Unicode space separator outside a quoted attribute value; such a line
-    // is paragraph text. Line and paragraph separators are not spaces there.
-    let mut in_attributes = false;
-    let mut quote = None;
-    let mut escaped = false;
-    let unquoted_unicode_space = text[indent + len..].chars().any(|ch| {
-        if let Some(open) = quote {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == open {
-                quote = None;
+    (len >= 3 && !info_has_unicode_space(&text[indent + len..])).then_some(Fence { marker, len })
+}
+
+/// Pandoc Markdown does not open a fence whose info string contains a Unicode
+/// space separator outside an attribute value; such a line is paragraph text.
+/// Values follow Pandoc's attribute reader: after `=`, a quoted value runs to
+/// its closing quote and an unquoted one to ASCII space, tab, or `}`, both
+/// with backslash escapes. Line and paragraph separators are not spaces.
+fn info_has_unicode_space(info: &str) -> bool {
+    enum State {
+        Text,
+        Attributes,
+        Value { quote: Option<char>, escaped: bool },
+    }
+    let mut state = State::Text;
+    let mut chars = info.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match &mut state {
+            State::Value {
+                escaped: escaped @ true,
+                ..
+            } => *escaped = false,
+            State::Value { quote, escaped } => match (ch, *quote) {
+                ('\\', _) => *escaped = true,
+                (ch, Some(open)) if ch == open => state = State::Attributes,
+                (' ' | '\t' | '}', None) => state = State::Attributes,
+                _ => {}
+            },
+            State::Text | State::Attributes => {
+                if ch == '{' {
+                    state = State::Attributes;
+                } else if ch == '=' && matches!(state, State::Attributes) {
+                    let quote = chars.next_if(|next| matches!(next, '"' | '\''));
+                    state = State::Value {
+                        quote,
+                        escaped: false,
+                    };
+                } else if !ch.is_ascii()
+                    && ch.is_whitespace()
+                    && !matches!(ch, '\u{85}' | '\u{2028}' | '\u{2029}')
+                {
+                    return true;
+                }
             }
-            return false;
         }
-        match ch {
-            '{' => in_attributes = true,
-            '"' | '\'' if in_attributes => quote = Some(ch),
-            _ => {}
-        }
-        !ch.is_ascii() && ch.is_whitespace() && !matches!(ch, '\u{85}' | '\u{2028}' | '\u{2029}')
-    });
-    (len >= 3 && !unquoted_unicode_space).then_some(Fence { marker, len })
+    }
+    false
 }
 
 pub(super) fn find_code_fence_closing(
@@ -77,7 +99,7 @@ pub(super) fn find_code_fence_closing_at_indent(
         if text.bytes().take_while(|byte| *byte == b' ').count() >= indent
             && let Some(candidate) = code_fence_at(&text[indent..])
         {
-            let rest = &text.trim_start()[candidate.len..];
+            let rest = &text.trim_ascii_start()[candidate.len..];
             if candidate.marker == fence.marker
                 && candidate.len >= fence.len
                 && rest.trim_ascii().is_empty()
@@ -96,11 +118,11 @@ pub(super) fn code_fence_language(text: &str) -> Option<String> {
 
 pub(super) fn code_fence_info(text: &str) -> Option<&str> {
     let fence = code_fence_at(text)?;
-    Some(text.trim_start()[fence.len..].trim())
+    Some(text.trim_ascii_start()[fence.len..].trim_ascii())
 }
 
 fn code_fence_language_from_info(info: &str) -> Option<String> {
-    let info = info.trim();
+    let info = info.trim_ascii();
     if info.is_empty() || braced_code_fence_raw_format(info) {
         return None;
     }
@@ -110,18 +132,18 @@ fn code_fence_language_from_info(info: &str) -> Option<String> {
     if let Some(inner) = braced_code_fence_inner(info) {
         return pandoc_attribute_language(inner);
     }
-    let first = info.split_whitespace().next()?;
+    let first = info.split_ascii_whitespace().next()?;
     code_fence_language_token(first)
 }
 
 fn code_cell_language_from_info(info: &str) -> Option<String> {
-    let rest = info.strip_prefix("{code-cell}")?.trim_start();
-    code_fence_language_token(rest.split_whitespace().next()?)
+    let rest = info.strip_prefix("{code-cell}")?.trim_ascii_start();
+    code_fence_language_token(rest.split_ascii_whitespace().next()?)
 }
 
 fn pandoc_attribute_language(inner: &str) -> Option<String> {
     let mut bare_language = None::<String>;
-    for token in inner.split_whitespace() {
+    for token in inner.split_ascii_whitespace() {
         if token.starts_with('#') || token.contains('=') {
             continue;
         }
@@ -159,7 +181,7 @@ fn braced_code_fence_raw_format(info: &str) -> bool {
     let Some(inner) = braced_code_fence_inner(info) else {
         return false;
     };
-    let Some(format) = inner.trim().strip_prefix('=') else {
+    let Some(format) = inner.trim_ascii().strip_prefix('=') else {
         return false;
     };
     !format.is_empty()
@@ -169,16 +191,16 @@ fn braced_code_fence_raw_format(info: &str) -> bool {
 }
 
 pub(super) fn code_fence_is_code_cell(text: &str) -> bool {
-    code_fence_info(text).is_some_and(|info| info.trim().starts_with("{code-cell}"))
+    code_fence_info(text).is_some_and(|info| info.trim_ascii().starts_with("{code-cell}"))
 }
 
 pub(super) fn code_fence_code_cell_without_language(text: &str) -> bool {
     code_fence_info(text).is_some_and(|info| {
-        let info = info.trim();
+        let info = info.trim_ascii();
         info == "{code-cell}"
             || info
                 .strip_prefix("{code-cell}")
-                .is_some_and(|rest| rest.trim().is_empty())
+                .is_some_and(|rest| rest.trim_ascii().is_empty())
     })
 }
 
@@ -214,7 +236,7 @@ pub(super) fn code_cell_formatter_body(
     mut line: usize,
     closing: usize,
 ) -> Option<Span> {
-    while line < closing && source.line_text(line).trim_start().starts_with(':') {
+    while line < closing && source.line_text(line).trim_ascii_start().starts_with(':') {
         line += 1;
     }
     Some(Span::new(
@@ -233,7 +255,7 @@ pub(super) fn normalized_code_fence_opening(
     let indent = body.bytes().take_while(|byte| *byte == b' ').count();
     let marker_end = indent + fence.len;
     let after_marker = &body[marker_end..];
-    let info = after_marker.trim();
+    let info = after_marker.trim_ascii();
     if info.is_empty() {
         return None;
     }
@@ -246,12 +268,13 @@ pub(super) fn normalized_code_fence_opening(
         promote_quarto_options,
     )
     .or_else(|| {
-        (braced_code_fence_info_supported(info) && after_marker.starts_with(char::is_whitespace))
-            .then(|| info.to_owned())
+        (braced_code_fence_info_supported(info)
+            && after_marker.starts_with(|ch: char| ch.is_ascii_whitespace()))
+        .then(|| info.to_owned())
     })?;
     let separator = if normalized_info.starts_with('{') {
         ""
-    } else if after_marker.starts_with(char::is_whitespace) {
+    } else if after_marker.starts_with(|ch: char| ch.is_ascii_whitespace()) {
         " "
     } else {
         ""
@@ -271,7 +294,7 @@ fn braced_code_fence_info_starts_with_language(info: &str) -> bool {
     let Some(inner) = braced_code_fence_inner(info) else {
         return false;
     };
-    let Some(first) = inner.split_whitespace().next() else {
+    let Some(first) = inner.split_ascii_whitespace().next() else {
         return false;
     };
     let first = first.trim_start_matches('.');
@@ -302,7 +325,7 @@ fn normalize_code_fence_info(
         if !normalize_generic_info {
             return None;
         }
-        let normalized = info.split_whitespace().collect::<Vec<_>>().join(" ");
+        let normalized = info.split_ascii_whitespace().collect::<Vec<_>>().join(" ");
         return (normalized != info).then_some(normalized);
     };
     if promote_quarto_options && let Some(promoted) = promote_quarto_chunk_header(inner, newline) {
@@ -313,7 +336,7 @@ fn normalize_code_fence_info(
     }
     let mut seen_classes = Vec::<String>::new();
     let mut tokens = Vec::<&str>::new();
-    for token in inner.split_whitespace() {
+    for token in inner.split_ascii_whitespace() {
         if let Some(class) = token.strip_prefix('.') {
             let class_key = class.to_ascii_lowercase();
             if seen_classes.iter().any(|seen| seen == &class_key) {
@@ -340,7 +363,7 @@ fn normalize_code_fence_info(
 }
 
 fn normalize_bare_language_attribute_info(info: &str) -> Option<String> {
-    let (language, rest) = info.split_once(char::is_whitespace)?;
+    let (language, rest) = info.split_once(|ch: char| ch.is_ascii_whitespace())?;
     if language.is_empty()
         || language.starts_with('{')
         || language.starts_with('#')
@@ -348,7 +371,7 @@ fn normalize_bare_language_attribute_info(info: &str) -> Option<String> {
     {
         return None;
     }
-    let rest = rest.trim();
+    let rest = rest.trim_ascii();
     let inner = rest
         .strip_prefix('{')
         .and_then(|value| value.strip_suffix('}'))?;
@@ -359,7 +382,7 @@ fn normalize_bare_language_attribute_info(info: &str) -> Option<String> {
     let language_key = language.trim_start_matches('.').to_ascii_lowercase();
     let mut changed = false;
     let mut tokens = Vec::new();
-    for token in inner.split_whitespace() {
+    for token in inner.split_ascii_whitespace() {
         if let Some(class) = token.strip_prefix('.')
             && class.eq_ignore_ascii_case(&language_key)
         {
@@ -385,7 +408,7 @@ fn promote_quarto_chunk_header(inner: &str, newline: &str) -> Option<String> {
     if !inner.contains(',') || inner.contains(['"', '\'']) {
         return None;
     }
-    let parts = inner.split(',').map(str::trim).collect::<Vec<_>>();
+    let parts = inner.split(',').map(str::trim_ascii).collect::<Vec<_>>();
     let (language, options) = parts.split_first()?;
     let language = language.trim_start_matches('.');
     if language.is_empty()
@@ -400,8 +423,8 @@ fn promote_quarto_chunk_header(inner: &str, newline: &str) -> Option<String> {
     let mut lines = Vec::with_capacity(options.len());
     for option in options {
         let (key, value) = option.split_once('=')?;
-        let key = key.trim();
-        let value = normalize_quarto_option_value(value.trim())?;
+        let key = key.trim_ascii();
+        let value = normalize_quarto_option_value(value.trim_ascii())?;
         if key.is_empty()
             || value.is_empty()
             || !key
@@ -442,13 +465,13 @@ pub(super) fn code_fence_local_skip(text: &str) -> bool {
     let Some(fence) = code_fence_at(text) else {
         return false;
     };
-    let info = text.trim_start()[fence.len..].trim();
+    let info = text.trim_ascii_start()[fence.len..].trim_ascii();
     code_fence_info_has_exact_local_skip(info)
 }
 
 fn code_fence_info_has_exact_local_skip(info: &str) -> bool {
     let tokens = info
-        .split_whitespace()
+        .split_ascii_whitespace()
         .map(code_fence_info_token)
         .collect::<Vec<_>>();
     for (index, token) in tokens.iter().enumerate() {
@@ -479,9 +502,9 @@ fn local_skip_directive_ends(tokens: &[&str], start: usize) -> bool {
 
 pub(super) fn quarto_fence_skip(source: &SourceBuffer, mut line: usize, closing: usize) -> bool {
     while line < closing {
-        let trimmed = source.line_text(line).trim_start();
+        let trimmed = source.line_text(line).trim_ascii_start();
         if trimmed.starts_with("#|") {
-            let rest = trimmed.trim_start_matches("#|").trim();
+            let rest = trimmed.trim_start_matches("#|").trim_ascii();
             if rest == "fmt: skip" || rest == "fmt:skip" || rest == "fmt: skip scope=next" {
                 return true;
             }
