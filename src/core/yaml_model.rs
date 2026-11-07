@@ -73,8 +73,8 @@ pub struct YamlAstNode {
     pub leading_trivia: Box<[YamlTrivia]>,
     pub state: StateId,
     pub emit: YamlEmitPlan,
-    // A derived decision for the current policy, not the parser's retained
-    // parent-entry boundary. Policy changes invalidate this memo.
+    // A derived preservation decision, not the parser's retained parent-entry
+    // boundary. Layout-only replanning can keep this memo.
     pub must_preserve_source: Option<bool>,
     parent_entry_requires_source: bool,
     // Retained descendants anchor collection indentation, including ancestors
@@ -117,8 +117,7 @@ impl YamlAstNode {
         self.parent_entry_requires_source = true;
         self.must_preserve_source = Some(true);
         self.emit = YamlEmitPlan::PreserveSource;
-        self.clear_inline_width();
-        self.clear_flow_inline_width();
+        self.invalidate_layout_caches();
     }
 
     pub(crate) fn reset_parent_entry_preservation(&mut self) {
@@ -128,11 +127,15 @@ impl YamlAstNode {
         self.invalidate_policy_caches();
     }
 
+    pub(crate) fn invalidate_layout_caches(&self) {
+        self.clear_inline_width();
+        self.clear_flow_inline_width();
+    }
+
     pub(crate) fn invalidate_policy_caches(&mut self) {
         // Source ownership and source indentation survive policy changes.
         self.must_preserve_source = None;
-        self.clear_inline_width();
-        self.clear_flow_inline_width();
+        self.invalidate_layout_caches();
     }
 
     pub fn inline_width(&self) -> Option<Option<usize>> {

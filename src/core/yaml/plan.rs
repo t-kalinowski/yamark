@@ -22,12 +22,52 @@ use super::table::{
 };
 use super::{YamlParser, YamlTemplatePresence};
 use crate::config::Config;
+use crate::core::directives::DirectiveDelta;
 use crate::core::document::{Document, FormatOptions};
 use crate::core::source::{SourceBuffer, SourceSpan};
 use crate::core::yaml_model::{
     YamlAstKind, YamlAstNode, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind,
     YamlScalar,
 };
+
+#[derive(Clone, Copy)]
+pub(super) enum YamlPlanRefresh {
+    RetainCaches,
+    Layout,
+    Preservation,
+}
+
+impl YamlPlanRefresh {
+    pub(super) fn for_delta(delta: &DirectiveDelta) -> Self {
+        // Keep this exhaustive: a new directive field must be classified against
+        // yaml_node_should_preserve_uncached_with_template_possible. Layout-only
+        // changes still invalidate widths and recompute every emission plan.
+        let DirectiveDelta {
+            preserve,
+            markdown_target,
+            yaml_compact: _,
+            markdown_wrap: _,
+            markdown_table_widths: _,
+            markdown_canonical: _,
+            markdown_format_footnotes: _,
+            table_compact: _,
+            add_template_delimiters,
+            embedded_formatter,
+        } = delta;
+        if preserve.is_some()
+            || markdown_target.is_some()
+            || !add_template_delimiters.is_empty()
+            || embedded_formatter.is_some()
+        {
+            Self::Preservation
+        } else {
+            // Nested replanning may also receive different base options. Even
+            // an empty delta therefore refreshes layout; initial finalization
+            // selects RetainCaches explicitly when no file policy changed.
+            Self::Layout
+        }
+    }
+}
 
 pub(super) struct YamlPlanner<'a> {
     source: &'a SourceBuffer,
@@ -82,15 +122,25 @@ impl<'a> YamlPlanner<'a> {
         self.doc.trace.planned_rendered_block_flow_collections = rendered_block_flow;
     }
 
-    pub(super) fn plan_yaml_emits(&mut self, invalidate_policy_caches: bool) {
-        if invalidate_policy_caches {
-            self.invalidate_policy_caches();
+    pub(super) fn plan_yaml_emits(&mut self, refresh: YamlPlanRefresh) {
+        match refresh {
+            YamlPlanRefresh::RetainCaches => {}
+            YamlPlanRefresh::Layout => {
+                for node in &self.ast.nodes {
+                    node.invalidate_layout_caches();
+                }
+            }
+            YamlPlanRefresh::Preservation => {
+                for node in &mut self.ast.nodes {
+                    node.invalidate_policy_caches();
+                }
+            }
         }
+        let replan_all = !matches!(refresh, YamlPlanRefresh::RetainCaches);
         let node_count = self.ast.nodes.len();
         for index in 0..node_count {
             let id = YamlNodeId::new(index);
-            let needs_plan =
-                invalidate_policy_caches || self.ast.node(id).must_preserve_source.is_none();
+            let needs_plan = replan_all || self.ast.node(id).must_preserve_source.is_none();
             if needs_plan {
                 self.plan_yaml_node_emit(id);
             }
@@ -142,12 +192,6 @@ impl<'a> YamlPlanner<'a> {
             if let Some(root) = self.ast.roots[index].node {
                 self.plan_yaml_contextual_subtree(root, None);
             }
-        }
-    }
-
-    fn invalidate_policy_caches(&mut self) {
-        for node in &mut self.ast.nodes {
-            node.invalidate_policy_caches();
         }
     }
 
@@ -801,8 +845,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.planner().record_plan_trace();
     }
 
-    pub(super) fn plan_yaml_emits(&mut self, invalidate_policy_caches: bool) {
-        self.planner().plan_yaml_emits(invalidate_policy_caches);
+    pub(super) fn plan_yaml_emits(&mut self, refresh: YamlPlanRefresh) {
+        self.planner().plan_yaml_emits(refresh);
     }
 
     pub(super) fn push_planned_yaml_node(&mut self, node: YamlAstNode) -> YamlNodeId {

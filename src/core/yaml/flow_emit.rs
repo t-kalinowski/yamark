@@ -865,6 +865,8 @@ pub(super) fn yaml_node_should_preserve_uncached_with_template_possible(
     node: &YamlAstNode,
     template_spans_possible: bool,
 ) -> bool {
+    // Keep YamlPlanRefresh::for_delta in sync when adding state dependencies;
+    // layout-only refreshes retain this predicate's cached answer.
     if node.requires_parent_entry_preservation() {
         return true;
     }

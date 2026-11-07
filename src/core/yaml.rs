@@ -30,6 +30,7 @@ pub use emit::YamlEmissionStats;
 pub(crate) use emit::emit_planned_yaml_document_with_stats;
 use flow_emit::source_contains_any_template_opener;
 use flow_parse::RecognizedFlowCollection;
+use plan::YamlPlanRefresh;
 pub use simple::{format_flow_table, format_simple_yaml_line};
 use std::cell::RefCell;
 use syntax::{
@@ -277,7 +278,7 @@ fn replan_yaml_document_with_delta(
             &mut ast,
             &template_presence,
         )
-        .plan_yaml_emits(true);
+        .plan_yaml_emits(YamlPlanRefresh::for_delta(delta));
     }
     if result.is_ok() {
         doc.trace.yaml_semantic_nodes = ast.nodes.len();
@@ -424,19 +425,19 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 message,
             ));
         }
-        let invalidate_policy_caches = if self.file_scope_delta != DirectiveDelta::default() {
+        let plan_refresh = if self.file_scope_delta != DirectiveDelta::default() {
             let delta = self.file_scope_delta.clone();
             self.patch_existing_ast_states(&delta);
             if directive_delta_affects_markdown(&delta) {
                 self.patch_nested_markdown_documents(&delta)?;
             }
-            true
+            YamlPlanRefresh::for_delta(&delta)
         } else {
-            false
+            YamlPlanRefresh::RetainCaches
         };
         self.populate_document_root_markers();
         if self.plan_emits {
-            self.plan_yaml_emits(invalidate_policy_caches);
+            self.plan_yaml_emits(plan_refresh);
             if self.collect_trace {
                 self.record_plan_trace();
             }
