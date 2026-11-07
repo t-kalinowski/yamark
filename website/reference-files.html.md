@@ -103,7 +103,7 @@ projection.
 | Definition lists | Formats when supported | Normalizes marker spacing and wraps definitions. |
 | Display math | Preserves | Keeps own-line `$$` display math blocks byte-for-byte. |
 | Standalone Hugo shortcodes | Preserves tokens; formats between | Complete `{{< ... >}}` and `{{% ... %}}` tokens retain their bytes, including multiline tokens and quoted arguments. Markdown between tokens formats normally. |
-| Fences Pandoc reads as inline code | Preserves | Leaves a fence body unchanged when its info string is not a language word, an attribute block, or a word followed by an attribute block. Examples include ```` ```yaml foo ```` and GitHub-style ```` ```python title="x" ````. |
+| Fences Pandoc reads as inline code | Preserves | Leaves a fence body unformatted, apart from removing trailing spaces as in other fences, when its info string is not a language word, an attribute block, or a word followed by an attribute block. Examples include ```` ```yaml foo ```` and GitHub-style ```` ```python title="x" ````. |
 | Raw HTML, TeX, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
 | Template spans | Preserves contents; reflows prose | Complete single-line expressions using default or configured delimiters are opaque words in paragraphs and supported prose containers. See [template configuration](reference-config.qmd#template). |
 
