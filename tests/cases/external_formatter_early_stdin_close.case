@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --config tests/fixtures/external_formatter_early_close.toml
+-- stdin
+```early
+abc
+```
+
+After.
+-- stdout
+```early
+formatted
+```
+
+After.
+-- stderr
+-- status
+0

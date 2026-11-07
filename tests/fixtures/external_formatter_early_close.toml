@@ -1,0 +1,2 @@
+[embedded.early]
+formatter = { command = ["python", "-c", 'import os, sys; os.close(sys.stdin.fileno()); sys.stdout.buffer.write(b"formatted\n")', "{path}"], path_suffix = ".txt" }

@@ -17,9 +17,28 @@ expected stderr
 
 The test harness intentionally avoids calling library internals. This keeps the public CLI contract readable and prevents implementation details from becoming part of the test API.
 
+## Running selected cases
+
+Run the complete transcript suite with `cargo test --test cli_cases`. To run one case or a related group, set `YAMARK_CASE` for that command:
+
+```sh
+YAMARK_CASE=yaml_multiline_parent_properties.case cargo test --test cli_cases -- --nocapture
+YAMARK_CASE=yaml_multiline_ cargo test --test cli_cases -- --nocapture
+```
+
+The filter is a case-sensitive, literal substring of the `.case` filename, including its extension. It does not match the checkout path and does not interpret globs or regular expressions. Matches run in filename order. A nonempty filter that matches no cases fails, so a typo cannot report a successful empty run. Unset or empty `YAMARK_CASE` runs every case. Platform-specific cases keep their usual platform restrictions.
+
+In PowerShell, set `$env:YAMARK_CASE = 'yaml_multiline_'`, run `cargo test --test cli_cases -- --nocapture`, then clear it with `Remove-Item Env:YAMARK_CASE`. Keep the filter unset when running the complete validation gate. `--nocapture` shows how many transcripts were selected; Cargo's test-name filter alone cannot select an individual transcript because they share one test function.
+
+## Coverage
+
 The `yaml_multiline_plain_prose` and `yaml_multiline_quoted_prose` transcripts cover wrapping existing scalar continuation lines and formatting sibling collections while preserving comments. `yaml_multiline_scalar_comments` keeps trailing comments outside scalar values, `yaml_multiline_tagged_plain` checks decoding before explicit string-tag normalization, and `yaml_multiline_root_trivia` retains comments and document markers on root block scalars. `external-tests/cli/test_yaml_multiline_prose.py` checks independent YAML 1.2 value equality and second-pass byte idempotence across scalar positions, line endings, quotes, escapes, blank lines, and repeated spaces.
 
 `yaml_multiline_template_indent` keeps preserved template scalars aligned with their siblings, and `yaml_multiline_indented_root` checks literal conversion relative to the emitted root header. The external YAML tests cover source indentation, configured widths, nested mappings and sequences, template delimiters, skip directives, and independent value and idempotence checks.
+
+`yaml_late_template_policy` and `markdown_late_yaml_template_policy` apply file-scoped template delimiters after YAML has already been parsed, directly and inside a Markdown fence. They preserve template bytes, quotes, and parent headers while editable siblings still format. Templated Markdown scalars follow the same preservation policy as an early directive; other explicit Markdown targets still receive late canonicalization. `tests/yaml_policy_invalidation.rs` checks that early and late policies agree at different widths with LF, CRLF, and CR line endings.
+
+`yaml_layout_only_policies` and `markdown_yaml_layout_only_policies` check that late compact and Markdown options refresh emission plans while preserving template bytes and parent headers. `markdown_late_yaml_template_after_layout` checks that a subsequent template policy invalidates preservation decisions retained by an earlier layout-only refresh. The public policy tests also exercise enabling and disabling compactness, mixed layout/template directives in either order, nested YAML replanning under late Markdown options, and an empty file delta with nondefault effective options.
 
 The `markdown_nested_list_continuation_*` transcripts keep paragraphs after nested lists inside their outer items. These layouts use the existing list preservation behavior when they cannot be safely reflowed. The boundary case also checks that sibling markers and top-level paragraphs still delimit list items. `tests/nested_list_continuation.rs` checks line endings, wrap modes, and second passes through the CLI.
 
@@ -34,6 +53,8 @@ The `markdown_list_wide_marker_raw_boundary`, `markdown_list_child_headings`, an
 `markdown_literal_crlf.case`, `markdown_literal_cr.case`, and `markdown_literal_mixed_endings.case` run `--diff` on byte-preserving fixtures in `tests/fixtures/`. The case parser and diff display use LF. The fixtures retain CRLF, bare CR, and mixed line endings, with Git attributes disabling checkout conversion. The transcripts show literal whitespace retention and surrounding formatting; `tests/multiline_literals.rs` checks the same fixtures' exact formatted bytes and second passes. `markdown_literal_line_endings_check.case` checks an already-formatted mixed-ending fixture, so a change to newline bytes alone fails even when it would be invisible in the diff display.
 
 The `external_formatter_*.case` transcripts cover formatters that remove only the final LF from their output, as Ruff does for notebook cells. The CRLF and CR-only fixtures in `tests/fixtures/` disable Git newline conversion and use `--check` to catch changes to newline bytes. The LF transcript also shows code formatting in Markdown, Quarto, and YAML blocks. A configured Python command simulates the formatter without depending on the installed Ruff version; `tests/external_formatter_line_endings.rs` checks exact output bytes and second passes for LF, CRLF, and CR-only inputs.
+
+`external_formatter_early_stdin_close.case` covers a successful formatter that closes stdin before reading it. The public CLI specifications repeat this with input larger than a pipe buffer and check that nonzero status, stderr, invalid UTF-8, and unsafe fence output still fail.
 
 Git integration transcripts can add a `-- git-fixture` JSON object with `config` and `files` mappings and an optional `cwd` relative to the repository root (default `.`). The harness creates a temporary repository, applies the local Git settings, writes and commits the supplied files, and runs the recorded invocation there. Output uses `{{repo}}` for that temporary repository's absolute path. An optional `-- git-status` section records the expected subsequent `git status --porcelain` output. `git_filter_join_crlf.case` verifies that joining the filter keeps a CRLF checkout clean when `core.autocrlf=true`. The LF and explicit `eol=lf` companion cases cover the corresponding compatibility boundaries.
 

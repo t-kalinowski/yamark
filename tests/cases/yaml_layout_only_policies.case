@@ -1,0 +1,26 @@
+-- args
+format --stdin-file-path input.yaml --wrap none --verify
+-- stdin
+held: &saved # parent
+  'Café value'
+templated: ["{{ keep   bytes }}",  1]
+items:
+  - one
+  - two
+body: !markdown |
+  Keep __strong__.
+  Continue on another line.
+# fmt: compact scope=file
+# fmt: markdown canonical=true wrap=paragraph scope=file
+-- stdout
+held: &saved # parent
+  'Café value'
+templated: ["{{ keep   bytes }}",  1]
+items: [one, two]
+body: !markdown |
+  Keep **strong**. Continue on another line.
+# fmt: compact scope=file
+# fmt: markdown canonical=true wrap=paragraph scope=file
+-- stderr
+-- status
+0

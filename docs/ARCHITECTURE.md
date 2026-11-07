@@ -52,6 +52,28 @@ Explicit inline Markdown targets still format when followed by an indented comme
 
 Retained quoted continuations keep their source indentation when the parent moves left. YAML quoted line folding discards that physical indentation; retaining it accommodates continuations left of the opening quote and keeps indented document-marker text inside the scalar. Moving the parent right still shifts the continuation lines with it.
 
+## YAML parsing and planning
+
+`YamlParser` owns the input cursor, trivia, directive engine, and construction of semantic nodes. `YamlPlanner` in `yaml/plan.rs` borrows the source, effective options, document, and YAML arena to select emission plans. It has no input cursor or directive engine. Replanning an existing document uses this borrowed view directly; it does not construct a parser or ingest the YAML again.
+
+These are ownership boundaries, not additional physical passes. Parsing still invokes planning at the existing node-completion points. Constructing a planner only borrows existing storage; it does not allocate a second representation or scan the source. `YamlTemplatePresence` retains conservative source/configuration facts and per-state memoization across these short-lived planner calls.
+
+Planning is not a single irreversible decision at node creation:
+
+1. A completed node can receive a provisional plan before its parent's context is known.
+2. File-scoped directives patch existing states and nested Markdown documents. A layout-only refresh retains preservation decisions but clears width measurements and recomputes all emission plans. Changes to preservation, target eligibility, or template delimiters also invalidate preservation decisions. Both refreshes retain parser-required parent-entry boundaries and source indentation.
+3. Final document planning uses child-before-parent arena order to propagate source-indentation constraints, then applies parent indentation and available width to descendants. Root document markers are parser-owned source structure, not layout decisions.
+
+Do not move work across these boundaries without checking directive error precedence, owned-source diagnostic coordinates, and parent-header preservation. A validation parse still builds semantic structure without ordinary emission planning. This separation preserves the current schedule; it is not a claim that every source byte or AST node is visited only once.
+
+`YamlAstNode::must_preserve_source` is a memo for the current policy, not a durable source fact. The parser records a required parent-entry boundary separately, so a later template directive can invalidate the memo without dropping a tag, anchor, comment, or intervening trivia. Attaching scalar properties resets that structural requirement before the enclosing parser reestablishes it: the new tag can make the scalar an explicit Markdown target. The early/late policy tests in `tests/yaml_policy_invalidation.rs` protect this distinction. Template recognition still follows the existing YAML preservation policy, including whole-scalar preservation for templated Markdown targets.
+
+`YamlPlanRefresh` classifies every `DirectiveDelta` field explicitly, so adding a field requires revisiting cache dependencies. A layout-only delta must not skip emission planning: compactness or Markdown options can change an emission plan while its preservation answer remains valid. Nested-document replanning uses the same classification and refreshes layout even for an empty delta, since its base options may have changed. Property attachment still performs full invalidation because the node's source properties, not just its directive state, changed.
+
+Ordinary and compact block sequences share `parse_sequence_item_at` in `yaml/parse.rs`. That method owns value-recognition precedence, same-line directive handling, node properties, and parent-header preservation. The two sequence loops retain their distinct marker and termination rules, including compact entries that begin after another marker on the same physical line. New sequence value syntax belongs in the shared method, not in two parallel branches.
+
+`tests/yaml_planning_contracts.rs` exercises these boundaries through public parsing, preparation, and formatting APIs. Start with that suite and a focused [CLI transcript](../tests/cases/README.md), then run the full public and allocation suites. The trace assertions cover input ingestion counts; they do not count every planning visit.
+
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.
