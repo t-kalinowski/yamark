@@ -997,7 +997,6 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let mut end = start;
 
         while self.line < self.end {
-            let line = self.source.lines[self.line];
             let text = self.source.line_text(self.line);
             if tab_in_indentation(text).is_some() {
                 self.unread_trivia(leading);
@@ -1013,154 +1012,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 break;
             }
 
-            let marker = Span::new(
-                line.text.start() + marker_local,
-                line.text.start() + marker_local + 1,
-            );
-            let value_start = marker_local
-                + 1
-                + text[marker_local + 1..]
-                    .bytes()
-                    .take_while(|byte| byte.is_ascii_whitespace())
-                    .count();
-            let line_value = split_line_value_comment(text, value_start, line.text.start());
-            self.reject_populated_same_line_yaml_directive(line_value)?;
-
-            let mut item_trailing_comment = None;
-            let mut value_on_marker_line = false;
-            let value = if let Some(block) = quoted_scalar_block_from_value(
-                self.source,
-                self.line,
-                self.end,
-                value_start,
-                line.full.start(),
-            ) {
-                let value = self.parse_quoted_scalar_block(block)?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(block) = flow_collection_block_from_value(
-                self.source,
-                self.line,
-                self.end,
-                value_start,
-                line.full.start(),
-            )
-            .and_then(FlowCollectionScan::complete)
-            {
-                let value = self.parse_flow_collection_block(block, Vec::new())?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(hint) =
-                flow_collapse_hint_from_value(self.source, self.line, self.end, value_start, true)
-            {
-                let value =
-                    self.parse_flow_collapse_hint_collection(indent, Vec::new(), hint, false)?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(block) =
-                block_scalar_at_value(self.source, self.line, self.end, value_start, indent)
-            {
-                let value = self.parse_block_scalar(block)?;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(value) =
-                self.parse_sequence_item_explicit_mapping(indent, value_start)?
-            {
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if compact_sequence_marker_at(text, value_start).is_some() {
-                let value = self.parse_compact_sequence(value_start)?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(value) =
-                self.parse_sequence_item_inline_mapping(indent, value_start)?
-            {
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else {
-                let metadata = scalar_metadata(self.source, line_value.value);
-                let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
-                let property_only_value = !value_is_empty
-                    && (metadata.tag.is_some() || metadata.anchor.is_some())
-                    && self.source.slice(metadata.content).trim_ascii().is_empty();
-                self.line += 1;
-                if value_is_empty || property_only_value {
-                    item_trailing_comment = line_value.trailing_comment;
-                    let inline_directive =
-                        self.apply_same_line_yaml_directive(line_value.trailing_comment)?;
-                    let nested_leading = self.take_leading_trivia()?;
-                    let nested_is_target = inline_directive
-                        || leading
-                            .iter()
-                            .any(|trivia| trivia.kind == YamlTriviaKind::Directive);
-                    if self.next_line_has_tab_indentation() {
-                        let nested = self.parse_tab_indented_opaque(nested_leading)?;
-                        if property_only_value {
-                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
-                        }
-                        end = self.ast.node(nested).span.end();
-                        Some(nested)
-                    } else if self.line < self.end
-                        && indentation(self.source.line_text(self.line)) > indent
-                    {
-                        let nested =
-                            self.parse_block(indent + 1, nested_leading, nested_is_target)?;
-                        if let Some(nested) = nested {
-                            if property_only_value {
-                                self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
-                            }
-                            end = self.ast.node(nested).span.end();
-                        } else {
-                            end = line.full.end();
-                        }
-                        nested
-                    } else {
-                        self.unread_trivia(nested_leading);
-                        if property_only_value {
-                            let scalar = self.push_scalar_line_with_comment(
-                                line.full.into(),
-                                line_value.value,
-                                line_value.trailing_comment,
-                                PlainScalarContinuation::None,
-                            )?;
-                            end = self.ast.node(scalar).span.end();
-                            Some(scalar)
-                        } else {
-                            let scalar =
-                                self.push_empty_scalar(line.full.into(), line.text.end())?;
-                            end = line.full.end();
-                            Some(scalar)
-                        }
-                    }
-                } else {
-                    let scalar = self.push_scalar_line_with_comment(
-                        line.full.into(),
-                        line_value.value,
-                        line_value.trailing_comment,
-                        PlainScalarContinuation::Inline {
-                            parent_indent: indent,
-                        },
-                    )?;
-                    end = self.ast.node(scalar).span.end();
-                    Some(scalar)
-                }
-            };
-
-            self.preserve_scalar_entry_header(value, line.full.into(), item_trailing_comment);
-            items.push(YamlSequenceItem {
-                leading_trivia: std::mem::take(&mut leading).into(),
-                marker: SourceSpan::new(marker),
-                line: SourceSpan::new(line.full.into()),
-                value_on_marker_line,
-                trailing_comment: item_trailing_comment.map(SourceSpan::new),
-                value,
-            });
+            let (item, item_end) =
+                self.parse_sequence_item_at(indent, marker_local, std::mem::take(&mut leading))?;
+            end = item_end;
+            items.push(item);
 
             leading = self.take_leading_trivia()?;
             if trivia_has_document_marker(&leading)
@@ -1213,7 +1068,6 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         let mut first = true;
 
         while self.line < self.end {
-            let line = self.source.lines[self.line];
             let text = self.source.line_text(self.line);
             let marker_local = if first {
                 let Some(marker) = compact_sequence_marker_at(text, indent) else {
@@ -1234,154 +1088,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             };
             first = false;
 
-            let marker = Span::new(
-                line.text.start() + marker_local,
-                line.text.start() + marker_local + 1,
-            );
-            let value_start = marker_local
-                + 1
-                + text[marker_local + 1..]
-                    .bytes()
-                    .take_while(|byte| byte.is_ascii_whitespace())
-                    .count();
-            let line_value = split_line_value_comment(text, value_start, line.text.start());
-            self.reject_populated_same_line_yaml_directive(line_value)?;
-
-            let mut item_trailing_comment = None;
-            let mut value_on_marker_line = false;
-            let value = if let Some(block) = quoted_scalar_block_from_value(
-                self.source,
-                self.line,
-                self.end,
-                value_start,
-                line.full.start(),
-            ) {
-                let value = self.parse_quoted_scalar_block(block)?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(block) = flow_collection_block_from_value(
-                self.source,
-                self.line,
-                self.end,
-                value_start,
-                line.full.start(),
-            )
-            .and_then(FlowCollectionScan::complete)
-            {
-                let value = self.parse_flow_collection_block(block, Vec::new())?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(hint) =
-                flow_collapse_hint_from_value(self.source, self.line, self.end, value_start, true)
-            {
-                let value =
-                    self.parse_flow_collapse_hint_collection(indent, Vec::new(), hint, false)?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(block) =
-                block_scalar_at_value(self.source, self.line, self.end, value_start, indent)
-            {
-                let value = self.parse_block_scalar(block)?;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(value) =
-                self.parse_sequence_item_explicit_mapping(indent, value_start)?
-            {
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if compact_sequence_marker_at(text, value_start).is_some() {
-                let value = self.parse_compact_sequence(value_start)?;
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else if let Some(value) =
-                self.parse_sequence_item_inline_mapping(indent, value_start)?
-            {
-                value_on_marker_line = true;
-                end = self.ast.node(value).span.end();
-                Some(value)
-            } else {
-                let metadata = scalar_metadata(self.source, line_value.value);
-                let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
-                let property_only_value = !value_is_empty
-                    && (metadata.tag.is_some() || metadata.anchor.is_some())
-                    && self.source.slice(metadata.content).trim_ascii().is_empty();
-                self.line += 1;
-                if value_is_empty || property_only_value {
-                    item_trailing_comment = line_value.trailing_comment;
-                    let inline_directive =
-                        self.apply_same_line_yaml_directive(line_value.trailing_comment)?;
-                    let nested_leading = self.take_leading_trivia()?;
-                    let nested_is_target = inline_directive
-                        || leading
-                            .iter()
-                            .any(|trivia| trivia.kind == YamlTriviaKind::Directive);
-                    if self.next_line_has_tab_indentation() {
-                        let nested = self.parse_tab_indented_opaque(nested_leading)?;
-                        if property_only_value {
-                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
-                        }
-                        end = self.ast.node(nested).span.end();
-                        Some(nested)
-                    } else if self.line < self.end
-                        && indentation(self.source.line_text(self.line)) > indent
-                    {
-                        let nested =
-                            self.parse_block(indent + 1, nested_leading, nested_is_target)?;
-                        if let Some(nested) = nested {
-                            if property_only_value {
-                                self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
-                            }
-                            end = self.ast.node(nested).span.end();
-                        } else {
-                            end = line.full.end();
-                        }
-                        nested
-                    } else {
-                        self.unread_trivia(nested_leading);
-                        if property_only_value {
-                            let scalar = self.push_scalar_line_with_comment(
-                                line.full.into(),
-                                line_value.value,
-                                line_value.trailing_comment,
-                                PlainScalarContinuation::None,
-                            )?;
-                            end = self.ast.node(scalar).span.end();
-                            Some(scalar)
-                        } else {
-                            let scalar =
-                                self.push_empty_scalar(line.full.into(), line.text.end())?;
-                            end = line.full.end();
-                            Some(scalar)
-                        }
-                    }
-                } else {
-                    let scalar = self.push_scalar_line_with_comment(
-                        line.full.into(),
-                        line_value.value,
-                        line_value.trailing_comment,
-                        PlainScalarContinuation::Inline {
-                            parent_indent: indent,
-                        },
-                    )?;
-                    end = self.ast.node(scalar).span.end();
-                    Some(scalar)
-                }
-            };
-
-            self.preserve_scalar_entry_header(value, line.full.into(), item_trailing_comment);
-            items.push(YamlSequenceItem {
-                leading_trivia: std::mem::take(&mut leading).into(),
-                marker: SourceSpan::new(marker),
-                line: SourceSpan::new(line.full.into()),
-                value_on_marker_line,
-                trailing_comment: item_trailing_comment.map(SourceSpan::new),
-                value,
-            });
+            let (item, item_end) =
+                self.parse_sequence_item_at(indent, marker_local, std::mem::take(&mut leading))?;
+            end = item_end;
+            items.push(item);
 
             leading = self.take_leading_trivia()?;
             if trivia_has_document_marker(&leading)
@@ -1417,6 +1127,170 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         ));
         self.plan_yaml_sequence_emit(id);
         Ok(id)
+    }
+
+    /// Parse the shared value grammar for ordinary and compact sequence entries.
+    ///
+    /// Callers own marker recognition and sequence boundaries; keeping value
+    /// precedence and parent-header preservation here prevents the two entry
+    /// forms from drifting without scanning or buffering the value again.
+    fn parse_sequence_item_at(
+        &mut self,
+        indent: usize,
+        marker_local: usize,
+        leading: Vec<YamlTrivia>,
+    ) -> Result<(YamlSequenceItem, usize)> {
+        let line = self.source.lines[self.line];
+        let text = self.source.line_text(self.line);
+        let end;
+
+        let marker = Span::new(
+            line.text.start() + marker_local,
+            line.text.start() + marker_local + 1,
+        );
+        let value_start = marker_local
+            + 1
+            + text[marker_local + 1..]
+                .bytes()
+                .take_while(|byte| byte.is_ascii_whitespace())
+                .count();
+        let line_value = split_line_value_comment(text, value_start, line.text.start());
+        self.reject_populated_same_line_yaml_directive(line_value)?;
+
+        let mut item_trailing_comment = None;
+        let mut value_on_marker_line = false;
+        let value = if let Some(block) = quoted_scalar_block_from_value(
+            self.source,
+            self.line,
+            self.end,
+            value_start,
+            line.full.start(),
+        ) {
+            let value = self.parse_quoted_scalar_block(block)?;
+            value_on_marker_line = true;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else if let Some(block) = flow_collection_block_from_value(
+            self.source,
+            self.line,
+            self.end,
+            value_start,
+            line.full.start(),
+        )
+        .and_then(FlowCollectionScan::complete)
+        {
+            let value = self.parse_flow_collection_block(block, Vec::new())?;
+            value_on_marker_line = true;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else if let Some(hint) =
+            flow_collapse_hint_from_value(self.source, self.line, self.end, value_start, true)
+        {
+            let value =
+                self.parse_flow_collapse_hint_collection(indent, Vec::new(), hint, false)?;
+            value_on_marker_line = true;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else if let Some(block) =
+            block_scalar_at_value(self.source, self.line, self.end, value_start, indent)
+        {
+            let value = self.parse_block_scalar(block)?;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else if let Some(value) =
+            self.parse_sequence_item_explicit_mapping(indent, value_start)?
+        {
+            value_on_marker_line = true;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else if compact_sequence_marker_at(text, value_start).is_some() {
+            let value = self.parse_compact_sequence(value_start)?;
+            value_on_marker_line = true;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else if let Some(value) = self.parse_sequence_item_inline_mapping(indent, value_start)? {
+            value_on_marker_line = true;
+            end = self.ast.node(value).span.end();
+            Some(value)
+        } else {
+            let metadata = scalar_metadata(self.source, line_value.value);
+            let value_is_empty = self.source.slice(line_value.value).trim_ascii().is_empty();
+            let property_only_value = !value_is_empty
+                && (metadata.tag.is_some() || metadata.anchor.is_some())
+                && self.source.slice(metadata.content).trim_ascii().is_empty();
+            self.line += 1;
+            if value_is_empty || property_only_value {
+                item_trailing_comment = line_value.trailing_comment;
+                let inline_directive =
+                    self.apply_same_line_yaml_directive(line_value.trailing_comment)?;
+                let nested_leading = self.take_leading_trivia()?;
+                let nested_is_target = inline_directive
+                    || leading
+                        .iter()
+                        .any(|trivia| trivia.kind == YamlTriviaKind::Directive);
+                if self.next_line_has_tab_indentation() {
+                    let nested = self.parse_tab_indented_opaque(nested_leading)?;
+                    if property_only_value {
+                        self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
+                    }
+                    end = self.ast.node(nested).span.end();
+                    Some(nested)
+                } else if self.line < self.end
+                    && indentation(self.source.line_text(self.line)) > indent
+                {
+                    let nested = self.parse_block(indent + 1, nested_leading, nested_is_target)?;
+                    if let Some(nested) = nested {
+                        if property_only_value {
+                            self.attach_node_properties(nested, metadata.tag, metadata.anchor)?;
+                        }
+                        end = self.ast.node(nested).span.end();
+                    } else {
+                        end = line.full.end();
+                    }
+                    nested
+                } else {
+                    self.unread_trivia(nested_leading);
+                    if property_only_value {
+                        let scalar = self.push_scalar_line_with_comment(
+                            line.full.into(),
+                            line_value.value,
+                            line_value.trailing_comment,
+                            PlainScalarContinuation::None,
+                        )?;
+                        end = self.ast.node(scalar).span.end();
+                        Some(scalar)
+                    } else {
+                        let scalar = self.push_empty_scalar(line.full.into(), line.text.end())?;
+                        end = line.full.end();
+                        Some(scalar)
+                    }
+                }
+            } else {
+                let scalar = self.push_scalar_line_with_comment(
+                    line.full.into(),
+                    line_value.value,
+                    line_value.trailing_comment,
+                    PlainScalarContinuation::Inline {
+                        parent_indent: indent,
+                    },
+                )?;
+                end = self.ast.node(scalar).span.end();
+                Some(scalar)
+            }
+        };
+
+        self.preserve_scalar_entry_header(value, line.full.into(), item_trailing_comment);
+        Ok((
+            YamlSequenceItem {
+                leading_trivia: leading.into(),
+                marker: SourceSpan::new(marker),
+                line: SourceSpan::new(line.full.into()),
+                value_on_marker_line,
+                trailing_comment: item_trailing_comment.map(SourceSpan::new),
+                value,
+            },
+            end,
+        ))
     }
 
     fn parse_sequence_item_inline_mapping(

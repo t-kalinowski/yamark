@@ -6,11 +6,13 @@ use super::syntax::{
     LineValue, document_marker, document_marker_line_info, scalar_metadata,
     standard_yaml_directive, tab_in_indentation, yaml_error_at,
 };
+use crate::config::Config;
 use crate::core::directives::{
     Directive, DirectiveDelta, file_scope_delta, parse_yaml_hash_directive,
 };
-use crate::core::source::{SourceSpan, Span};
-use crate::core::yaml_model::{YamlAstKind, YamlTrivia, YamlTriviaKind};
+use crate::core::document::{Document, FormatOptions};
+use crate::core::source::{SourceBuffer, SourceSpan, Span};
+use crate::core::yaml_model::{YamlAstKind, YamlDocumentAst, YamlTrivia, YamlTriviaKind};
 use crate::diagnostic::Result;
 use crate::plugins::PluginRegistry;
 
@@ -193,53 +195,19 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     }
 
     pub(super) fn patch_existing_ast_states(&mut self, delta: &DirectiveDelta) {
-        let mut patched = Vec::with_capacity(self.ast.nodes.len());
-        for node in &self.ast.nodes {
-            let mut state = self.doc.states.get(node.state).clone();
-            delta.apply_to(&mut state);
-            patched.push(self.doc.states.intern(state));
-        }
-        for (node, state) in self.ast.nodes.iter_mut().zip(patched) {
-            node.state = state;
-        }
+        patch_existing_ast_states(&mut self.doc, &mut self.ast, delta);
     }
 
     pub(super) fn patch_nested_markdown_documents(&mut self, delta: &DirectiveDelta) -> Result<()> {
-        let mut nested_markdown = Vec::new();
-        for node in &self.ast.nodes {
-            let YamlAstKind::Scalar(scalar) = &node.kind else {
-                continue;
-            };
-            let Some(nested) = scalar.nested else {
-                continue;
-            };
-            if scalar.body.is_none() {
-                continue;
-            }
-            nested_markdown.push((nested as usize, node.state));
-        }
-        for (nested, state) in nested_markdown {
-            let state = self.doc.state(state).clone();
-            let nested_config = config_for_directive_state(self.config, &state);
-            if self.plan_emits {
-                crate::core::markdown::apply_file_scope_delta_to_markdown_document(
-                    self.source,
-                    &mut self.doc.nested[nested],
-                    delta,
-                    state.markdown_options(self.options),
-                    &nested_config,
-                )?;
-            } else {
-                crate::core::markdown::apply_file_scope_delta_to_markdown_document_for_concrete_validation(
-                        self.source,
-                        &mut self.doc.nested[nested],
-                        delta,
-                        state.markdown_options(self.options),
-                        &nested_config,
-                    )?;
-            }
-        }
-        Ok(())
+        patch_nested_markdown_documents(
+            self.source,
+            &mut self.doc,
+            &self.ast,
+            delta,
+            self.options,
+            self.config,
+            self.plan_emits,
+        )
     }
 
     pub(super) fn unread_trivia(&mut self, trivia: Vec<YamlTrivia>) {
@@ -254,4 +222,66 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             self.held_trivia = merged;
         }
     }
+}
+
+pub(super) fn patch_existing_ast_states(
+    doc: &mut Document,
+    ast: &mut YamlDocumentAst,
+    delta: &DirectiveDelta,
+) {
+    let mut patched = Vec::with_capacity(ast.nodes.len());
+    for node in &ast.nodes {
+        let mut state = doc.states.get(node.state).clone();
+        delta.apply_to(&mut state);
+        patched.push(doc.states.intern(state));
+    }
+    for (node, state) in ast.nodes.iter_mut().zip(patched) {
+        node.state = state;
+    }
+}
+
+pub(super) fn patch_nested_markdown_documents(
+    source: &SourceBuffer,
+    doc: &mut Document,
+    ast: &YamlDocumentAst,
+    delta: &DirectiveDelta,
+    options: FormatOptions,
+    config: &Config,
+    plan_emits: bool,
+) -> Result<()> {
+    let mut nested_markdown = Vec::new();
+    for node in &ast.nodes {
+        let YamlAstKind::Scalar(scalar) = &node.kind else {
+            continue;
+        };
+        let Some(nested) = scalar.nested else {
+            continue;
+        };
+        if scalar.body.is_none() {
+            continue;
+        }
+        nested_markdown.push((nested as usize, node.state));
+    }
+    for (nested, state) in nested_markdown {
+        let state = doc.state(state).clone();
+        let nested_config = config_for_directive_state(config, &state);
+        if plan_emits {
+            crate::core::markdown::apply_file_scope_delta_to_markdown_document(
+                source,
+                &mut doc.nested[nested],
+                delta,
+                state.markdown_options(options),
+                &nested_config,
+            )?;
+        } else {
+            crate::core::markdown::apply_file_scope_delta_to_markdown_document_for_concrete_validation(
+                    source,
+                    &mut doc.nested[nested],
+                    delta,
+                    state.markdown_options(options),
+                    &nested_config,
+                )?;
+        }
+    }
+    Ok(())
 }

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 
@@ -20,12 +20,20 @@ struct Case {
 #[test]
 fn cli_cases() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cases");
-    let mut cases = fs::read_dir(root)
+    let cases = fs::read_dir(root)
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("case"))
         .collect::<Vec<_>>();
-    cases.sort();
+    let filter = match std::env::var("YAMARK_CASE") {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => panic!("cannot read YAMARK_CASE: {error}"),
+    };
+    let cases = select_cases(cases, filter.as_deref()).unwrap_or_else(|error| panic!("{error}"));
+    if let Some(filter) = filter.as_deref().filter(|value| !value.is_empty()) {
+        eprintln!("YAMARK_CASE={filter:?}: selected {} CLI cases", cases.len());
+    }
 
     for path in cases {
         let case = parse_case(&fs::read_to_string(&path).unwrap());
@@ -94,6 +102,74 @@ fn cli_cases() {
                 );
             }
         }
+    }
+}
+
+fn select_cases(mut cases: Vec<PathBuf>, filter: Option<&str>) -> Result<Vec<PathBuf>, String> {
+    cases.sort();
+    if let Some(filter) = filter.filter(|value| !value.is_empty()) {
+        cases.retain(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains(filter))
+        });
+        if cases.is_empty() {
+            return Err(format!(
+                "YAMARK_CASE={filter:?} did not match any .case filename in tests/cases"
+            ));
+        }
+    }
+    Ok(cases)
+}
+
+#[test]
+fn case_selection_without_filter_is_sorted() {
+    let cases = vec![
+        PathBuf::from("yaml_scalar.case"),
+        PathBuf::from("markdown.case"),
+    ];
+    let expected = vec![
+        PathBuf::from("markdown.case"),
+        PathBuf::from("yaml_scalar.case"),
+    ];
+    assert_eq!(select_cases(cases.clone(), None).unwrap(), expected);
+    assert_eq!(select_cases(cases, Some("")).unwrap(), expected);
+}
+
+#[test]
+fn case_selection_matches_filename_substrings() {
+    let cases = vec![
+        PathBuf::from("yaml_scalar.case"),
+        PathBuf::from("markdown.case"),
+        PathBuf::from("yaml_flow.case"),
+    ];
+    assert_eq!(
+        select_cases(cases.clone(), Some("yaml_")).unwrap(),
+        vec![
+            PathBuf::from("yaml_flow.case"),
+            PathBuf::from("yaml_scalar.case")
+        ]
+    );
+    assert_eq!(
+        select_cases(cases, Some("yaml_scalar.case")).unwrap(),
+        vec![PathBuf::from("yaml_scalar.case")]
+    );
+}
+
+#[test]
+fn case_selection_ignores_parent_directory_names() {
+    let cases = vec![Path::new("yaml_checkout").join("markdown.case")];
+    assert!(select_cases(cases, Some("yaml_")).is_err());
+}
+
+#[test]
+fn case_selection_rejects_unmatched_filters() {
+    for filter in ["no_such_case", "YAML", "yaml_*"] {
+        let cases = vec![PathBuf::from("yaml_scalar.case")];
+        assert_eq!(
+            select_cases(cases, Some(filter)).unwrap_err(),
+            format!("YAMARK_CASE={filter:?} did not match any .case filename in tests/cases")
+        );
     }
 }
 

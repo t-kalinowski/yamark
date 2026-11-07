@@ -17,6 +17,21 @@ expected stderr
 
 The test harness intentionally avoids calling library internals. This keeps the public CLI contract readable and prevents implementation details from becoming part of the test API.
 
+## Running selected cases
+
+Run the complete transcript suite with `cargo test --test cli_cases`. To run one case or a related group, set `YAMARK_CASE` for that command:
+
+```sh
+YAMARK_CASE=yaml_multiline_parent_properties.case cargo test --test cli_cases -- --nocapture
+YAMARK_CASE=yaml_multiline_ cargo test --test cli_cases -- --nocapture
+```
+
+The filter is a case-sensitive, literal substring of the `.case` filename, including its extension. It does not match the checkout path and does not interpret globs or regular expressions. Matches run in filename order. A nonempty filter that matches no cases fails, so a typo cannot report a successful empty run. Unset or empty `YAMARK_CASE` runs every case. Platform-specific cases keep their usual platform restrictions.
+
+In PowerShell, set `$env:YAMARK_CASE = 'yaml_multiline_'`, run `cargo test --test cli_cases -- --nocapture`, then clear it with `Remove-Item Env:YAMARK_CASE`. Keep the filter unset when running the complete validation gate. `--nocapture` shows how many transcripts were selected; Cargo's test-name filter alone cannot select an individual transcript because they share one test function.
+
+## Coverage
+
 The `yaml_multiline_plain_prose` and `yaml_multiline_quoted_prose` transcripts cover wrapping existing scalar continuation lines and formatting sibling collections while preserving comments. `yaml_multiline_scalar_comments` keeps trailing comments outside scalar values, `yaml_multiline_tagged_plain` checks decoding before explicit string-tag normalization, and `yaml_multiline_root_trivia` retains comments and document markers on root block scalars. `external-tests/cli/test_yaml_multiline_prose.py` checks independent YAML 1.2 value equality and second-pass byte idempotence across scalar positions, line endings, quotes, escapes, blank lines, and repeated spaces.
 
 `yaml_multiline_template_indent` keeps preserved template scalars aligned with their siblings, and `yaml_multiline_indented_root` checks literal conversion relative to the emitted root header. The external YAML tests cover source indentation, configured widths, nested mappings and sequences, template delimiters, skip directives, and independent value and idempotence checks.

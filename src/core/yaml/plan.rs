@@ -1,6 +1,9 @@
-//! YAML emission plans, contextual indentation, and document-root bookkeeping.
+//! YAML emission plans and contextual indentation.
+//!
+//! The planner borrows the parsed document, but has no input cursor or directive
+//! engine. Parsing invokes it at the existing node-completion boundaries; this
+//! ownership boundary does not add a source or AST traversal.
 
-use super::YamlParser;
 use super::block_scalar::{
     block_scalar_body_reindent_is_safe, block_scalar_following_comment_indent,
     inline_markdown_scalar_is_renderable, markdown_block_scalar_body_is_empty,
@@ -13,20 +16,47 @@ use super::flow_emit::{
     yaml_node_has_properties, yaml_node_should_preserve,
     yaml_node_should_preserve_uncached_with_template_possible, yaml_node_source_indent,
 };
-use super::syntax::{DocumentMarkerKind, document_marker_kind};
 use super::table::{
     compact_yaml_node_width, flow_table_sequence_renderable,
     yaml_block_collection_has_flow_collapse_hint, yaml_node_is_block_collection,
 };
-use crate::core::directives::StateId;
-use crate::core::document::FormatOptions;
-use crate::core::source::{SourceSpan, Span};
+use super::{YamlParser, YamlTemplatePresence};
+use crate::config::Config;
+use crate::core::document::{Document, FormatOptions};
+use crate::core::source::{SourceBuffer, SourceSpan};
 use crate::core::yaml_model::{
-    YamlAstKind, YamlAstNode, YamlEmitPlan, YamlNodeId, YamlRenderedKind, YamlRoot, YamlScalar,
-    YamlTriviaKind,
+    YamlAstKind, YamlAstNode, YamlDocumentAst, YamlEmitPlan, YamlNodeId, YamlRenderedKind,
+    YamlScalar,
 };
 
-impl<'src, 'cfg> YamlParser<'src, 'cfg> {
+pub(super) struct YamlPlanner<'a> {
+    source: &'a SourceBuffer,
+    options: FormatOptions,
+    config: &'a Config,
+    doc: &'a mut Document,
+    ast: &'a mut YamlDocumentAst,
+    template_presence: &'a YamlTemplatePresence,
+}
+
+impl<'a> YamlPlanner<'a> {
+    pub(super) fn new(
+        source: &'a SourceBuffer,
+        options: FormatOptions,
+        config: &'a Config,
+        doc: &'a mut Document,
+        ast: &'a mut YamlDocumentAst,
+        template_presence: &'a YamlTemplatePresence,
+    ) -> Self {
+        Self {
+            source,
+            options,
+            config,
+            doc,
+            ast,
+            template_presence,
+        }
+    }
+
     pub(super) fn record_plan_trace(&mut self) {
         let mut rendered_scalars = 0usize;
         let mut rendered_flow = 0usize;
@@ -122,14 +152,6 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         }
     }
 
-    pub(super) fn push_planned_yaml_node(&mut self, node: YamlAstNode) -> YamlNodeId {
-        let id = self.ast.push_node(node);
-        if self.plan_emits {
-            self.plan_yaml_node_emit(id);
-        }
-        id
-    }
-
     fn plan_yaml_node_emit(&mut self, id: YamlNodeId) {
         if id.index() >= self.ast.nodes.len() {
             return;
@@ -167,45 +189,14 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
     fn yaml_node_should_preserve_uncached(&self, node: &YamlAstNode) -> bool {
         yaml_node_should_preserve_uncached_with_template_possible(
             self.source,
-            &self.doc,
+            self.doc,
             node,
-            self.template_spans_possible_for_state(node.state),
+            self.template_presence
+                .spans_possible_for_state(self.doc, self.config, node.state),
         )
     }
 
-    pub(super) fn template_spans_possible_for_state(&self, state: StateId) -> bool {
-        if self.default_template_openers_present {
-            return true;
-        }
-        let mut cache = self.template_spans_possible_by_state.borrow_mut();
-        let state = state.index();
-        if state >= cache.len() {
-            cache.resize(state + 1, None);
-        }
-        if let Some(template_spans_possible) = cache[state] {
-            return template_spans_possible;
-        }
-        let template_spans_possible = self.doc.state(StateId::new(state)).template_delimiters
-            != self.config.template_delimiters;
-        cache[state] = Some(template_spans_possible);
-        template_spans_possible
-    }
-
-    pub(super) fn plan_parsed_yaml_flow_nodes(&mut self) {
-        let mut ids = std::mem::take(&mut self.flow_collection_nodes);
-        if self.plan_emits {
-            for id in ids.iter().copied() {
-                self.plan_yaml_node_emit(id);
-            }
-        }
-        ids.clear();
-        self.flow_collection_nodes = ids;
-    }
-
-    pub(super) fn plan_yaml_contextual_child_emits(&mut self, id: YamlNodeId) {
-        if !self.plan_emits {
-            return;
-        }
+    fn plan_yaml_contextual_child_emits(&mut self, id: YamlNodeId) {
         let node = self.ast.node(id);
         let options = self.doc.state(node.state).yaml_options(self.options);
         match &node.kind {
@@ -328,116 +319,6 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         }
     }
 
-    pub(super) fn populate_document_root_markers(&mut self) {
-        let original_roots = std::mem::take(&mut self.ast.roots);
-        let mut roots = Vec::with_capacity(original_roots.len());
-        let mut pending_start = None;
-
-        for root in original_roots {
-            if let Some(node) = root.node {
-                let markers = self
-                    .ast
-                    .node(node)
-                    .leading_trivia
-                    .iter()
-                    .filter(|trivia| trivia.kind == YamlTriviaKind::DocumentMarker)
-                    .map(|trivia| trivia.span)
-                    .collect::<Vec<_>>();
-                for marker in markers {
-                    self.apply_document_marker_to_roots(&mut roots, &mut pending_start, marker);
-                }
-                roots.push(YamlRoot {
-                    node: Some(node),
-                    start_marker: pending_start.take(),
-                    end_marker: root.end_marker,
-                });
-            } else {
-                roots.push(root);
-            }
-        }
-
-        let trailing_markers = self
-            .ast
-            .trailing_trivia
-            .iter()
-            .filter(|trivia| trivia.kind == YamlTriviaKind::DocumentMarker)
-            .map(|trivia| trivia.span)
-            .collect::<Vec<_>>();
-        for marker in trailing_markers {
-            self.apply_document_marker_to_roots(&mut roots, &mut pending_start, marker);
-        }
-        if let Some(start_marker) = pending_start.take() {
-            let empty = self.push_empty_document_node(Span::empty(start_marker.end()));
-            roots.push(YamlRoot {
-                node: Some(empty),
-                start_marker: Some(start_marker),
-                end_marker: None,
-            });
-        }
-
-        self.ast.roots = roots;
-    }
-
-    fn apply_document_marker_to_roots(
-        &mut self,
-        roots: &mut Vec<YamlRoot>,
-        pending_start: &mut Option<SourceSpan>,
-        marker: SourceSpan,
-    ) {
-        match document_marker_kind(self.source.slice(marker)) {
-            Some(DocumentMarkerKind::Start) => {
-                if let Some(start_marker) = pending_start.take() {
-                    let empty = self.push_empty_document_node(Span::new(
-                        start_marker.end().min(marker.start()),
-                        marker.start(),
-                    ));
-                    roots.push(YamlRoot {
-                        node: Some(empty),
-                        start_marker: Some(start_marker),
-                        end_marker: None,
-                    });
-                }
-                *pending_start = Some(marker);
-            }
-            Some(DocumentMarkerKind::End) => {
-                if let Some(start_marker) = pending_start.take() {
-                    let empty = self.push_empty_document_node(Span::new(
-                        start_marker.end().min(marker.start()),
-                        marker.start(),
-                    ));
-                    roots.push(YamlRoot {
-                        node: Some(empty),
-                        start_marker: Some(start_marker),
-                        end_marker: Some(marker),
-                    });
-                } else if let Some(root) = roots
-                    .iter_mut()
-                    .rev()
-                    .find(|root| root.end_marker.is_none())
-                {
-                    root.end_marker = Some(marker);
-                } else {
-                    let empty = self.push_empty_document_node(Span::empty(marker.start()));
-                    roots.push(YamlRoot {
-                        node: Some(empty),
-                        start_marker: None,
-                        end_marker: Some(marker),
-                    });
-                }
-            }
-            None => {}
-        }
-    }
-
-    fn push_empty_document_node(&mut self, span: Span) -> YamlNodeId {
-        self.ast.push_node(YamlAstNode::semantic(
-            YamlAstKind::Empty,
-            span,
-            Vec::new(),
-            StateId(0),
-        ))
-    }
-
     fn yaml_mapping_value_context_plan(
         &self,
         key: SourceSpan,
@@ -476,7 +357,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             }
             YamlAstKind::FlowSequence(_) | YamlAstKind::FlowMapping(_) => {
                 let rendered_width =
-                    planned_yaml_inline_width_or_source(self.source, &self.doc, &self.ast, value);
+                    planned_yaml_inline_width_or_source(self.source, self.doc, self.ast, value);
                 let key = self.source.slice(key).trim_ascii();
                 let inline_width = mapping_indent + key.chars().count() + 2 + rendered_width;
                 if yaml_flow_collection_should_expand(
@@ -488,8 +369,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     if trailing_comment.is_none()
                         && yaml_flow_collection_block_renderable(
                             self.source,
-                            &self.doc,
-                            &self.ast,
+                            self.doc,
+                            self.ast,
                             value,
                             mapping_pair_child_indent(
                                 value_node,
@@ -535,7 +416,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     let available_width = options.line_width.saturating_sub(
                         mapping_indent + self.source.slice(key).trim_ascii().chars().count() + 2,
                     );
-                    if compact_yaml_node_width(self.source, &self.doc, &self.ast, value)
+                    if compact_yaml_node_width(self.source, self.doc, self.ast, value)
                         .is_some_and(|width| width <= available_width)
                     {
                         return Some((
@@ -592,7 +473,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             }
             YamlAstKind::FlowSequence(_) | YamlAstKind::FlowMapping(_) => {
                 let rendered_width =
-                    planned_yaml_inline_width_or_source(self.source, &self.doc, &self.ast, value);
+                    planned_yaml_inline_width_or_source(self.source, self.doc, self.ast, value);
                 let inline_width = sequence_indent + 2 + rendered_width;
                 if yaml_flow_collection_should_expand(
                     self.source,
@@ -603,8 +484,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     if trailing_comment.is_none()
                         && yaml_flow_collection_block_renderable(
                             self.source,
-                            &self.doc,
-                            &self.ast,
+                            self.doc,
+                            self.ast,
                             value,
                             sequence_indent + options.indent_width,
                             options,
@@ -640,7 +521,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     && mapping.pairs.len() == 1
                     && mapping.pairs[0]
                         .value
-                        .is_some_and(|value| !yaml_node_is_block_collection(&self.ast, value))
+                        .is_some_and(|value| !yaml_node_is_block_collection(self.ast, value))
                 {
                     return Some((value, YamlEmitPlan::None));
                 }
@@ -657,7 +538,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     )
                 {
                     let available_width = options.line_width.saturating_sub(sequence_indent + 2);
-                    if compact_yaml_node_width(self.source, &self.doc, &self.ast, value)
+                    if compact_yaml_node_width(self.source, self.doc, self.ast, value)
                         .is_some_and(|width| width <= available_width)
                     {
                         return Some((
@@ -727,17 +608,9 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         .then_some(sequence_indent + options.indent_width)
     }
 
-    pub(super) fn plan_yaml_sequence_emit(&mut self, id: YamlNodeId) {
-        if !self.plan_emits {
-            return;
-        }
-        self.plan_yaml_node_emit(id);
-        self.plan_yaml_contextual_child_emits(id);
-    }
-
     fn yaml_emit_plan_for(&self, id: YamlNodeId) -> YamlEmitPlan {
         let node = self.ast.node(id);
-        if yaml_node_should_preserve(self.source, &self.doc, node) {
+        if yaml_node_should_preserve(self.source, self.doc, node) {
             return YamlEmitPlan::PreserveSource;
         }
 
@@ -757,8 +630,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 if let Some(compact_table) = state.table_compact {
                     if flow_table_sequence_renderable(
                         self.source,
-                        &self.doc,
-                        &self.ast,
+                        self.doc,
+                        self.ast,
                         sequence,
                         compact_table,
                     )
@@ -769,7 +642,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     return YamlEmitPlan::PreserveSource;
                 }
                 if options.yaml_compact
-                    && compact_yaml_node_width(self.source, &self.doc, &self.ast, id).is_some_and(
+                    && compact_yaml_node_width(self.source, self.doc, self.ast, id).is_some_and(
                         |width| {
                             width
                                 <= options
@@ -790,7 +663,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     return self.yaml_flow_collapse_hint_emit_plan(id, available_width);
                 }
                 if options.yaml_compact
-                    && compact_yaml_node_width(self.source, &self.doc, &self.ast, id).is_some_and(
+                    && compact_yaml_node_width(self.source, self.doc, self.ast, id).is_some_and(
                         |width| {
                             width
                                 <= options
@@ -810,7 +683,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 let multiline_intent =
                     yaml_flow_collection_has_multiline_intent(self.source, node, options);
                 let Some(output_width) =
-                    render_yaml_inline_node_width(self.source, &self.doc, &self.ast, id)
+                    render_yaml_inline_node_width(self.source, self.doc, self.ast, id)
                 else {
                     return if multiline_intent {
                         YamlEmitPlan::PreserveSource
@@ -823,8 +696,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                     if flow_trailing_comment(&node.kind).is_none()
                         && yaml_flow_collection_block_renderable(
                             self.source,
-                            &self.doc,
-                            &self.ast,
+                            self.doc,
+                            self.ast,
                             id,
                             yaml_node_source_indent(self.source, node),
                             options,
@@ -848,7 +721,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         id: YamlNodeId,
         available_width: usize,
     ) -> YamlEmitPlan {
-        if compact_yaml_node_width(self.source, &self.doc, &self.ast, id)
+        if compact_yaml_node_width(self.source, self.doc, self.ast, id)
             .is_some_and(|width| width <= available_width)
         {
             return YamlEmitPlan::rendered_shape(YamlRenderedKind::CompactCollection);
@@ -907,5 +780,63 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return YamlEmitPlan::None;
         }
         YamlEmitPlan::rendered_shape(YamlRenderedKind::Scalar)
+    }
+}
+
+// Keep recognition and planning interleaved at the existing boundaries. These
+// adapters borrow a planner only for the operation; they do not copy an AST,
+// allocate a second representation, or scan nodes on construction.
+impl<'src, 'cfg> YamlParser<'src, 'cfg> {
+    fn planner(&mut self) -> YamlPlanner<'_> {
+        YamlPlanner::new(
+            self.source,
+            self.options,
+            self.config,
+            &mut self.doc,
+            &mut self.ast,
+            &self.template_presence,
+        )
+    }
+
+    pub(super) fn record_plan_trace(&mut self) {
+        self.planner().record_plan_trace();
+    }
+
+    pub(super) fn plan_yaml_emits(&mut self, clear_inline_width_cache: bool) {
+        self.planner().plan_yaml_emits(clear_inline_width_cache);
+    }
+
+    pub(super) fn push_planned_yaml_node(&mut self, node: YamlAstNode) -> YamlNodeId {
+        let id = self.ast.push_node(node);
+        if self.plan_emits {
+            self.planner().plan_yaml_node_emit(id);
+        }
+        id
+    }
+
+    pub(super) fn plan_parsed_yaml_flow_nodes(&mut self) {
+        let mut ids = std::mem::take(&mut self.flow_collection_nodes);
+        if self.plan_emits {
+            let mut planner = self.planner();
+            for id in ids.iter().copied() {
+                planner.plan_yaml_node_emit(id);
+            }
+        }
+        ids.clear();
+        self.flow_collection_nodes = ids;
+    }
+
+    pub(super) fn plan_yaml_contextual_child_emits(&mut self, id: YamlNodeId) {
+        if self.plan_emits {
+            self.planner().plan_yaml_contextual_child_emits(id);
+        }
+    }
+
+    pub(super) fn plan_yaml_sequence_emit(&mut self, id: YamlNodeId) {
+        if self.plan_emits {
+            let mut planner = self.planner();
+            planner.plan_yaml_node_emit(id);
+            planner.plan_yaml_contextual_child_emits(id);
+        }
     }
 }

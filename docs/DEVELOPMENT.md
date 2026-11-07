@@ -29,6 +29,8 @@ For behavior changes, add a failing [CLI transcript](../tests/cases/README.md) b
 | `git diff --check`                                                                      | Check whitespace in the patch.                      |
 | `scripts/check.sh`                                                                      | Complete local gate, also used by CI.               |
 
+For a focused transcript run, use `YAMARK_CASE=yaml_multiline_ cargo test --test cli_cases -- --nocapture`. `YAMARK_CASE` selects a literal filename substring and fails when no case matches; see [CLI case files](../tests/cases/README.md). Leave it unset for the complete validation gate.
+
 `scripts/check.sh` checks Rust formatting, runs Clippy with all features and targets, runs the Rust tests with Python dependencies, executes the `format-trace` feature's diagnostic tests, runs the external suite, and runs the editor tests. It stops at the first failed command. Read the output and fix the cause before rerunning. Report a failed or unavailable stage rather than counting it as coverage.
 
 Keep the checkout and Git HEAD unchanged during validation; benchmark tests compare artifacts keyed by commit. Use one Cargo build/test owner per checkout. Cargo's build lock does not cover the entire lifetime of integration tests that launch `target/debug/yamark`. Another build can replace that executable between invocations. Parallel test processes within one test run are supported; independent build/test runs need separate checkouts and target directories.
