@@ -424,7 +424,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 message,
             ));
         }
-        let clear_inline_width_cache = if self.file_scope_delta != DirectiveDelta::default() {
+        let invalidate_policy_caches = if self.file_scope_delta != DirectiveDelta::default() {
             let delta = self.file_scope_delta.clone();
             self.patch_existing_ast_states(&delta);
             if directive_delta_affects_markdown(&delta) {
@@ -436,7 +436,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         };
         self.populate_document_root_markers();
         if self.plan_emits {
-            self.plan_yaml_emits(clear_inline_width_cache);
+            self.plan_yaml_emits(invalidate_policy_caches);
             if self.collect_trace {
                 self.record_plan_trace();
             }

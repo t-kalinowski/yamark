@@ -36,6 +36,8 @@ The `yaml_multiline_plain_prose` and `yaml_multiline_quoted_prose` transcripts c
 
 `yaml_multiline_template_indent` keeps preserved template scalars aligned with their siblings, and `yaml_multiline_indented_root` checks literal conversion relative to the emitted root header. The external YAML tests cover source indentation, configured widths, nested mappings and sequences, template delimiters, skip directives, and independent value and idempotence checks.
 
+`yaml_late_template_policy` and `markdown_late_yaml_template_policy` apply file-scoped template delimiters after YAML has already been parsed, directly and inside a Markdown fence. They preserve template bytes, quotes, and parent headers while editable siblings still format. Templated Markdown scalars follow the same preservation policy as an early directive; other explicit Markdown targets still receive late canonicalization. `tests/yaml_policy_invalidation.rs` checks that early and late policies agree at different widths with LF, CRLF, and CR line endings.
+
 The `markdown_nested_list_continuation_*` transcripts keep paragraphs after nested lists inside their outer items. These layouts use the existing list preservation behavior when they cannot be safely reflowed. The boundary case also checks that sibling markers and top-level paragraphs still delimit list items. `tests/nested_list_continuation.rs` checks line endings, wrap modes, and second passes through the CLI.
 
 The `markdown_list_shifted_sibling_lazy_continuation` and `markdown_list_empty_item_pandoc_continuation` transcripts preserve layouts whose partial rewrites change item membership. Empty-item indentation can parse differently in GFM and Pandoc; preserving these layouts keeps both interpretations intact.

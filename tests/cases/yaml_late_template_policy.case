@@ -1,0 +1,34 @@
+-- args
+format --stdin-file-path input.yaml --line-width 12 --wrap none --verify
+-- stdin
+held: &saved # parent
+  'Café value'
+quoted: "<< item >>"
+items: [<< a,b >>]
+body: !markdown |
+  Keep __strong__ and << literal  bytes >>.
+plain: !markdown |
+  Keep __strong__ and `literal  bytes`.
+attached: !markdown
+  |
+    Keep __attached__.
+ok: [x,y]
+# fmt: template.delimiters "<<" ">>" scope=file
+# fmt: markdown canonical=true scope=file
+-- stdout
+held: &saved # parent
+  'Café value'
+quoted: "<< item >>"
+items: [<< a,b >>]
+body: !markdown |
+  Keep __strong__ and << literal  bytes >>.
+plain: !markdown |
+  Keep **strong** and `literal  bytes`.
+attached: !markdown |
+  Keep **attached**.
+ok: [x, y]
+# fmt: template.delimiters "<<" ">>" scope=file
+# fmt: markdown canonical=true scope=file
+-- stderr
+-- status
+0

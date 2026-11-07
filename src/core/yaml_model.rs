@@ -73,7 +73,10 @@ pub struct YamlAstNode {
     pub leading_trivia: Box<[YamlTrivia]>,
     pub state: StateId,
     pub emit: YamlEmitPlan,
+    // A derived decision for the current policy, not the parser's retained
+    // parent-entry boundary. Policy changes invalidate this memo.
     pub must_preserve_source: Option<bool>,
+    parent_entry_requires_source: bool,
     // Retained descendants anchor collection indentation, including ancestors
     // whose movement could otherwise cross a preserved child's source column.
     pub(crate) requires_source_indent: bool,
@@ -97,12 +100,39 @@ impl YamlAstNode {
             state,
             emit: YamlEmitPlan::None,
             must_preserve_source: None,
+            parent_entry_requires_source: false,
             requires_source_indent: false,
             inline_markdown: None,
             inline_width: Cell::new(YAML_WIDTH_CACHE_EMPTY),
             flow_inline_width: Cell::new(YAML_WIDTH_CACHE_EMPTY),
             source_indent: Cell::new(YAML_SOURCE_INDENT_CACHE_EMPTY),
         }
+    }
+
+    pub(crate) fn requires_parent_entry_preservation(&self) -> bool {
+        self.parent_entry_requires_source
+    }
+
+    pub(crate) fn require_parent_entry_preservation(&mut self) {
+        self.parent_entry_requires_source = true;
+        self.must_preserve_source = Some(true);
+        self.emit = YamlEmitPlan::PreserveSource;
+        self.clear_inline_width();
+        self.clear_flow_inline_width();
+    }
+
+    pub(crate) fn reset_parent_entry_preservation(&mut self) {
+        // Attached properties can change whether this scalar is an explicit
+        // target. Its enclosing parser reestablishes any required boundary.
+        self.parent_entry_requires_source = false;
+        self.invalidate_policy_caches();
+    }
+
+    pub(crate) fn invalidate_policy_caches(&mut self) {
+        // Source ownership and source indentation survive policy changes.
+        self.must_preserve_source = None;
+        self.clear_inline_width();
+        self.clear_flow_inline_width();
     }
 
     pub fn inline_width(&self) -> Option<Option<usize>> {

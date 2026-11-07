@@ -23,9 +23,9 @@ use crate::config::Config;
 use crate::core::directives::{DirectiveState, DirectiveTargetKind, StateId};
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
 use crate::core::yaml_model::{
-    YamlAlias, YamlAstKind, YamlAstNode, YamlBlockScalarHeader, YamlEmitPlan, YamlMapping,
-    YamlMappingPair, YamlNodeId, YamlOpaque, YamlOpaqueReason, YamlScalar, YamlScalarSemantic,
-    YamlScalarStyle, YamlSequence, YamlSequenceItem, YamlTrivia, YamlTriviaKind,
+    YamlAlias, YamlAstKind, YamlAstNode, YamlBlockScalarHeader, YamlMapping, YamlMappingPair,
+    YamlNodeId, YamlOpaque, YamlOpaqueReason, YamlScalar, YamlScalarSemantic, YamlScalarStyle,
+    YamlSequence, YamlSequenceItem, YamlTrivia, YamlTriviaKind,
 };
 use crate::core::yaml_scan::scan_yaml_lines;
 use crate::diagnostic::{Result, YamarkError};
@@ -857,9 +857,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 );
                 // Parent properties arrive after the child was initially
                 // planned; tags can make it an explicit Markdown target.
-                node.must_preserve_source = None;
-                node.clear_inline_width();
-                node.clear_flow_inline_width();
+                node.reset_parent_entry_preservation();
             }
             YamlAstKind::Empty | YamlAstKind::Alias(_) | YamlAstKind::Opaque(_) => {}
         }
@@ -915,11 +913,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         // when moving the value inline would lose its header or leading trivia.
         // Do this before container planning so compact layouts and indentation
         // propagation observe the same source-preservation boundary.
-        let node = self.ast.node_mut(value);
-        node.must_preserve_source = Some(true);
-        node.emit = YamlEmitPlan::PreserveSource;
-        node.clear_inline_width();
-        node.clear_flow_inline_width();
+        self.ast.node_mut(value).require_parent_entry_preservation();
     }
 
     fn push_mapping_key_node(&mut self, key: Span) -> Option<YamlNodeId> {

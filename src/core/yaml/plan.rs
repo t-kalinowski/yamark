@@ -82,15 +82,15 @@ impl<'a> YamlPlanner<'a> {
         self.doc.trace.planned_rendered_block_flow_collections = rendered_block_flow;
     }
 
-    pub(super) fn plan_yaml_emits(&mut self, clear_inline_width_cache: bool) {
-        if clear_inline_width_cache {
-            self.clear_flow_inline_width_cache();
+    pub(super) fn plan_yaml_emits(&mut self, invalidate_policy_caches: bool) {
+        if invalidate_policy_caches {
+            self.invalidate_policy_caches();
         }
         let node_count = self.ast.nodes.len();
         for index in 0..node_count {
             let id = YamlNodeId::new(index);
             let needs_plan =
-                clear_inline_width_cache || self.ast.node(id).must_preserve_source.is_none();
+                invalidate_policy_caches || self.ast.node(id).must_preserve_source.is_none();
             if needs_plan {
                 self.plan_yaml_node_emit(id);
             }
@@ -145,10 +145,9 @@ impl<'a> YamlPlanner<'a> {
         }
     }
 
-    fn clear_flow_inline_width_cache(&self) {
-        for node in &self.ast.nodes {
-            node.clear_inline_width();
-            node.clear_flow_inline_width();
+    fn invalidate_policy_caches(&mut self) {
+        for node in &mut self.ast.nodes {
+            node.invalidate_policy_caches();
         }
     }
 
@@ -802,8 +801,8 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
         self.planner().record_plan_trace();
     }
 
-    pub(super) fn plan_yaml_emits(&mut self, clear_inline_width_cache: bool) {
-        self.planner().plan_yaml_emits(clear_inline_width_cache);
+    pub(super) fn plan_yaml_emits(&mut self, invalidate_policy_caches: bool) {
+        self.planner().plan_yaml_emits(invalidate_policy_caches);
     }
 
     pub(super) fn push_planned_yaml_node(&mut self, node: YamlAstNode) -> YamlNodeId {

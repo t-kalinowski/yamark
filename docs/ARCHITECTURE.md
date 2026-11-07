@@ -61,10 +61,12 @@ These are ownership boundaries, not additional physical passes. Parsing still in
 Planning is not a single irreversible decision at node creation:
 
 1. A completed node can receive a provisional plan before its parent's context is known.
-2. File-scoped directives patch existing states and nested Markdown documents. Planning follows the existing width-cache invalidation rules; explicit source-preservation decisions must not be discarded as if they were width measurements.
+2. File-scoped directives patch existing states and nested Markdown documents. The existing invalidation walk clears computed preservation decisions alongside width measurements, while retaining parser-required parent-entry boundaries and source indentation.
 3. Final document planning uses child-before-parent arena order to propagate source-indentation constraints, then applies parent indentation and available width to descendants. Root document markers are parser-owned source structure, not layout decisions.
 
 Do not move work across these boundaries without checking directive error precedence, owned-source diagnostic coordinates, and parent-header preservation. A validation parse still builds semantic structure without ordinary emission planning. This separation preserves the current schedule; it is not a claim that every source byte or AST node is visited only once.
+
+`YamlAstNode::must_preserve_source` is a memo for the current policy, not a durable source fact. The parser records a required parent-entry boundary separately, so a later template directive can invalidate the memo without dropping a tag, anchor, comment, or intervening trivia. Attaching scalar properties resets that structural requirement before the enclosing parser reestablishes it: the new tag can make the scalar an explicit Markdown target. The early/late policy tests in `tests/yaml_policy_invalidation.rs` protect this distinction. Template recognition still follows the existing YAML preservation policy, including whole-scalar preservation for templated Markdown targets.
 
 Ordinary and compact block sequences share `parse_sequence_item_at` in `yaml/parse.rs`. That method owns value-recognition precedence, same-line directive handling, node properties, and parent-header preservation. The two sequence loops retain their distinct marker and termination rules, including compact entries that begin after another marker on the same physical line. New sequence value syntax belongs in the shared method, not in two parallel branches.
 

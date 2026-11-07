@@ -865,6 +865,9 @@ pub(super) fn yaml_node_should_preserve_uncached_with_template_possible(
     node: &YamlAstNode,
     template_spans_possible: bool,
 ) -> bool {
+    if node.requires_parent_entry_preservation() {
+        return true;
+    }
     let state = document.state(node.state);
     state.preserve
         || (template_spans_possible && yaml_node_preserves_own_template_span(&node.kind) && {
