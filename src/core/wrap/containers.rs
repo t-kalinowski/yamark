@@ -34,7 +34,7 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
         let line = lines[index];
         let body = line.body;
         let newline = line.newline;
-        if body.trim().is_empty() {
+        if body.trim_ascii().is_empty() {
             out.push_str(source, body);
             out.push_str(source, newline);
             index += 1;
@@ -69,7 +69,7 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
             pieces.push((paragraph_content, paragraph_newline));
             while index < lines.len() {
                 let continuation_body = lines[index].body;
-                if continuation_body.trim().is_empty() {
+                if continuation_body.trim_ascii().is_empty() {
                     break;
                 }
                 let continuation_indent = continuation_body
@@ -122,12 +122,12 @@ fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Opt
                     prepare_markdown_blockquote(nested_quote)?,
                 );
             }
-            if index >= lines.len() || !lines[index].body.trim().is_empty() {
+            if index >= lines.len() || !lines[index].body.trim_ascii().is_empty() {
                 break;
             }
 
             let blank_start = index;
-            while index < lines.len() && lines[index].body.trim().is_empty() {
+            while index < lines.len() && lines[index].body.trim_ascii().is_empty() {
                 index += 1;
             }
             if index >= lines.len() {
@@ -200,7 +200,7 @@ fn list_needs_rich_format(lines: &[MarkdownLine<'_>]) -> bool {
 
 fn rich_list_child_indent(body: &str) -> Option<usize> {
     let indent = body.bytes().take_while(|byte| *byte == b' ').count();
-    if indent == 0 || body.trim().is_empty() {
+    if indent == 0 || body.trim_ascii().is_empty() {
         return None;
     }
     let trimmed = body[indent..].trim_start();
@@ -214,7 +214,7 @@ fn rich_list_child_block_end(lines: &[MarkdownLine<'_>], start: usize, indent: u
     let mut index = start + 1;
     while index < lines.len() {
         let body = lines[index].body;
-        if body.trim().is_empty() {
+        if body.trim_ascii().is_empty() {
             break;
         }
         let line_indent = body.bytes().take_while(|byte| *byte == b' ').count();
@@ -235,9 +235,9 @@ fn rich_list_code_fence_end(lines: &[MarkdownLine<'_>], start: usize, indent: us
         let body = lines[index].body;
         let line_indent = body.bytes().take_while(|byte| *byte == b' ').count();
         if line_indent >= indent {
-            let trimmed = body[line_indent..].trim();
+            let trimmed = body[line_indent..].trim_ascii();
             let close_len = trimmed.bytes().take_while(|byte| *byte == marker).count();
-            if close_len >= marker_len && trimmed[close_len..].trim().is_empty() {
+            if close_len >= marker_len && trimmed[close_len..].trim_ascii().is_empty() {
                 return index + 1;
             }
         }
@@ -249,7 +249,7 @@ fn rich_list_code_fence_end(lines: &[MarkdownLine<'_>], start: usize, indent: us
 fn strip_rich_list_child_indent(lines: &[MarkdownLine<'_>], indent: usize) -> Option<String> {
     let mut nested = String::new();
     for line in lines {
-        if line.body.trim().is_empty() {
+        if line.body.trim_ascii().is_empty() {
             nested.push_str(line.newline);
             continue;
         }
@@ -309,7 +309,9 @@ pub(crate) fn prepare_markdown_definition_list(source: &str) -> Option<Draft> {
         index += 1;
         while index < lines.len() {
             let continuation = lines[index].body;
-            if continuation.trim().is_empty() || definition_marker_parts(continuation).is_some() {
+            if continuation.trim_ascii().is_empty()
+                || definition_marker_parts(continuation).is_some()
+            {
                 break;
             }
             let indent = continuation.len() - continuation.trim_start().len();
@@ -483,7 +485,7 @@ fn prepare_nested_blockquote_markers(source: &str) -> Option<Draft> {
         } else {
             depth = Some(line_depth);
         }
-        if rest.trim().is_empty() {
+        if rest.trim_ascii().is_empty() {
             return prepare_varying_nested_quote_lines(source);
         }
         pieces.push((rest, line.newline));
@@ -579,7 +581,7 @@ pub(super) fn prepare_markdown_footnote(source: &str) -> Option<Draft> {
     pieces.push((first_content, first.newline));
     for source_line in lines {
         let line = source_line.body;
-        if line.trim().is_empty() {
+        if line.trim_ascii().is_empty() {
             saw_blank_line = true;
             block_continuation_lines.push(Some(("", source_line.newline)));
             continue;
@@ -753,7 +755,7 @@ fn prepare_prefixed_markdown_lines(
     }
     let (body, _) = strip_final_newline(&content);
     let newline = lines.first().map_or("", |(_, newline)| *newline);
-    if body.trim().is_empty() {
+    if body.trim_ascii().is_empty() {
         let mut draft = Draft::text(source, first_prefix.trim_end());
         draft.push_join_newline(newline);
         return draft;
