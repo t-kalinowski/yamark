@@ -1259,11 +1259,12 @@ fn paragraph_should_end_before(
         return false;
     }
     // Pandoc setext headings have a single content line, and thematic breaks
-    // do not interrupt paragraphs, so a later `---` or `===` line is text.
+    // (including spaced forms such as `* * *`, which also look like list
+    // items) do not interrupt paragraphs, so such a later line is text.
     let trimmed = text.trim_ascii();
-    if !trimmed.is_empty()
-        && (trimmed.bytes().all(|byte| byte == b'-') || trimmed.bytes().all(|byte| byte == b'='))
-    {
+    let underline = !trimmed.is_empty()
+        && (trimmed.bytes().all(|byte| byte == b'-') || trimmed.bytes().all(|byte| byte == b'='));
+    if underline || thematic_break_at(text) {
         return false;
     }
     trimmed.is_empty()

@@ -12,6 +12,15 @@ more
 Text
 ***
 
+Text
+* * *
+
+Text
+- - -
+
+Text
+_ _ _
+
 Title
 ---
 -- stdout
@@ -22,6 +31,12 @@ First
 Text more ---
 
 Text ***
+
+Text * * *
+
+Text - - -
+
+Text _ _ _
 
 ## Title
 -- stderr
