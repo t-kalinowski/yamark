@@ -18,6 +18,9 @@ Even \\#
 
 Odd \#
 ---
+
+Quoted # {title="{name}"}
+---
 -- stdout
 ## Hello \#
 
@@ -30,6 +33,8 @@ Odd \#
 ## Even \\\#
 
 ## Odd \#
+
+## Quoted \# {title="{name}"}
 -- stderr
 -- status
 0

@@ -29,7 +29,8 @@ use fences::{
     code_cell_formatter_body, code_fence_at, code_fence_code_cell_without_language,
     code_fence_info, code_fence_info_read_by_pandoc, code_fence_is_code_cell, code_fence_language,
     code_fence_language_supported_opaque, code_fence_local_skip, code_fence_raw_format,
-    find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
+    find_code_fence_closing, is_single_attribute_block, normalized_code_fence_opening,
+    quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
 pub(crate) use planning::MarkdownPlans;
@@ -1095,10 +1096,10 @@ pub(crate) fn render_markdown_setext_heading(
 /// Pandoc drops trailing `#`s, before any trailing attribute block, from an
 /// ATX heading, so escape them to keep them as heading text.
 fn escape_atx_closing_hashes(text: &str) -> String {
-    let (body, attribute) = match text.rfind('{') {
-        Some(open) if text.ends_with('}') => text.split_at(open),
-        _ => (text, ""),
-    };
+    let (body, attribute) = text
+        .match_indices('{')
+        .find(|(open, _)| is_single_attribute_block(&text[*open..]))
+        .map_or((text, ""), |(open, _)| text.split_at(open));
     let content = body.trim_end_matches([' ', '\t']);
     let mut start = content.trim_end_matches('#').len();
     let backslashes = content[..start].len() - content[..start].trim_end_matches('\\').len();

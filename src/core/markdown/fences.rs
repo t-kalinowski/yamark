@@ -513,8 +513,13 @@ pub(super) fn code_fence_info_read_by_pandoc(text: &str) -> bool {
             None => return true,
         }
     };
-    attributes.starts_with('{')
-        && scan_info(attributes).first_attributes_end == Some(attributes.len())
+    is_single_attribute_block(attributes)
+}
+
+/// Whether `text` is one `{...}` attribute block, reading quoted and escaped
+/// values as Pandoc does, so a `}` inside a value does not end it.
+pub(super) fn is_single_attribute_block(text: &str) -> bool {
+    text.starts_with('{') && scan_info(text).first_attributes_end == Some(text.len())
 }
 
 pub(super) fn code_fence_local_skip(text: &str) -> bool {
