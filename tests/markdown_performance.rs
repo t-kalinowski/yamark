@@ -44,4 +44,5 @@ fn adjacent_setext_headings_with_unclosed_literals_format_near_linearly() {
     assert_near_linear("Price $5\n---\n");
     assert_near_linear("Paren \\(\n---\n");
     assert_near_linear("Tick ``a\n---\nTick `b\n---\n");
+    assert_near_linear("```a\u{a0}\n---\n````b\u{a0}\n---\n");
 }

@@ -1099,7 +1099,9 @@ pub(crate) fn render_markdown_setext_heading(
 }
 
 /// Pandoc drops trailing `#`s, before any trailing attribute block, from an
-/// ATX heading, so escape them to keep them as heading text.
+/// ATX heading, so escape them to keep them as heading text. The attribute
+/// block starts at the last `{`; a `{` inside a quoted value is a known
+/// boundary that leaves the hashes unescaped.
 fn escape_atx_closing_hashes(text: &str) -> String {
     let (body, attribute) = match text.rfind('{') {
         Some(open) if text.ends_with('}') => text.split_at(open),
