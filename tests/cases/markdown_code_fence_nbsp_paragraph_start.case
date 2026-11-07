@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+```x  tail```
+
+~~~x  tail~~~
+-- stdout
+```x  tail```
+
+~~~x  tail~~~
+-- stderr
+-- status
+0

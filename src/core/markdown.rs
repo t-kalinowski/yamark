@@ -33,6 +33,12 @@ use fences::{
     quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
+/// Whether `text` opens a code fence. A fence-like line Pandoc rejects, such
+/// as one with a non-ASCII space in its info string, is paragraph text.
+pub(crate) fn code_fence_line(text: &str) -> bool {
+    code_fence_at(text).is_some()
+}
+
 pub(crate) use planning::MarkdownPlans;
 pub(crate) use planning::{document_emit_options, finalize_document, release_planning};
 use planning::{
