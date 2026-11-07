@@ -1233,12 +1233,20 @@ fn heading_attribute_token(token: &str) -> bool {
     let Some((key, value)) = token.split_once('=') else {
         return false;
     };
+    // A quoted value ends the token at its closing quote; Pandoc reads text
+    // after it, such as `title="a"b`, as literal braces.
+    let value_ok = !value.contains(['{', '}', '\''])
+        && match value.strip_prefix('"') {
+            Some(quoted) => quoted
+                .strip_suffix('"')
+                .is_some_and(|inner| !inner.contains('"')),
+            None => !value.is_empty(),
+        };
     !key.is_empty()
         && key
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | ':'))
-        && !value.is_empty()
-        && !value.contains(['{', '}', '\''])
+        && value_ok
 }
 
 fn attribute_tokens(inner: &str) -> Option<Vec<String>> {

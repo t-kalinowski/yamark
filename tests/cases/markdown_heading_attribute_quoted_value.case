@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+# Title # {title="a" b}
+
+# Title # {title="a"b}
+
+# Title # {title=a b}
+
+# Title # {title="a b"}
+-- stdout
+# Title # {title="a" b}
+
+# Title # {title="a"b}
+
+# Title {title=a b}
+
+# Title {title="a b"}
+-- stderr
+-- status
+0
