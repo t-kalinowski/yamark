@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+﻿```x 
+===
+```
+-- stdout
+﻿```x 
+===
+```
+-- stderr
+-- status
+0

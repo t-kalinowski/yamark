@@ -56,14 +56,15 @@ impl CodeSpanClosers {
 }
 
 pub(super) fn code_span_crosses_line_end(source: &SourceBuffer, line: usize, end: usize) -> bool {
-    let text = source.line_text(line);
+    let bom = super::bom_len(source, line);
+    let text = &source.line_text(line)[bom..];
     if !text.trim_start_matches(' ').starts_with("```") {
         return false;
     }
     let closers = source
         .markdown_code_span_closers
         .get_or_init(|| Box::new(CodeSpanClosers::new(source)));
-    let line_start = source.lines[line].text.start();
+    let line_start = source.lines[line].text.start() + bom;
     let line_end = source.lines[line].text.end();
     let blank = closers.blank_lines[closers
         .blank_lines
