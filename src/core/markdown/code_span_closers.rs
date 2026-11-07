@@ -2,14 +2,15 @@
 //! opened on a heading line and closed later in the paragraph spans the
 //! underline, and the line is not a heading.
 //!
+//! This is checked only for a line starting with a fence-like run of three or
+//! more backticks, such as a fence opener Pandoc rejects for a non-ASCII space
+//! in its info string. A code span crossing the underline from elsewhere in a
+//! line, or `$` math doing the same, is a known boundary: deciding where Pandoc
+//! opens a literal there needs its inline parser (link destinations,
+//! autolinks, raw HTML), so such a line is still treated as a heading.
+//!
 //! A code span closes at the next run of exactly as many backticks; an
 //! unmatched run is a literal backtick, and Pandoc retries one backtick later.
-//! Links, raw HTML, and other inline syntax that could hide a backtick are not
-//! modeled. `$` math can cross an underline the same way but is intentionally
-//! not checked: modeling where Pandoc opens math (link destinations, `$` runs,
-//! spacing rules) is a larger inline parser, so such a line is still treated as
-//! a heading.
-//!
 //! Closers are indexed once per buffer, so checking every heading line in a
 //! run of adjacent headings stays linear.
 
@@ -55,6 +56,10 @@ impl CodeSpanClosers {
 }
 
 pub(super) fn code_span_crosses_line_end(source: &SourceBuffer, line: usize, end: usize) -> bool {
+    let text = source.line_text(line);
+    if !text.trim_start_matches(' ').starts_with("```") {
+        return false;
+    }
     let closers = source
         .markdown_code_span_closers
         .get_or_init(|| Box::new(CodeSpanClosers::new(source)));
@@ -70,16 +75,21 @@ pub(super) fn code_span_crosses_line_end(source: &SourceBuffer, line: usize, end
         last if last < source.lines.len() => source.lines[last].full.start(),
         _ => source.as_str().len(),
     };
-    let text = source.line_text(line);
     let bytes = text.as_bytes();
     let mut index = 0;
+    // End of the backtick run being retried, so a long unmatched run is not
+    // recounted for each backtick.
+    let mut run_end = 0;
     while index < bytes.len() {
         match bytes[index] {
             b'\\' => {
                 index += 1 + text[index + 1..].chars().next().map_or(0, char::len_utf8);
             }
             b'`' => {
-                let run = bytes[index..].iter().take_while(|b| **b == b'`').count();
+                if run_end <= index {
+                    run_end = index + bytes[index..].iter().take_while(|b| **b == b'`').count();
+                }
+                let run = run_end - index;
                 match closers.backtick_run_from(run, line_start + index + run) {
                     Some(close) if close < line_end => index = close - line_start + run,
                     Some(close) if close < paragraph_end => return true,

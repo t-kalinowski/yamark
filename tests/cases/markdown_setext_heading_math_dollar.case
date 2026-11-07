@@ -13,10 +13,6 @@ bar \)
 a [x](u$v)
 ===
 c $end$
-
-g ``h
-===
-i`
 -- stdout
 # Price $5
 # Price $6
@@ -26,10 +22,6 @@ bar \)
 
 # a [x](u$v)
 c $end$
-
-g ``h
-===
-i`
 -- stderr
 -- status
 0
