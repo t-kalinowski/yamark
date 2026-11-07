@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+ ```x 
+---
+x```
+y
+
+```a 
+-
+ ```b
+-- stdout
+ ```x 
+---
+x```
+y
+
+```a 
+-
+ ```b
+-- stderr
+-- status
+0

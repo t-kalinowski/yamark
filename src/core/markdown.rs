@@ -1987,7 +1987,13 @@ fn pandoc_table_at(source: &SourceBuffer, line: usize, end: usize) -> bool {
     if current.trim_ascii().is_empty() || table_caption_at(current) {
         return false;
     }
-    pandoc_table_separator(next.trim())
+    let next = next.trim();
+    pandoc_table_separator(next)
+        // A code span crossing a dash underline stops Pandoc reading a setext
+        // heading; it then reads the lines as a single-column simple table.
+        || (!next.is_empty()
+            && next.bytes().all(|byte| byte == b'-')
+            && code_span_closers::code_span_crosses_line_end(source, line, end))
 }
 
 fn pandoc_simple_table_end(source: &SourceBuffer, line: usize, end: usize) -> usize {
