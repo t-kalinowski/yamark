@@ -770,6 +770,7 @@ fn parse_markdown_with_mode(
             && !paragraph_should_end_before(
                 source,
                 i,
+                end_line,
                 &config.markdown_standalone_template_delimiters,
             )
         {
@@ -1252,6 +1253,7 @@ fn markdown_disabled_region_end(source: &SourceBuffer, mut i: usize, end: usize)
 fn paragraph_should_end_before(
     source: &SourceBuffer,
     line: usize,
+    end: usize,
     standalone_template_delimiters: &[TemplateDelimiter],
 ) -> bool {
     let text = source.line_text(line);
@@ -1269,14 +1271,14 @@ fn paragraph_should_end_before(
     }
     trimmed.is_empty()
         || parse_markdown_html_directive(text).is_some()
-        || pandoc_table_at(source, line, source.lines.len())
-        || definition_list_at(source, line, source.lines.len())
+        || pandoc_table_at(source, line, end)
+        || definition_list_at(source, line, end)
         || paired_html_block_start(text).is_some()
         || heading_ranges(source, line).is_some()
         || quarto_div_opening(text).is_some()
-        || pandoc_grid_table_at(source, line, source.lines.len())
-        || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
-        || pipe_table_at(source, line, source.lines.len())
+        || pandoc_grid_table_at(source, line, end)
+        || pandoc_multiline_table_end(source, line, end).is_some()
+        || pipe_table_at(source, line, end)
         || list_item_at(text)
         || blockquote_at(text)
         || raw_sensitive_at(text)

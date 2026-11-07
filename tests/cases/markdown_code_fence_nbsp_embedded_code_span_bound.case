@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+~~~~md
+Paragraph
+```x 
+---
+~~~~
+text ```
+-- stdout
+~~~~md
+Paragraph
+```x 
+---
+~~~~
+text ```
+-- stderr
+-- status
+0
