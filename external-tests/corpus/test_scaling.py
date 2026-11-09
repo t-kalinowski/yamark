@@ -250,6 +250,25 @@ def test_div_code_fences_scale_with_input_size(tmp_path: Path, in_list: bool) ->
     )
 
 
+def test_trailing_fence_info_scales_with_input_size(tmp_path: Path) -> None:
+    durations = []
+    for count in [32_000, 128_000]:
+        # Quoted closing braces must not cause repeated scans from the opener.
+        text = '```{.yaml title="' + "}" * count + '"} suffix\na:   1\n```\n'
+        source = tmp_path / f"fence-info-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source)
+        assert formatted == text
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "fence attribute boundaries should use one linear pass: "
+        f"32000 quoted braces used {small:.6f}s CPU, 128000 used {large:.6f}s CPU"
+    )
+
+
 def measure_formatting_cpu(source: Path, *args: str) -> tuple[float, str]:
     log_path = source.with_suffix(".log")
 

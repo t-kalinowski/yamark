@@ -107,6 +107,8 @@ projection.
 | Raw HTML, TeX, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
 | Template spans | Preserves contents; reflows prose | Complete single-line expressions using default or configured delimiters are opaque words in paragraphs and supported prose containers. See [template configuration](reference-config.qmd#template). |
 
+A backtick opener accepts a bare language and an optional attribute block, or an attribute block alone. Yamark preserves the opener and body when additional text follows, because Pandoc reads that form as inline code. Existing MyST `{code-cell} language` fences retain their executable-fence behavior.
+
 For Quarto header promotion, a supported fence is a YAML or Markdown fence, a
 language with a built-in or configured formatter, or one of the opaque
 languages Yamark preserves safely: `bash`, `sh`, `shell`, `zsh`, `ojs`, `text`,

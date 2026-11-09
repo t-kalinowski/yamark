@@ -1,0 +1,69 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --config tests/fixtures/fence_info_formatters.toml
+-- stdin
+```yaml foo
+a:   1
+```
+
+```yaml {.x} suffix
+a:   1
+```
+
+```yaml {title=a b} suffix
+a:   1
+```
+
+```{.yaml} {.x}
+a:   1
+```
+
+```{.yaml title="}"} suffix
+a:   1
+```
+
+```text foo
+a:   1
+```
+
+```python title="x.py"
+x=1
+```
+
+```markdown foo
+First sentence here. Second sentence here.
+```
+-- stdout
+```yaml foo
+a:   1
+```
+
+```yaml {.x} suffix
+a:   1
+```
+
+```yaml {title=a b} suffix
+a:   1
+```
+
+```{.yaml} {.x}
+a:   1
+```
+
+```{.yaml title="}"} suffix
+a:   1
+```
+
+```text foo
+a:   1
+```
+
+```python title="x.py"
+x=1
+```
+
+```markdown foo
+First sentence here. Second sentence here.
+```
+-- stderr
+-- status
+0

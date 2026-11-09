@@ -32,6 +32,52 @@ pub(super) fn code_fence_at(text: &str) -> Option<Fence> {
     (len >= 3).then_some(Fence { marker, len })
 }
 
+pub(super) fn backtick_fence_has_trailing_info(text: &str, fence: Fence) -> bool {
+    if fence.marker != b'`' {
+        return false;
+    }
+    let info = text.trim_start_matches(' ')[fence.len..].trim_matches([' ', '\t']);
+    // MyST code cells are an existing executable-fence dialect. Pandoc also
+    // permits one attribute block after an optional bare language token.
+    if info.starts_with("{code-cell}") {
+        return false;
+    }
+    let attributes = if info.starts_with('{') {
+        info
+    } else {
+        let Some(separator) = info.bytes().position(|byte| matches!(byte, b' ' | b'\t')) else {
+            return false;
+        };
+        let rest = info[separator..].trim_start_matches([' ', '\t']);
+        if !rest.starts_with('{') {
+            return true;
+        }
+        rest
+    };
+
+    // Find the end of the attribute block once, ignoring quoted values.
+    // This only classifies trailing info; attribute-token validation and
+    // inline-code closing rules remain outside the fence formatter's scope.
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, byte) in attributes.bytes().enumerate().skip(1) {
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if quote == Some(byte) {
+            quote = None;
+        } else if quote.is_none() {
+            if matches!(byte, b'\'' | b'"') && attributes.as_bytes()[index - 1] == b'=' {
+                quote = Some(byte);
+            } else if byte == b'}' {
+                return !attributes[index + 1..].trim_matches([' ', '\t']).is_empty();
+            }
+        }
+    }
+    false
+}
+
 pub(super) fn find_code_fence_closing(
     source: &SourceBuffer,
     i: usize,

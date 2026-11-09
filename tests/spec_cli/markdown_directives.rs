@@ -307,17 +307,13 @@ This [" keep   spacing "] paragraph.
 }
 
 #[test]
-fn markdown_code_fence_local_skip_requires_exact_supported_forms() {
+fn markdown_inline_code_is_preserved_without_local_skip() {
     let input = "\
 ```yaml fmt: skip-extra
 a:    1
 ```
 ";
-    let expected = "\
-```yaml fmt: skip-extra
-a: 1
-```
-";
+    let expected = input;
     let (status, stdout, stderr) = run_stdin(
         &["format", "--stdin-file-path", "input.md", "--wrap", "none"],
         input,

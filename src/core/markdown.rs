@@ -25,10 +25,11 @@ use containers::{
     list_block_supported, list_item_at,
 };
 use fences::{
-    code_cell_formatter_body, code_fence_at, code_fence_code_cell_without_language,
-    code_fence_info, code_fence_is_code_cell, code_fence_language,
-    code_fence_language_supported_opaque, code_fence_local_skip, code_fence_raw_format,
-    find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
+    backtick_fence_has_trailing_info, code_cell_formatter_body, code_fence_at,
+    code_fence_code_cell_without_language, code_fence_info, code_fence_is_code_cell,
+    code_fence_language, code_fence_language_supported_opaque, code_fence_local_skip,
+    code_fence_raw_format, find_code_fence_closing, normalized_code_fence_opening,
+    quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
 pub(crate) use list::{
@@ -661,6 +662,25 @@ fn parse_markdown_with_mode(
             let opening = line.full;
             let closing_span = source.lines[closing].full;
             let content = Span::new(opening.end(), source.lines[closing].full.start());
+            if backtick_fence_has_trailing_info(text, fence) {
+                let state = engine.state_for_node(&mut doc, true);
+                let span = Span::new(opening.start(), closing_span.end());
+                validate_markdown_format_target(
+                    source,
+                    &doc,
+                    state,
+                    span,
+                    code_fence_local_skip(text),
+                )?;
+                doc.push_node(Node {
+                    kind: NodeKind::Markdown(MarkdownNodeKind::Raw),
+                    span,
+                    state,
+                    emit: EmitPlan::Preserve,
+                });
+                i = closing + 1;
+                continue;
+            }
             let language = code_fence_language(text);
             let raw_format = code_fence_raw_format(text);
             let code_cell_without_language = code_fence_code_cell_without_language(text);
