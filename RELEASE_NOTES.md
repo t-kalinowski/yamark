@@ -15,6 +15,7 @@
 - Preserve unsupported list continuations containing non-breaking spaces without slicing through a UTF-8 character and panicking.
 - Treat U+FEFF as a byte order mark only at the start of the file, as Pandoc does. A first line holding only a byte order mark and spaces is now blank, which fixes a panic when `---` or `===` follows it, keeps `---` after a byte-order-mark-only line as a thematic break, and no longer adds a hard line break before the next line. A U+FEFF later in the file, including at the start of blockquote or footnote content, is text, so a setext heading containing it keeps its content.
 - With the optional `format-trace` feature, report retained preservation and unavailable layout plans as skipped, and omit descendant decisions for containers that are explicitly preserved.
+- Keep later paragraphs inside list items after an unindented lazy continuation. Unsupported continuation layouts remain unchanged instead of moving the later paragraph outside its item.
 
 ### YAML formatting
 
