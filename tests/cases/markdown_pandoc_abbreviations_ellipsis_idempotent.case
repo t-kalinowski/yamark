@@ -1,0 +1,47 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+Escaped \.Dr. Smith appears.
+
+Escaped \....Dr. Smith appears.
+
+Escaped \...Dr.
+Smith appears.
+
+I met ...Dr. Smith today.
+He left.
+
+See ...e.g. foo examples.
+More text.
+
+I met .Dr.
+Smith today.
+
+I met ....Dr.
+Smith today.
+
+Suffix x...Dr. Smith appears.
+-- stdout
+Escaped \.Dr. Smith appears.
+
+Escaped \....Dr. Smith appears.
+
+Escaped \...Dr.
+Smith appears.
+
+I met ...Dr. Smith today.
+He left.
+
+See ...e.g. foo examples.
+More text.
+
+I met .Dr.
+Smith today.
+
+I met ....Dr.
+Smith today.
+
+Suffix x...Dr. Smith appears.
+-- stderr
+-- status
+0

@@ -1,0 +1,29 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
+-- stdin
+I met Dr. Smith today. He left.
+
+See fig. 3 for details. Read pp. 4 and 5.
+
+I met (Dr. Smith) today. He left.
+
+I met dr. Smith today. E.G. changes case. xDr. is a different word.
+-- stdout
+I met Dr. Smith today.
+He left.
+
+See fig. 3 for details.
+Read pp. 4 and 5.
+
+I met (Dr. Smith) today.
+He left.
+
+I met dr.
+Smith today.
+E.G.
+changes case.
+xDr.
+is a different word.
+-- stderr
+-- status
+0
