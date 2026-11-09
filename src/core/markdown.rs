@@ -5,6 +5,7 @@
 mod containers;
 mod fences;
 mod frontmatter;
+mod list;
 mod planning;
 
 use crate::config::Config;
@@ -30,10 +31,13 @@ use fences::{
     find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
+pub(crate) use list::{
+    ListBlockKind, ListItem, ListStructure, leading_spaces as leading_list_spaces,
+};
 pub(crate) use planning::MarkdownPlans;
 pub(crate) use planning::{document_emit_options, finalize_document, release_planning};
 use planning::{
-    push_markdown_format_node, push_structural_markdown_format_node,
+    push_markdown_format_node, push_markdown_list_node, push_structural_markdown_format_node,
     validate_markdown_format_target,
 };
 
@@ -498,16 +502,11 @@ fn parse_markdown_with_mode(
                 source.lines[start].full.start(),
                 source.lines[i - 1].full.end(),
             );
-            push_structural_markdown_format_node(
-                source,
-                &mut doc,
-                state,
-                MarkdownNodeKind::List,
-                span,
-                MarkdownBlockFormatKind::List,
-                options,
-                !block.preserve && list_block_supported(source, start, i),
-            )?;
+            let structure = (!block.preserve)
+                .then(|| ListStructure::recognize(source.slice(span)))
+                .flatten()
+                .filter(|structure| list_block_supported(source, start, i, structure));
+            push_markdown_list_node(source, &mut doc, state, span, options, structure)?;
             continue;
         }
 

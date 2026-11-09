@@ -22,7 +22,7 @@ pub use containers::{
     format_markdown_blockquote, format_markdown_definition_list, format_markdown_list,
 };
 pub(crate) use containers::{
-    prepare_markdown_blockquote, prepare_markdown_definition_list, prepare_markdown_list,
+    prepare_markdown_blockquote, prepare_markdown_definition_list, prepare_markdown_list_structure,
 };
 use inline::{Gaps, InlineSource};
 use layout::{
@@ -477,7 +477,7 @@ fn commonmark_block_html_tag(name: &str) -> bool {
     )
 }
 
-fn atx_heading_start(trimmed: &str) -> bool {
+pub(crate) fn atx_heading_start(trimmed: &str) -> bool {
     let depth = trimmed.bytes().take_while(|byte| *byte == b'#').count();
     (1..=6).contains(&depth)
         && trimmed

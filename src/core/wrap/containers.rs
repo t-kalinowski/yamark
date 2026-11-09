@@ -8,7 +8,7 @@ use super::{
     setext_underline_line, strip_final_newline,
 };
 use crate::core::document::FormatOptions;
-use crate::core::lines::{TextLine as MarkdownLine, text_lines as markdown_lines};
+use crate::core::lines::text_lines as markdown_lines;
 use crate::core::markdown_marker::markdown_list_marker;
 
 pub fn format_markdown_list(source: &str, options: FormatOptions) -> String {
@@ -19,267 +19,120 @@ pub fn format_markdown_list(source: &str, options: FormatOptions) -> String {
 }
 
 pub(crate) fn prepare_markdown_list(source: &str) -> Option<Draft> {
-    let lines = markdown_lines(source).collect::<Vec<_>>();
-    if list_needs_rich_format(&lines) {
-        prepare_rich_markdown_list(source, &lines)
-    } else {
-        prepare_simple_markdown_list(source, &lines)
-    }
+    let structure = crate::core::markdown::ListStructure::recognize(source)?;
+    prepare_markdown_list_structure(source, &structure)
 }
 
-fn prepare_simple_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Option<Draft> {
+/// Layout consumes authored item and block boundaries; it never reclassifies
+/// lines using the prefixes that it has just chosen for output.
+pub(crate) fn prepare_markdown_list_structure(
+    source: &str,
+    structure: &crate::core::markdown::ListStructure,
+) -> Option<Draft> {
+    use crate::core::markdown::{ListBlockKind, leading_list_spaces};
+
     let mut out = Draft::new();
-    let mut index = 0usize;
-    while index < lines.len() {
-        let line = lines[index];
-        let body = line.body;
-        let newline = line.newline;
-        if body.trim().is_empty() {
-            out.push_str(source, body);
-            out.push_str(source, newline);
-            index += 1;
-            continue;
-        }
-        let indent_len = body.bytes().take_while(|byte| *byte == b' ').count();
-        let indent = &body[..indent_len];
-        let trimmed = body[indent_len..].trim_start();
-        let (marker, rest) = list_marker(trimmed)?;
-        let marker = if matches!(marker, "*" | "+") {
-            "-"
-        } else {
-            marker
-        };
-        let item_body = rest.trim_start();
-        let (first_prefix, first_content) =
-            if let Some((checkbox, content)) = task_list_checkbox(item_body) {
-                (format!("{indent}{marker} {checkbox} "), content)
-            } else {
-                (format!("{indent}{marker} "), item_body)
-            };
-        let continuation_prefix = " ".repeat(first_prefix.chars().count());
-        let source_prefix_len = body.len() - first_content.len();
-        index += 1;
-        let mut paragraph_prefix = first_prefix;
-        let mut paragraph_content = first_content;
-        let mut paragraph_newline = newline;
-        loop {
-            let mut pieces = Vec::new();
-            let mut nested_quote_start = None;
-            let mut saw_nested_quote = false;
-            pieces.push((paragraph_content, paragraph_newline));
-            while index < lines.len() {
-                let continuation_body = lines[index].body;
-                if continuation_body.trim().is_empty() {
-                    break;
-                }
-                let continuation_indent = continuation_body
-                    .bytes()
-                    .take_while(|byte| *byte == b' ')
-                    .count();
-                let continuation_trimmed = continuation_body[continuation_indent..].trim_start();
-                if list_marker(continuation_trimmed).is_some() {
-                    break;
-                }
-                if continuation_indent < continuation_prefix.len()
-                    || continuation_indent >= continuation_prefix.len() + 4
+    for block in &structure.blocks {
+        let item = &structure.items[block.item];
+        match block.kind {
+            ListBlockKind::Blank(span) => out.push_str(source, span.span().slice(source)),
+            ListBlockKind::Paragraph {
+                source: span,
+                content_start,
+                first,
+            } => {
+                if first
+                    && let Some(parent) = item.parent
+                    && ListPrefix::new(source, &structure.items[parent])
+                        .makes_child_code(item.indent)
                 {
                     return None;
                 }
-                if continuation_trimmed.starts_with('>') {
-                    if continuation_indent != continuation_prefix.len() {
-                        return None;
-                    }
-                    saw_nested_quote = true;
-                    nested_quote_start.get_or_insert(index);
-                    index += 1;
-                    continue;
+                let prefix = ListPrefix::new(source, item);
+                let mut first_prefix = format!("{}{} ", " ".repeat(item.indent), prefix.marker);
+                if let Some(checkbox) = item.checkbox {
+                    first_prefix.push_str(checkbox.span().slice(source));
+                    first_prefix.push(' ');
                 }
-                if saw_nested_quote {
+                let continuation_prefix = " ".repeat(first_prefix.len());
+                let pieces = markdown_lines(span.span().slice(source))
+                    .enumerate()
+                    .map(|(index, line)| {
+                        let cut = if index == 0 {
+                            content_start - span.start()
+                        } else {
+                            item.content_indent.min(leading_list_spaces(line.body))
+                        };
+                        (&line.body[cut..], line.newline)
+                    })
+                    .collect::<Vec<_>>();
+                out.append(prepare_prefixed_markdown_lines(
+                    source,
+                    &pieces,
+                    if first {
+                        &first_prefix
+                    } else {
+                        &continuation_prefix
+                    },
+                    &continuation_prefix,
+                    false,
+                ));
+            }
+            ListBlockKind::Child {
+                source: span,
+                indent,
+            } => {
+                if ListPrefix::new(source, item).makes_child_code(indent) {
                     return None;
                 }
-                pieces.push((
-                    &continuation_body[source_prefix_len.min(continuation_indent)..],
-                    lines[index].newline,
-                ));
-                index += 1;
-            }
-            out.append(prepare_prefixed_markdown_lines(
-                source,
-                &pieces,
-                &paragraph_prefix,
-                &continuation_prefix,
-                false,
-            ));
-            if let Some(start) = nested_quote_start {
-                let first = lines[start].full;
-                let last = lines[index - 1].full;
-                let start = first.as_ptr() as usize - source.as_ptr() as usize;
-                let end = last.as_ptr() as usize - source.as_ptr() as usize + last.len();
-                let nested_quote = &source[start..end];
-                out.push_scoped(
-                    source,
-                    nested_quote,
-                    prepare_markdown_blockquote(nested_quote)?,
+                let mut nested = String::with_capacity(span.len());
+                for line in markdown_lines(span.span().slice(source)) {
+                    if !line.body.trim().is_empty() {
+                        // Recognition proved the authored ASCII prefix exists.
+                        nested.push_str(&line.body[indent..]);
+                    }
+                    nested.push_str(line.newline);
+                }
+                out.child(
+                    FragmentInput::Buffer(std::sync::Arc::new(
+                        crate::core::source::SourceBuffer::new(nested),
+                    )),
+                    Prefix::Indent(indent),
+                    indent,
                 );
             }
-            if index >= lines.len() || !lines[index].body.trim().is_empty() {
-                break;
-            }
-
-            let blank_start = index;
-            while index < lines.len() && lines[index].body.trim().is_empty() {
-                index += 1;
-            }
-            if index >= lines.len() {
-                for blank in &lines[blank_start..index] {
-                    out.push_str(source, blank.full);
-                }
-                break;
-            }
-
-            let continuation_body = lines[index].body;
-            let continuation_indent = continuation_body
-                .bytes()
-                .take_while(|byte| *byte == b' ')
-                .count();
-            let continuation_trimmed = continuation_body[continuation_indent..].trim_start();
-            if list_marker(continuation_trimmed).is_some()
-                || continuation_indent < continuation_prefix.len()
-                || continuation_indent >= continuation_prefix.len() + 4
-            {
-                index = blank_start;
-                break;
-            }
-
-            for blank in &lines[blank_start..index] {
-                out.push_str(source, blank.full);
-            }
-            paragraph_prefix = continuation_prefix.clone();
-            paragraph_content = continuation_trimmed;
-            paragraph_newline = lines[index].newline;
-            index += 1;
         }
     }
     Some(out)
 }
 
-fn prepare_rich_markdown_list(source: &str, lines: &[MarkdownLine<'_>]) -> Option<Draft> {
-    let mut out = Draft::new();
-    let mut index = 0usize;
-    let mut changed = false;
-    while index < lines.len() {
-        if let Some(indent) = rich_list_child_indent(lines[index].body) {
-            let end = rich_list_child_block_end(lines, index, indent);
-            let nested = strip_rich_list_child_indent(&lines[index..end], indent)?;
-            out.child(
-                FragmentInput::Buffer(std::sync::Arc::new(crate::core::source::SourceBuffer::new(
-                    nested,
-                ))),
-                Prefix::Indent(indent),
-                indent,
-            );
-            changed = true;
-            index = end;
-            continue;
-        }
-        let start = index;
-        index += 1;
-        while index < lines.len() && rich_list_child_indent(lines[index].body).is_none() {
-            index += 1;
-        }
-        out.append(prepare_simple_markdown_list(source, &lines[start..index])?);
-    }
-    changed.then_some(out)
+/// A marker's output geometry is layout policy. In particular, checkbox text
+/// affects prose alignment but does not change this structural content column.
+struct ListPrefix<'a> {
+    marker: &'a str,
+    content_indent: usize,
 }
 
-fn list_needs_rich_format(lines: &[MarkdownLine<'_>]) -> bool {
-    lines
-        .iter()
-        .any(|line| rich_list_child_indent(line.body).is_some())
-}
-
-fn rich_list_child_indent(body: &str) -> Option<usize> {
-    let indent = body.bytes().take_while(|byte| *byte == b' ').count();
-    if indent == 0 || body.trim().is_empty() {
-        return None;
-    }
-    let trimmed = body[indent..].trim_start();
-    rich_child_block_start(trimmed).then_some(indent)
-}
-
-fn rich_list_child_block_end(lines: &[MarkdownLine<'_>], start: usize, indent: usize) -> usize {
-    if code_fence_line(lines[start].body[indent..].trim_start()) {
-        return rich_list_code_fence_end(lines, start, indent);
-    }
-    let mut index = start + 1;
-    while index < lines.len() {
-        let body = lines[index].body;
-        if body.trim().is_empty() {
-            break;
+impl<'a> ListPrefix<'a> {
+    fn new(source: &'a str, item: &crate::core::markdown::ListItem) -> Self {
+        let authored = item.marker.span().slice(source);
+        let marker = if matches!(authored, "*" | "+") {
+            "-"
+        } else {
+            authored
+        };
+        Self {
+            marker,
+            content_indent: item.indent + marker.len() + 1,
         }
-        let line_indent = body.bytes().take_while(|byte| *byte == b' ').count();
-        if line_indent < indent {
-            break;
-        }
-        index += 1;
     }
-    index
-}
 
-fn rich_list_code_fence_end(lines: &[MarkdownLine<'_>], start: usize, indent: usize) -> usize {
-    let opener = lines[start].body[indent..].trim_start();
-    let marker = opener.as_bytes().first().copied().unwrap_or(b'`');
-    let marker_len = opener.bytes().take_while(|byte| *byte == marker).count();
-    let mut index = start + 1;
-    while index < lines.len() {
-        let body = lines[index].body;
-        let line_indent = body.bytes().take_while(|byte| *byte == b' ').count();
-        if line_indent >= indent {
-            let trimmed = body[line_indent..].trim();
-            let close_len = trimmed.bytes().take_while(|byte| *byte == marker).count();
-            if close_len >= marker_len && trimmed[close_len..].trim().is_empty() {
-                return index + 1;
-            }
-        }
-        index += 1;
+    fn makes_child_code(&self, child_indent: usize) -> bool {
+        // Child prefixes currently retain authored indentation. Narrowing the
+        // parent marker must not move such a child across the four-space code
+        // boundary. Preserve the list until a separate reindent policy exists.
+        child_indent >= self.content_indent + 4
     }
-    lines.len()
-}
-
-fn strip_rich_list_child_indent(lines: &[MarkdownLine<'_>], indent: usize) -> Option<String> {
-    let mut nested = String::new();
-    for line in lines {
-        if line.body.trim().is_empty() {
-            nested.push_str(line.newline);
-            continue;
-        }
-        let line_indent = line.body.bytes().take_while(|byte| *byte == b' ').count();
-        if line_indent < indent {
-            return None;
-        }
-        nested.push_str(&line.body[indent..]);
-        nested.push_str(line.newline);
-    }
-    Some(nested)
-}
-
-fn code_fence_line(trimmed: &str) -> bool {
-    trimmed.starts_with("```") || trimmed.starts_with("~~~")
-}
-
-fn task_list_checkbox(body: &str) -> Option<(&str, &str)> {
-    let bytes = body.as_bytes();
-    if bytes.len() < 3
-        || bytes[0] != b'['
-        || !matches!(bytes[1], b' ' | b'x' | b'X')
-        || bytes[2] != b']'
-    {
-        return None;
-    }
-    if bytes.get(3).is_some_and(|byte| !byte.is_ascii_whitespace()) {
-        return None;
-    }
-    Some((&body[..3], body[3..].trim_start()))
 }
 
 pub fn format_markdown_definition_list(source: &str, options: FormatOptions) -> String {
@@ -663,10 +516,6 @@ fn prepare_markdown_footnote_block(
         out.trim_final_newline();
     }
     out
-}
-
-fn list_marker(trimmed: &str) -> Option<(&str, &str)> {
-    markdown_list_marker(trimmed)
 }
 
 fn definition_marker_parts(body: &str) -> Option<(String, &str)> {

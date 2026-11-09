@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+*   Outer.
+
+    - Nested. Second
+      wrapped.
+
+*   Other. Second
+    wrapped.
+
+1.  Numbered.
+
+    - Nested. Second
+      wrapped.
+-- stdout
+- Outer.
+
+    - Nested.
+      Second wrapped.
+
+- Other.
+  Second wrapped.
+
+1. Numbered.
+
+    - Nested.
+      Second wrapped.
+-- stderr
+-- status
+0

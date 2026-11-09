@@ -1,0 +1,31 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+- Item. Second
+  wrapped.
+
+  ```text
+  keep  code
+  ```
+
+  After. Second
+  paragraph.
+
+- Sibling. Second
+  wrapped.
+-- stdout
+- Item.
+  Second wrapped.
+
+  ```text
+  keep  code
+  ```
+
+  After.
+  Second paragraph.
+
+- Sibling.
+  Second wrapped.
+-- stderr
+-- status
+0

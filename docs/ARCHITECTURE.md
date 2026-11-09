@@ -52,6 +52,20 @@ Explicit inline Markdown targets still format when followed by an indented comme
 
 Retained quoted continuations keep their source indentation when the parent moves left. YAML quoted line folding discards that physical indentation; retaining it accommodates continuations left of the opening quote and keeps indented document-marker text inside the scalar. Moving the parent right still shifts the continuation lines with it.
 
+## Markdown list recognition and layout
+
+`markdown/list.rs` owns the authored structure inside a recognized list span. Its compact item vector records parent IDs, marker and checkbox spans, source indentation, and content offsets. Its ordered block vector records paragraph spans, blank runs, and recursive child blocks with their owning item. These spans are relative to the enclosing list slice; public document-node spans remain absolute in their source buffer.
+
+`markdown/containers.rs` owns the outer list boundary and conservative capability checks. Those checks consult the recorded item's indentation instead of reconstructing the current item from each line. Recognition of a child is not itself permission to rewrite its enclosing list: mixed raw regions, shifted siblings, child headings, and ambiguous ancestor continuations retain their existing preservation boundaries.
+
+`markdown/planning.rs` retains the list structure until effective directives settle. Ordinary lists defer inline drafts until finalization, which resolves one document node at a time; explicit Markdown targets still prepare early to preserve diagnostic precedence. A late layout or template policy can rebuild the draft from the retained structure without recognizing list ownership again. The structure is released during finalization, before emission.
+
+`wrap/containers.rs` consumes these records to construct paragraph prefixes and recursive child plans. It does not split raw text into independent simple/rich lists. A paragraph after a fence still belongs to its recorded item, and nested continuation lines use the recorded nested owner. Authored child indentation is retained independently of normalized output marker spacing. Layout declines a rewrite if shortening a marker would move a child across the four-space indented-code boundary. Checkbox text affects prose alignment, but never the structural content column used to recognize children. Structural prefix slicing counts authored ASCII spaces; Unicode whitespace in content cannot be turned into a byte offset on another line.
+
+The public standalone `format_markdown_list` helper uses the same recognizer and layout implementation. Other container kinds retain their existing paths. This is a bounded list refactor, not a new generic Markdown syntax tree or a promise that each byte is visited once: outer-boundary discovery, structural recognition, capability checks, and inline layout remain distinct walks. Source spans and per-block planning keep the representation compact; the existing allocation and peak-memory checks protect the ordinary Markdown path.
+
+When extending list children, define their source boundary and item ownership in `markdown/list.rs`, then check whether the conservative capability rules permit the rewrite. Reuse the generic child-plan path where possible. Add public examples that prove useful formatting and preservation boundaries, including the construct before and after another child. The [Markdown development group](DEVELOPMENT.md#validation) is the focused check; the full gate still applies before handoff.
+
 ## YAML parsing and planning
 
 `YamlParser` owns the input cursor, trivia, directive engine, and construction of semantic nodes. `YamlPlanner` in `yaml/plan.rs` borrows the source, effective options, document, and YAML arena to select emission plans. It has no input cursor or directive engine. Replanning an existing document uses this borrowed view directly; it does not construct a parser or ingest the YAML again.
