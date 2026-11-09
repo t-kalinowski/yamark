@@ -1200,13 +1200,14 @@ fn paragraph_should_end_before(
         return false;
     }
     // Pandoc setext headings have one text line at the start of a block.
-    // Neither another text/underline pair nor a rule interrupts a paragraph.
-    // Check these before generic raw/list recognition, which also accepts
-    // underline and spaced thematic-break markers.
+    // Text/underline pairs, rules, lists, and pipe lines need a block boundary.
+    // Check these before generic raw recognition, which also accepts their
+    // markers. List children use the separate container recognizer.
     if thematic_break_at(text)
         || setext_underline_depth(text).is_some()
         || setext_heading_at(source, line, source.lines.len()).is_some()
         || list_item_at(text)
+        || text.trim_start_matches([' ', '\t']).starts_with('|')
     {
         return false;
     }
@@ -1219,7 +1220,6 @@ fn paragraph_should_end_before(
         || quarto_div_opening(text).is_some()
         || pandoc_grid_table_at(source, line, source.lines.len())
         || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
-        || pipe_table_at(source, line, source.lines.len())
         || blockquote_at(text)
         || raw_sensitive_at(text)
         || standalone_template_line_at(text, standalone_template_delimiters)
