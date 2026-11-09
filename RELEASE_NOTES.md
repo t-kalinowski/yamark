@@ -4,6 +4,7 @@
 
 ### Markdown formatting
 
+- Remove source indentation when converting setext headings to ATX so Pandoc still renders them as headings.
 - Preserve trailing hashes such as `C#` when converting setext headings to ATX, including hashes before heading attributes.
 - Keep pipe-table-looking lines in continuing paragraphs as text instead of padding them as tables.
 - Keep list-like lines inside a continuing paragraph as text, while retaining nested lists directly beneath their parent items.

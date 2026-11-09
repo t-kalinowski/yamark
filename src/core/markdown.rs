@@ -1074,7 +1074,13 @@ pub(crate) fn render_markdown_setext_heading(
     text = crate::core::wrap::normalize_heading_content(&text);
 
     let mut output = String::new();
-    output.push_str(source.slice(Span::new(span.start, content.start)));
+    // Pandoc permits indented setext text, but an ATX heading must start at
+    // the content column. Retain a leading BOM while dropping source padding.
+    output.push_str(
+        source
+            .slice(Span::new(span.start, content.start))
+            .trim_end_matches([' ', '\t']),
+    );
     output.push_str(&"#".repeat(depth));
     if !text.is_empty() {
         output.push(' ');
