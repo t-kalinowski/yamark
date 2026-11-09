@@ -97,7 +97,7 @@ pub(crate) fn prepare_markdown_list_structure(
                 }
                 out.child(
                     FragmentInput::Buffer(std::sync::Arc::new(
-                        crate::core::source::SourceBuffer::new(nested),
+                        crate::core::source::SourceBuffer::nested(nested),
                     )),
                     Prefix::Indent(indent),
                     indent,
@@ -286,9 +286,9 @@ fn prepare_rich_markdown_blockquote(source: &str) -> Option<Draft> {
     let quote_prefix_width = indent.chars().count() + "> ".chars().count();
     let mut out = Draft::new();
     out.child(
-        FragmentInput::Buffer(std::sync::Arc::new(crate::core::source::SourceBuffer::new(
-            nested,
-        ))),
+        FragmentInput::Buffer(std::sync::Arc::new(
+            crate::core::source::SourceBuffer::nested(nested),
+        )),
         Prefix::Quote(indent.into()),
         quote_prefix_width,
     );
@@ -511,9 +511,9 @@ fn prepare_markdown_footnote_block(
     out.push_str(source, label);
     out.push_join_newline(newline);
     out.child(
-        FragmentInput::Buffer(std::sync::Arc::new(crate::core::source::SourceBuffer::new(
-            nested,
-        ))),
+        FragmentInput::Buffer(std::sync::Arc::new(
+            crate::core::source::SourceBuffer::nested(nested),
+        )),
         Prefix::Footnote {
             indent: continuation_prefix.into(),
             newline: newline.into(),

@@ -1,0 +1,47 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Intro
+
+﻿
+---
+
+﻿   
+Next   line.
+
+> ﻿
+> ---
+>
+> Quoted.
+
+Text[^1].
+
+[^1]: Note.
+
+    ﻿
+    ---
+
+    More.
+-- stdout
+Intro
+
+## ﻿
+
+﻿ \
+Next line.
+
+> ## ﻿
+>
+> Quoted.
+
+Text[^1].
+
+[^1]:
+    Note.
+
+    ## ﻿
+
+    More.
+-- stderr
+-- status
+0

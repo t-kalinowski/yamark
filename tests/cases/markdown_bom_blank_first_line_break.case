@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+﻿   
+---
+
+Some   text.
+-- stdout
+﻿
+---
+
+Some text.
+-- stderr
+-- status
+0
