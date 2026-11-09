@@ -131,12 +131,19 @@ fn blank_line_continues_list_item(text: &str, item_content_indent: Option<usize>
     indent >= item_content_indent
 }
 
-pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usize) -> bool {
+/// Capability checks consume the same item ownership that layout will use.
+/// These conservative checks remain separate from recognition: recognizing a
+/// child does not assert that normalizing its surrounding list is safe.
+pub(super) fn list_block_supported(
+    source: &SourceBuffer,
+    start: usize,
+    end: usize,
+    structure: &super::ListStructure,
+) -> bool {
     let first = source.line_text(start);
-    let mut previous_item = first;
-    let base_indent = first.len() - first.trim_start().len();
-    let mut item_content_indent = list_item_content_indent(first);
-    let mut task_continuation = task_list_continuation_range(first);
+    let base_indent = super::list::leading_spaces(first);
+    let block_start = source.lines[start].full.start();
+    let mut block_index = 0;
     let mut multiline_inlines: Option<Vec<std::ops::Range<usize>>> = None;
     let mut code_fence_end = start;
     for line in start + 1..end {
@@ -144,27 +151,28 @@ pub(super) fn list_block_supported(source: &SourceBuffer, start: usize, end: usi
         if text.trim().is_empty() {
             continue;
         }
-        if list_item_at(text) {
-            let indent = text.len() - text.trim_start().len();
-            let previous_indent = previous_item.len() - previous_item.trim_start().len();
-            if indent > previous_indent
-                && list_marker_content_indent(previous_item)
-                    .is_some_and(|content_indent| indent < content_indent)
-            {
-                // The rich-list formatter can mistake a shifted sibling for
-                // a child when it normalizes the preceding marker's spacing.
-                return false;
-            }
-            previous_item = text;
-            item_content_indent = list_item_content_indent(text);
-            task_continuation = task_list_continuation_range(text);
+        let offset = source.lines[line].full.start() - block_start;
+        while structure.blocks[block_index].source().end() <= offset {
+            block_index += 1;
+        }
+        let block = &structure.blocks[block_index];
+        let item = &structure.items[block.item];
+        let item_content_indent = Some(item.content_indent);
+        let task_continuation = item
+            .checkbox
+            .map(|_| (item.continuation_min, item.continuation_min + 4));
+        if matches!(
+            block.kind,
+            super::ListBlockKind::Paragraph { first: true, .. }
+        ) && block.source().start() == offset
+        {
             continue;
         }
-        let indent = text.len() - text.trim_start().len();
+        let indent = super::list::leading_spaces(text);
         if line >= code_fence_end
             && let Some(content_indent) = item_content_indent
             && indent >= content_indent
-            && let Some(fence) = code_fence_at(&text[content_indent..])
+            && let Some(fence) = text.get(content_indent..).and_then(code_fence_at)
         {
             code_fence_end =
                 find_code_fence_closing_at_indent(source, line + 1, end, fence, content_indent)
@@ -289,17 +297,6 @@ fn list_marker_content_indent(text: &str) -> Option<usize> {
     Some(indent + marker_len + marker_gap)
 }
 
-fn list_item_content_indent(text: &str) -> Option<usize> {
-    let mut content_indent = list_marker_content_indent(text)?;
-    let rest = &text[content_indent..];
-    if let Some(checkbox) = task_list_checkbox(rest) {
-        let after_checkbox = &rest[checkbox.len()..];
-        let checkbox_gap = after_checkbox.len() - after_checkbox.trim_start().len();
-        content_indent += checkbox.len() + checkbox_gap;
-    }
-    Some(content_indent)
-}
-
 fn list_continuation_matches_item_content(
     text: &str,
     indent: usize,
@@ -310,31 +307,6 @@ fn list_continuation_matches_item_content(
     }
     let content = &text[indent..];
     !list_item_at(content) && !raw_sensitive_at(content) && code_fence_at(content).is_none()
-}
-
-fn task_list_continuation_range(text: &str) -> Option<(usize, usize)> {
-    let trimmed = text.trim_start();
-    let indent = text.len() - trimmed.len();
-    let marker_len = markdown_list_marker_len(trimmed)?;
-    let rest = trimmed[marker_len..].trim_start();
-    let checkbox = task_list_checkbox(rest)?;
-    let continuation = indent + marker_len + 1 + checkbox.len() + 1;
-    Some((continuation, continuation + 4))
-}
-
-fn task_list_checkbox(body: &str) -> Option<&str> {
-    let bytes = body.as_bytes();
-    if bytes.len() < 3
-        || bytes[0] != b'['
-        || !matches!(bytes[1], b' ' | b'x' | b'X')
-        || bytes[2] != b']'
-    {
-        return None;
-    }
-    if bytes.get(3).is_some_and(|byte| !byte.is_ascii_whitespace()) {
-        return None;
-    }
-    Some(&body[..3])
 }
 
 pub(super) fn blockquote_at(text: &str) -> bool {

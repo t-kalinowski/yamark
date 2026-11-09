@@ -100,6 +100,7 @@ struct MarkdownPlanning {
     options: FormatOptions,
     draft: Option<crate::core::wrap::Draft>,
     template_spans: Option<crate::core::wrap::ProseTemplateSpans>,
+    list: Option<Box<super::ListStructure>>,
 }
 
 fn markdown_block_kind(emit: &EmitPlan) -> Option<MarkdownBlockFormatKind> {
@@ -221,12 +222,90 @@ pub(super) fn push_structural_markdown_format_node(
     Ok(())
 }
 
+/// Lists retain their authored structure through late directive changes. Ordinary
+/// lists defer inline drafts until finalization, just like ordinary paragraphs.
+pub(super) fn push_markdown_list_node(
+    source: &SourceBuffer,
+    doc: &mut Document,
+    state: StateId,
+    span: Span,
+    options: FormatOptions,
+    structure: Option<super::ListStructure>,
+) -> Result<()> {
+    let mut node = Node {
+        kind: NodeKind::Markdown(MarkdownNodeKind::List),
+        span,
+        state,
+        emit: EmitPlan::MarkdownList,
+    };
+    let planned = structure.map(|structure| {
+        let (mut retained, mut planning) = initialize_markdown_planning(
+            source,
+            &node,
+            doc.state(state),
+            options,
+            MarkdownBlockFormatKind::List,
+            Some(Box::new(structure)),
+        );
+        if doc.state(state).markdown_target && !retained.preserve {
+            planning.draft = prepare_markdown_block(
+                source.slice(span),
+                MarkdownBlockFormatKind::List,
+                planning.list.as_deref(),
+            );
+            let effective = doc.state(state).markdown_options(options);
+            planning.resolve_plan(
+                &mut retained,
+                source.slice(span),
+                effective,
+                &doc.state(state).template_delimiters,
+            );
+        }
+        (retained, planning)
+    });
+    let supported = planned.as_ref().is_some_and(|(retained, _)| {
+        !doc.state(state).markdown_target || !retained.preserve && retained.plan.is_some()
+    });
+    validate_markdown_format_target(source, doc, state, span, supported)?;
+    if !supported {
+        node.emit = EmitPlan::Copy;
+    }
+    doc.push_node(node);
+    if let Some(planned) = planned {
+        doc.markdown.insert(doc.nodes.len() - 1, planned);
+    }
+    Ok(())
+}
+
 fn plan_markdown_block(
     source: &SourceBuffer,
     node: &Node,
     state: &DirectiveState,
     options: FormatOptions,
     kind: MarkdownBlockFormatKind,
+) -> (RetainedMarkdown, MarkdownPlanning) {
+    let (mut retained, mut planning) =
+        initialize_markdown_planning(source, node, state, options, kind, None);
+    if !retained.preserve {
+        planning.draft =
+            prepare_markdown_block(source.slice(node.span), kind, planning.list.as_deref());
+        planning.resolve_plan(
+            &mut retained,
+            source.slice(node.span),
+            state.markdown_options(options),
+            &state.template_delimiters,
+        );
+    }
+    (retained, planning)
+}
+
+fn initialize_markdown_planning(
+    source: &SourceBuffer,
+    node: &Node,
+    state: &DirectiveState,
+    options: FormatOptions,
+    kind: MarkdownBlockFormatKind,
+    list: Option<Box<super::ListStructure>>,
 ) -> (RetainedMarkdown, MarkdownPlanning) {
     let input = source.slice(node.span);
     let options = state.markdown_options(options);
@@ -242,23 +321,23 @@ fn plan_markdown_block(
         options,
         draft: None,
         template_spans: None,
+        list,
     };
     retained.preserve =
         preserve_raw || planning.preserves_templates(input, kind, &state.template_delimiters);
-    planning.draft = (!retained.preserve)
-        .then(|| prepare_markdown_block(input, kind))
-        .flatten();
-    planning.resolve_plan(&mut retained, input, options, &state.template_delimiters);
     (retained, planning)
 }
 
 fn prepare_markdown_block(
     input: &str,
     kind: MarkdownBlockFormatKind,
+    list: Option<&super::ListStructure>,
 ) -> Option<crate::core::wrap::Draft> {
     match kind {
         MarkdownBlockFormatKind::Paragraph => crate::core::wrap::prepare_markdown_paragraph(input),
-        MarkdownBlockFormatKind::List => crate::core::wrap::prepare_markdown_list(input),
+        MarkdownBlockFormatKind::List => {
+            crate::core::wrap::prepare_markdown_list_structure(input, list?)
+        }
         MarkdownBlockFormatKind::DefinitionList => {
             crate::core::wrap::prepare_markdown_definition_list(input)
         }
@@ -305,11 +384,19 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                     );
                     retained.preserve = planning.preserve_raw || template;
                 }
-                if !retained.preserve && planning.draft.is_none() {
-                    planning.draft = prepare_markdown_block(source.slice(node.span), kind);
+                let needs_preparation = !retained.preserve && planning.draft.is_none();
+                if needs_preparation {
+                    planning.draft = prepare_markdown_block(
+                        source.slice(node.span),
+                        kind,
+                        planning.list.as_deref(),
+                    );
                 }
                 if !retained.preserve
-                    && (planning.options != effective || was_preserved || template_changed)
+                    && (needs_preparation
+                        || planning.options != effective
+                        || was_preserved
+                        || template_changed)
                 {
                     planning.resolve_plan(
                         retained,
@@ -381,6 +468,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                         options,
                         draft: None,
                         template_spans: None,
+                        list: None,
                     },
                 ),
             );
@@ -389,6 +477,10 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
         if let Some((_, planning)) = doc.markdown.get_pair_mut(index) {
             planning.draft = None;
             planning.template_spans = None;
+            // PreparedTree construction finalizes this document once. Changing
+            // an owned fragment's policy reparses it into a new tree, so source
+            // recognition can be released before execution.
+            planning.list = None;
         }
     }
 }

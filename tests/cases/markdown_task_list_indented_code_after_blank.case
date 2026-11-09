@@ -1,0 +1,26 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+- [ ] Item.
+
+      ```
+      code
+      ```
+
+      First. Second.
+
+Outside. Second.
+-- stdout
+- [ ] Item.
+
+      ```
+      code
+      ```
+
+      First. Second.
+
+Outside.
+Second.
+-- stderr
+-- status
+0

@@ -532,10 +532,6 @@ enum DraftItem {
     JoinNewline(Box<str>),
     Text(Text),
     Inline(InlineDraft),
-    Scoped {
-        text: Text,
-        draft: Box<Draft>,
-    },
     Child {
         input: FragmentInput,
         prefix: Prefix,
@@ -600,13 +596,6 @@ impl Draft {
     pub(super) fn append(&mut self, mut draft: Self) {
         assert!(!draft.trim_final_newline && draft.paragraph_single_line.is_none());
         self.items_mut().append(draft.items_mut());
-    }
-
-    pub(super) fn push_scoped(&mut self, source: &str, text: &str, draft: Self) {
-        self.items_mut().push(DraftItem::Scoped {
-            text: Text::retain(source, text),
-            draft: Box::new(draft),
-        });
     }
 
     pub(super) fn trim_final_newline(&mut self) {
@@ -836,14 +825,6 @@ impl Draft {
                         final_newline: if inline.paragraph { inline.newline } else { "" },
                         escape_first: false,
                     }));
-                }
-                DraftItem::Scoped { text, draft } => {
-                    let nested =
-                        draft.resolve_with_templates(text.get(source), options, delimiters)?;
-                    plan.items.push(Item::Scoped {
-                        text: text.clone(),
-                        plan: Box::new(nested),
-                    });
                 }
                 DraftItem::Child {
                     input,

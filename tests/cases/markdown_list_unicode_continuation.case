@@ -1,0 +1,23 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+- Item.
+  Continuation line.
+
+# Separate paragraph
+
+- Item.
+
+  Continuation paragraph.
+-- stdout
+- Item.
+  Continuation line.
+
+# Separate paragraph
+
+- Item.
+
+  Continuation paragraph.
+-- stderr
+-- status
+0

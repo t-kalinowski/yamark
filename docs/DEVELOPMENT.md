@@ -18,18 +18,24 @@ Build a local Python wheel with `uvx maturin build --release`. The Python packag
 
 For behavior changes, add a failing [CLI transcript](../tests/cases/README.md) before changing production code. For a refactor, run the existing public tests first. Keep the test's assertions and contract intact when moving it.
 
-| Command                                                                                 | Purpose                                             |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `cargo test --test cli_cases`                                                           | Exact CLI transcripts, required after case changes. |
-| `uv run --no-project --with ruff --with py-yaml12 -- cargo test --test spec_cli FILTER` | Focused public CLI specifications.                  |
-| `cargo test --test TEST_TARGET FILTER`                                                  | A focused Rust integration suite.                   |
-| `uv run external-tests/run.py --suite cli --serial`                                     | External public CLI and semantic checks.            |
-| `npm --prefix editors/vscode test`                                                      | Editor integration tests.                           |
-| `cargo fmt`                                                                             | Format Rust source and tests.                       |
-| `git diff --check`                                                                      | Check whitespace in the patch.                      |
-| `scripts/check.sh`                                                                      | Complete local gate, also used by CI.               |
+| Command                                                                                 | Purpose                                                    |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `cargo test --test cli_cases`                                                           | Exact CLI transcripts, required after case changes.        |
+| `uv run --no-project --with ruff --with py-yaml12 -- cargo test --test spec_cli FILTER` | Focused public CLI specifications.                         |
+| `cargo test --test TEST_TARGET FILTER`                                                  | A focused Rust integration suite.                          |
+| `scripts/check-markdown.sh`                                                             | Markdown transcripts, API/specification tests, and traces. |
+| `scripts/check-markdown.sh --semantic`                                                  | Add the sentence-wrap Pandoc semantic checks.              |
+| `uv run external-tests/run.py --suite cli --serial`                                     | External public CLI and semantic checks.                   |
+| `npm --prefix editors/vscode test`                                                      | Editor integration tests.                                  |
+| `cargo fmt`                                                                             | Format Rust source and tests.                              |
+| `git diff --check`                                                                      | Check whitespace in the patch.                             |
+| `scripts/check.sh`                                                                      | Complete local gate, also used by CI.                      |
 
 For a focused transcript run, use `YAMARK_CASE=yaml_multiline_ cargo test --test cli_cases -- --nocapture`. `YAMARK_CASE` selects a literal filename substring and fails when no case matches; see [CLI case files](../tests/cases/README.md). Leave it unset for the complete validation gate.
+
+For Markdown parser work, use `scripts/check-markdown.sh` between edits. It runs all transcripts whose filenames contain `markdown`, the Markdown CLI specifications, container/source/plan/preservation/wrapping API suites, and the feature-specific traces. It deliberately overrides an inherited `YAMARK_CASE` so an earlier single-case command cannot narrow the group silently. For a smaller loop, select a case directly, for example `YAMARK_CASE=markdown_list_ cargo test --test cli_cases -- --nocapture`.
+
+The Markdown check needs Rust and Python; existing formatter integration stubs invoke `python`. The default check does not install or upgrade tools. Its optional `--semantic` stage uses the existing uv runner and sentence-wrap Pandoc tests. Supply `QUARTO_PANDOC` for a standalone binary or use an installed Quarto. The default check omits the external semantic suite, allocation/performance checks, editor tests, and packaging/platform coverage; run `scripts/check.sh` before handing off a completed change.
 
 `scripts/check.sh` checks Rust formatting, runs Clippy with all features and targets, runs the Rust tests with Python dependencies, executes the `format-trace` feature's diagnostic tests, runs the external suite, and runs the editor tests. It stops at the first failed command. Read the output and fix the cause before rerunning. Report a failed or unavailable stage rather than counting it as coverage.
 

@@ -1,0 +1,59 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+1.  Intro text. Second
+    sentence.
+
+    ::: {.note}
+    Inside div.
+
+    After blank. Second
+    sentence.
+    :::
+
+- Bullet. Second
+  sentence.
+
+  ::: {.outer}
+  Outer. Second
+  sentence.
+
+  ::: {.inner}
+  Inner.
+
+  Inner after blank. Second
+  sentence.
+  :::
+
+  Outer after blank.
+  :::
+-- stdout
+1.  Intro text. Second
+    sentence.
+
+    ::: {.note}
+    Inside div.
+
+    After blank. Second
+    sentence.
+    :::
+
+- Bullet.
+  Second sentence.
+
+  ::: {.outer}
+  Outer.
+  Second sentence.
+
+  ::: {.inner}
+  Inner.
+
+  Inner after blank.
+  Second sentence.
+  :::
+
+  Outer after blank.
+  :::
+-- stderr
+-- status
+0

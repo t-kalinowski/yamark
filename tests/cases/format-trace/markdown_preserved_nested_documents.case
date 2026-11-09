@@ -1,0 +1,61 @@
+-- args
+format --diagnostics --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: skip -->
+```markdown
+#   Skipped fence heading
+```
+
+<!-- fmt: skip -->
+::: note
+#   Skipped div heading
+:::
+
+Outside   first. Outside   second.
+
+```markdown
+#   Active heading
+```
+
+````markdown
+```markdown
+#   File-skipped grandchild
+```
+
+<!-- fmt: skip file -->
+````
+-- stdout
+<!-- fmt: skip -->
+```markdown
+#   Skipped fence heading
+```
+
+<!-- fmt: skip -->
+::: note
+#   Skipped div heading
+:::
+
+Outside first.
+Outside second.
+
+```markdown
+# Active heading
+```
+
+````markdown
+```markdown
+#   File-skipped grandchild
+```
+
+<!-- fmt: skip file -->
+````
+-- stderr
+input.md:2:1: note: markdown trace: skipped kind=CodeFence emit=MarkdownCodeFence reason=formatting_disabled
+input.md:7:1: note: markdown trace: skipped kind=QuartoDiv emit=MarkdownDiv reason=formatting_disabled
+input.md:11:1: note: markdown trace: formatted kind=Paragraph emit=MarkdownParagraph
+input.md:13:1: note: markdown trace: formatted kind=CodeFence emit=MarkdownCodeFence
+input.md:17:1: note: markdown trace: formatted kind=CodeFence emit=MarkdownCodeFence
+input.md:14:1: note: markdown trace: formatted kind=Heading emit=MarkdownHeading
+input.md:18:1: note: markdown trace: skipped kind=CodeFence emit=MarkdownCodeFence reason=skip_file
+-- status
+0
