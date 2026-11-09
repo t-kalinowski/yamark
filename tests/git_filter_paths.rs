@@ -60,10 +60,18 @@ fn git_filter_preserves_native_paths_through_adopt_check_and_join() {
                 .stdout
                 .clone()
         };
-        let assert_files = |worktree: &[u8]| {
+        let assert_files = |phase: &str, worktree: &[u8]| {
             for path in &markdown_paths {
-                assert_eq!(index_blob(path), canonical);
-                assert_eq!(fs::read(dir.path().join(path)).unwrap(), worktree);
+                assert_eq!(
+                    index_blob(path),
+                    canonical,
+                    "{phase}: index, core.quotePath={quote_paths}, path={path:?}"
+                );
+                assert_eq!(
+                    fs::read(dir.path().join(path)).unwrap(),
+                    worktree,
+                    "{phase}: worktree, core.quotePath={quote_paths}, path={path:?}"
+                );
             }
             assert_eq!(index_blob(&binary_path), binary_contents);
             assert_eq!(
@@ -102,7 +110,7 @@ fn git_filter_preserves_native_paths_through_adopt_check_and_join() {
             .assert()
             .success()
             .stderr("");
-        assert_files(wrapped);
+        assert_files("after adopt", wrapped);
         git(&["commit", "-q", "-m", "adopt"]);
         check();
 
@@ -113,8 +121,14 @@ fn git_filter_preserves_native_paths_through_adopt_check_and_join() {
             .assert()
             .success()
             .stderr("");
+        // Changing the filter does not invalidate Git's stat cache. Even a
+        // forced checkout can skip an existing stat-clean file; remove only
+        // these owned fixture files to require a fresh, unfiltered checkout.
+        for path in &markdown_paths {
+            fs::remove_file(dir.path().join(path)).unwrap();
+        }
         git(&["checkout-index", "--force", "--all"]);
-        assert_files(canonical);
+        assert_files("after teardown and fresh checkout", canonical);
         assert_eq!(git(&["status", "--porcelain"]), b"");
 
         Command::cargo_bin("yamark")
@@ -124,7 +138,7 @@ fn git_filter_preserves_native_paths_through_adopt_check_and_join() {
             .assert()
             .success()
             .stderr("");
-        assert_files(wrapped);
+        assert_files("after join", wrapped);
         check();
         assert_eq!(git(&["status", "--porcelain"]), b"");
     }

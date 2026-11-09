@@ -19,8 +19,10 @@ use crate::core::directives::{
 use crate::core::document::{
     Document, DocumentKind, EmitPlan, FormatOptions, Node, NodeKind, YamlNodeKind,
 };
-use crate::core::source::{SourceBuffer, Span};
-use crate::core::yaml_model::{YamlDocumentAst, YamlNodeId, YamlRoot, YamlTrivia};
+use crate::core::source::{SourceBuffer, SourceSpan, Span};
+use crate::core::yaml_model::{
+    YamlAstKind, YamlAstNode, YamlDocumentAst, YamlNodeId, YamlRoot, YamlTrivia, YamlTriviaKind,
+};
 use crate::core::yaml_scan::{YamlLineScan, scan_yaml_lines, scan_yaml_lines_basic};
 use crate::diagnostic::Result;
 pub(crate) use block_scalar::{InlineMarkdownPlan, resolve_inline_markdown_plan};
@@ -28,11 +30,12 @@ pub use emit::YamlEmissionStats;
 pub(crate) use emit::emit_planned_yaml_document_with_stats;
 use flow_emit::source_contains_any_template_opener;
 use flow_parse::RecognizedFlowCollection;
+use plan::YamlPlanRefresh;
 pub use simple::{format_flow_table, format_simple_yaml_line};
 use std::cell::RefCell;
 use syntax::{
-    yaml_error_at, yaml_scan_has_active_fmt_directive, yaml_scan_has_tab_indentation,
-    yaml_scan_has_unsupported_preserve_syntax,
+    DocumentMarkerKind, document_marker_kind, yaml_error_at, yaml_scan_has_active_fmt_directive,
+    yaml_scan_has_tab_indentation, yaml_scan_has_unsupported_preserve_syntax,
 };
 
 pub(crate) fn parse_yaml(
@@ -248,64 +251,78 @@ fn replan_yaml_document_with_delta(
     plan_emits: bool,
 ) -> (Document, Result<()>) {
     doc.patch_all_states(delta.clone());
-    let Some(ast) = doc.yaml.take() else {
+    let Some(mut ast) = doc.yaml.take() else {
         return (doc, Ok(()));
     };
-    let mut parser = YamlParser {
-        source: plan_source,
-        options,
-        config,
-        doc,
-        ast,
-        engine: DirectiveEngine::new_with_template_delimiters(config.template_delimiters.clone()),
-        file_scope_delta: DirectiveDelta::default(),
-        start: 0,
-        line: 0,
-        end: 0,
-        held_trivia: Vec::new(),
-        flow_collection_nodes: Vec::new(),
-        recognized_flow: None,
-        default_template_openers_present: source_contains_any_template_opener(
-            plan_source.as_str(),
-            &config.template_delimiters,
-        ),
-        template_spans_possible_by_state: RefCell::new(Vec::new()),
-        collect_trace: false,
-        plan_emits,
-    };
-    parser.patch_existing_ast_states(delta);
+    let template_presence = YamlTemplatePresence::new(plan_source, config);
+    directives::patch_existing_ast_states(&mut doc, &mut ast, delta);
     let result = if directive_delta_affects_markdown(delta) {
-        parser.patch_nested_markdown_documents(delta)
+        directives::patch_nested_markdown_documents(
+            plan_source,
+            &mut doc,
+            &ast,
+            delta,
+            options,
+            config,
+            plan_emits,
+        )
     } else {
         Ok(())
     };
     if result.is_ok() && plan_emits {
-        parser.plan_yaml_emits(true);
+        plan::YamlPlanner::new(
+            plan_source,
+            options,
+            config,
+            &mut doc,
+            &mut ast,
+            &template_presence,
+        )
+        .plan_yaml_emits(YamlPlanRefresh::for_delta(delta));
     }
     if result.is_ok() {
-        parser.doc.trace.yaml_semantic_nodes = parser.ast.nodes.len();
+        doc.trace.yaml_semantic_nodes = ast.nodes.len();
     }
-    let YamlParser {
-        mut doc,
-        ast,
-        source: _,
-        options: _,
-        config: _,
-        engine: _,
-        file_scope_delta: _,
-        start: _,
-        line: _,
-        end: _,
-        held_trivia: _,
-        flow_collection_nodes: _,
-        recognized_flow: _,
-        default_template_openers_present: _,
-        template_spans_possible_by_state: _,
-        collect_trace: _,
-        plan_emits: _,
-    } = parser;
     doc.yaml = Some(ast);
     (doc, result)
+}
+
+/// Conservative template-presence facts shared by recognition and planning.
+/// State IDs refer to interned states, so reusing a fact does not depend on an
+/// emission plan. The cache stays with the same source and base configuration.
+struct YamlTemplatePresence {
+    default_openers_present: bool,
+    by_state: RefCell<Vec<Option<bool>>>,
+}
+
+impl YamlTemplatePresence {
+    fn new(source: &SourceBuffer, config: &Config) -> Self {
+        Self {
+            default_openers_present: source_contains_any_template_opener(
+                source.as_str(),
+                &config.template_delimiters,
+            ),
+            by_state: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn spans_possible_for_state(&self, doc: &Document, config: &Config, state: StateId) -> bool {
+        if self.default_openers_present {
+            return true;
+        }
+        let mut cache = self.by_state.borrow_mut();
+        let state = state.index();
+        if state >= cache.len() {
+            cache.resize(state + 1, None);
+        }
+        if let Some(template_spans_possible) = cache[state] {
+            return template_spans_possible;
+        }
+        let template_spans_possible =
+            doc.state(StateId::new(state)).template_delimiters != config.template_delimiters;
+        cache[state] = Some(template_spans_possible);
+        template_spans_possible
+    }
 }
 
 struct YamlParser<'src, 'cfg> {
@@ -322,8 +339,7 @@ struct YamlParser<'src, 'cfg> {
     held_trivia: Vec<YamlTrivia>,
     flow_collection_nodes: Vec<YamlNodeId>,
     recognized_flow: Option<RecognizedFlowCollection>,
-    default_template_openers_present: bool,
-    template_spans_possible_by_state: RefCell<Vec<Option<bool>>>,
+    template_presence: YamlTemplatePresence,
     collect_trace: bool,
     plan_emits: bool,
 }
@@ -366,11 +382,7 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             held_trivia: Vec::new(),
             flow_collection_nodes: Vec::new(),
             recognized_flow: None,
-            default_template_openers_present: source_contains_any_template_opener(
-                source.as_str(),
-                &config.template_delimiters,
-            ),
-            template_spans_possible_by_state: RefCell::new(Vec::new()),
+            template_presence: YamlTemplatePresence::new(source, config),
             collect_trace: mode.collect_trace,
             plan_emits: mode.plan_emits,
         }
@@ -413,19 +425,19 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 message,
             ));
         }
-        let clear_inline_width_cache = if self.file_scope_delta != DirectiveDelta::default() {
+        let plan_refresh = if self.file_scope_delta != DirectiveDelta::default() {
             let delta = self.file_scope_delta.clone();
             self.patch_existing_ast_states(&delta);
             if directive_delta_affects_markdown(&delta) {
                 self.patch_nested_markdown_documents(&delta)?;
             }
-            true
+            YamlPlanRefresh::for_delta(&delta)
         } else {
-            false
+            YamlPlanRefresh::RetainCaches
         };
         self.populate_document_root_markers();
         if self.plan_emits {
-            self.plan_yaml_emits(clear_inline_width_cache);
+            self.plan_yaml_emits(plan_refresh);
             if self.collect_trace {
                 self.record_plan_trace();
             }
@@ -437,5 +449,120 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
 
     fn finish_ast(&mut self) {
         self.doc.trace.yaml_semantic_nodes = self.ast.nodes.len();
+    }
+
+    fn template_spans_possible_for_state(&self, state: StateId) -> bool {
+        self.template_presence
+            .spans_possible_for_state(&self.doc, self.config, state)
+    }
+
+    fn populate_document_root_markers(&mut self) {
+        let original_roots = std::mem::take(&mut self.ast.roots);
+        let mut roots = Vec::with_capacity(original_roots.len());
+        let mut pending_start = None;
+
+        for root in original_roots {
+            if let Some(node) = root.node {
+                let markers = self
+                    .ast
+                    .node(node)
+                    .leading_trivia
+                    .iter()
+                    .filter(|trivia| trivia.kind == YamlTriviaKind::DocumentMarker)
+                    .map(|trivia| trivia.span)
+                    .collect::<Vec<_>>();
+                for marker in markers {
+                    self.apply_document_marker_to_roots(&mut roots, &mut pending_start, marker);
+                }
+                roots.push(YamlRoot {
+                    node: Some(node),
+                    start_marker: pending_start.take(),
+                    end_marker: root.end_marker,
+                });
+            } else {
+                roots.push(root);
+            }
+        }
+
+        let trailing_markers = self
+            .ast
+            .trailing_trivia
+            .iter()
+            .filter(|trivia| trivia.kind == YamlTriviaKind::DocumentMarker)
+            .map(|trivia| trivia.span)
+            .collect::<Vec<_>>();
+        for marker in trailing_markers {
+            self.apply_document_marker_to_roots(&mut roots, &mut pending_start, marker);
+        }
+        if let Some(start_marker) = pending_start.take() {
+            let empty = self.push_empty_document_node(Span::empty(start_marker.end()));
+            roots.push(YamlRoot {
+                node: Some(empty),
+                start_marker: Some(start_marker),
+                end_marker: None,
+            });
+        }
+
+        self.ast.roots = roots;
+    }
+
+    fn apply_document_marker_to_roots(
+        &mut self,
+        roots: &mut Vec<YamlRoot>,
+        pending_start: &mut Option<SourceSpan>,
+        marker: SourceSpan,
+    ) {
+        match document_marker_kind(self.source.slice(marker)) {
+            Some(DocumentMarkerKind::Start) => {
+                if let Some(start_marker) = pending_start.take() {
+                    let empty = self.push_empty_document_node(Span::new(
+                        start_marker.end().min(marker.start()),
+                        marker.start(),
+                    ));
+                    roots.push(YamlRoot {
+                        node: Some(empty),
+                        start_marker: Some(start_marker),
+                        end_marker: None,
+                    });
+                }
+                *pending_start = Some(marker);
+            }
+            Some(DocumentMarkerKind::End) => {
+                if let Some(start_marker) = pending_start.take() {
+                    let empty = self.push_empty_document_node(Span::new(
+                        start_marker.end().min(marker.start()),
+                        marker.start(),
+                    ));
+                    roots.push(YamlRoot {
+                        node: Some(empty),
+                        start_marker: Some(start_marker),
+                        end_marker: Some(marker),
+                    });
+                } else if let Some(root) = roots
+                    .iter_mut()
+                    .rev()
+                    .find(|root| root.end_marker.is_none())
+                {
+                    root.end_marker = Some(marker);
+                } else {
+                    let empty = self.push_empty_document_node(Span::empty(marker.start()));
+                    roots.push(YamlRoot {
+                        node: Some(empty),
+                        start_marker: None,
+                        end_marker: Some(marker),
+                    });
+                }
+            }
+            None => {}
+        }
+    }
+
+    fn push_empty_document_node(&mut self, span: Span) -> YamlNodeId {
+        self.ast.push_node(YamlAstNode::semantic(
+            YamlAstKind::Empty,
+            span,
+            Vec::new(),
+            StateId(0),
+        ))
     }
 }

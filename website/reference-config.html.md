@@ -141,8 +141,10 @@ Built-in formatters are optional. A configured formatter is also optional when
 its command's first argv item is exactly `ruff`, `air`, `mdformat`, or
 `prettier`. For either kind, a missing executable or nonzero exit preserves the
 target and emits a note only with `--diagnostics`. Any other configured
-formatter treats either condition as an error. A successful process that
-writes to stderr is always an error.
+formatter treats either condition as an error. A successful process may close
+stdin before reading all input; its output still receives normal validation.
+A successful process that writes to stderr is always an error. Other
+stdin-write errors remain failures.
 
 Embedded formatter names must be non-empty and trimmed. `skip`, `skip file`,
 `off`, `on`, and `table` are reserved directive names.

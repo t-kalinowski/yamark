@@ -1,0 +1,33 @@
+-- args
+format --stdin-file-path input.md --wrap none --verify
+-- stdin
+```yaml
+held: &saved # parent
+  'Café value'
+templated: ["{{ keep   bytes }}",  1]
+body: !markdown |
+  Keep __strong__.
+  Continue on another line.
+attached: !markdown
+  |
+    Keep __attached__.
+ok: [x,y]
+```
+
+<!-- fmt: canonical=true wrap=paragraph scope=file -->
+-- stdout
+```yaml
+held: &saved # parent
+  'Café value'
+templated: ["{{ keep   bytes }}",  1]
+body: !markdown |
+  Keep **strong**. Continue on another line.
+attached: !markdown |
+  Keep **attached**.
+ok: [x, y]
+```
+
+<!-- fmt: canonical=true wrap=paragraph scope=file -->
+-- stderr
+-- status
+0

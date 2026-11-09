@@ -269,6 +269,70 @@ fn external_formatter_handles_large_stdin_stdout_without_deadlock() {
 }
 
 #[test]
+fn external_formatter_early_stdin_close_preserves_output_and_error_contracts() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("yamark.toml");
+    // Keep the writer active beyond a pipe buffer. Closing stdin without
+    // reading it must not make a successful formatter depend on scheduling.
+    let payload = "a".repeat(4 * 1024 * 1024);
+    let input = format!("```early\n{payload}\n```\n");
+    let cases = [
+        (
+            "successful output",
+            r#"sys.stdout.buffer.write(b'formatted\n')"#,
+            None,
+        ),
+        (
+            "stderr on success",
+            r#"sys.stdout.buffer.write(b'formatted\n'); sys.stderr.buffer.write(b'warning')"#,
+            Some("embedded formatter wrote to stderr: warning"),
+        ),
+        (
+            "invalid UTF-8",
+            r#"sys.stdout.buffer.write(b'\xff')"#,
+            Some("embedded formatter emitted invalid UTF-8"),
+        ),
+        (
+            "closing fence",
+            r#"sys.stdout.buffer.write(b'ok\r```\r')"#,
+            Some("formatted code fence would contain closing fence"),
+        ),
+        ("nonzero status", "sys.exit(7)", Some("exit status 7")),
+    ];
+
+    for (name, action, expected_error) in cases {
+        let code = format!("import os, sys; os.close(sys.stdin.fileno()); {action}");
+        fs::write(
+            &config,
+            format!(
+                "[embedded.early]\nformatter = {{ command = [\"python\", \"-c\", {code:?}, \"{{path}}\"], path_suffix = \".txt\" }}\n"
+            ),
+        )
+        .unwrap();
+        let (status, stdout, stderr) = run_stdin(
+            &[
+                "format",
+                "--stdin-file-path",
+                "input.md",
+                "--config",
+                config.to_str().unwrap(),
+            ],
+            &input,
+        );
+
+        if let Some(message) = expected_error {
+            assert_eq!(status, 1, "{name}: {stderr}");
+            assert_eq!(stdout, "", "{name}: {stderr}");
+            assert!(stderr.contains(message), "{name}: {stderr}");
+        } else {
+            assert_eq!(status, 0, "{name}: {stderr}");
+            assert_eq!(stdout, "```early\nformatted\n```\n", "{name}");
+            assert_eq!(stderr, "", "{name}");
+        }
+    }
+}
+
+#[test]
 fn expanded_embedded_formatter_requires_path_suffix() {
     let dir = tempdir().unwrap();
     let config = dir.path().join("yamark.toml");
@@ -899,7 +963,10 @@ formatter = { command = [\"python\", \"-c\", \"import sys; sys.stdout.buffer.wri
     );
     assert_eq!(status, 1);
     assert_eq!(stdout, "");
-    assert!(stderr.contains("formatted code fence would contain closing fence"));
+    assert!(
+        stderr.contains("formatted code fence would contain closing fence"),
+        "{stderr}"
+    );
 }
 
 #[cfg(unix)]
@@ -939,7 +1006,10 @@ formatter = {{ command = [{:?}, \"{{path}}\"], path_suffix = \".txt\" }}
     );
     assert_eq!(status, 1);
     assert_eq!(stdout, "");
-    assert!(stderr.contains("formatted code fence would contain closing fence"));
+    assert!(
+        stderr.contains("formatted code fence would contain closing fence"),
+        "{stderr}"
+    );
 }
 
 #[cfg(unix)]

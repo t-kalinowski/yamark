@@ -103,9 +103,15 @@ impl ExternalFormatter {
                 display_command(program, &args)
             )));
         }
-        stdin_result.map_err(|err| {
-            YamarkError::new(format!("failed to write embedded formatter stdin: {err}"))
-        })?;
+        // A successful formatter can finish without consuming all input. A
+        // closed input pipe is then benign, but other write failures are not.
+        if let Err(err) = stdin_result
+            && err.kind() != ErrorKind::BrokenPipe
+        {
+            return Err(YamarkError::new(format!(
+                "failed to write embedded formatter stdin: {err}"
+            )));
+        }
         if !output.stderr.is_empty() {
             let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
             return Err(YamarkError::new(if message.is_empty() {
