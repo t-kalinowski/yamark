@@ -1521,7 +1521,27 @@ fn find_quarto_div_closing<'a>(
     marker_len: usize,
 ) -> Option<usize> {
     let mut depth = 1usize;
+    let mut code_fence: Option<fences::Fence> = None;
     for (offset, text) in lines.into_iter().enumerate() {
+        let candidate = code_fence_at(text);
+        if let Some(fence) = code_fence {
+            // Consume the code body in this same walk. Searching ahead for
+            // each fence-looking line would repeatedly scan nested examples.
+            if let Some(candidate) = candidate
+                && candidate.marker == fence.marker
+                && candidate.len >= fence.len
+                && text.trim_start_matches(' ')[candidate.len..]
+                    .bytes()
+                    .all(|byte| matches!(byte, b' ' | b'\t'))
+            {
+                code_fence = None;
+            }
+            continue;
+        }
+        if let Some(fence) = candidate {
+            code_fence = Some(fence);
+            continue;
+        }
         if let Some(opening_len) = quarto_div_opening(text)
             && opening_len >= marker_len
         {

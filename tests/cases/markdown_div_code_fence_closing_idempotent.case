@@ -1,0 +1,83 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+::: {.note}
+First sentence here.
+Second sentence here.
+
+```text
+:::
+```
+
+After code.
+Should split.
+:::
+
+::: {.outer}
+::: {.inner}
+Before code.
+Should split.
+
+````text
+::: {.example}
+```
+:::
+~~~
+````
+
+After code.
+Should split.
+:::
+:::
+
+::: {.note}
+~~~text
+::: {.example}
+:::
+~~~
+
+After tilde code.
+Should split.
+:::
+-- stdout
+::: {.note}
+First sentence here.
+Second sentence here.
+
+```text
+:::
+```
+
+After code.
+Should split.
+:::
+
+::: {.outer}
+::: {.inner}
+Before code.
+Should split.
+
+````text
+::: {.example}
+```
+:::
+~~~
+````
+
+After code.
+Should split.
+:::
+:::
+
+::: {.note}
+~~~text
+::: {.example}
+:::
+~~~
+
+After tilde code.
+Should split.
+:::
+-- stderr
+-- status
+0

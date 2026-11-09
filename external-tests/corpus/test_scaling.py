@@ -219,6 +219,37 @@ def test_overlapping_delimiters_and_attributes_scale_with_input_size(
     )
 
 
+@pytest.mark.parametrize("in_list", [False, True], ids=["div", "list-div"])
+def test_div_code_fences_scale_with_input_size(tmp_path: Path, in_list: bool) -> None:
+    durations = []
+    for count in [1024, 4096]:
+        # Shorter/opposite fences and div markers are code, not new searches
+        # over the remaining suffix or changes to the surrounding div depth.
+        code = "````text\n::: {.example}\n```\n:::\n~~~\n````\n\n" * count
+        text = "::: {.note}\n" + code + "After code. Should split.\n:::\n"
+        expected = text.replace("After code. Should split.", "After code.\nShould split.")
+        if in_list:
+            text = "- Item.\n\n" + "".join(
+                "  " + line if line.strip() else line for line in text.splitlines(True)
+            )
+            expected = "- Item.\n\n" + "".join(
+                "  " + line if line.strip() else line
+                for line in expected.splitlines(True)
+            )
+        source = tmp_path / f"div-fences-{in_list}-{count}.md"
+        source.write_text(text, encoding="utf-8")
+        cpu, formatted = measure_formatting_cpu(source, "--wrap", "sentence")
+        assert formatted == expected
+        durations.append(cpu)
+
+    small, large = durations
+    assert small > 0, "formatter CPU time must be available"
+    assert large <= small * 6, (
+        "div boundaries should scan fenced code in one pass: "
+        f"1024 fences used {small:.6f}s CPU, 4096 used {large:.6f}s CPU"
+    )
+
+
 def measure_formatting_cpu(source: Path, *args: str) -> tuple[float, str]:
     log_path = source.with_suffix(".log")
 
