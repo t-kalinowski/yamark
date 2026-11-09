@@ -893,6 +893,11 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
             return;
         };
         let state = self.doc.state(node.state);
+        // The structural flag reads `markdown_target` and `embedded_formatter`
+        // once, at parse time. A late refresh cannot clear it, which is sound
+        // only because `file_scope_delta` never sets either field: both come
+        // from `scope=next` directives. Revisit this if a file-scoped target or
+        // embedded-formatter directive is added.
         if scalar.value.start() < parent_line.end
             || state.markdown_target
             || state.embedded_formatter.is_some()
