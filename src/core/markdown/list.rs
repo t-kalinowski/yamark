@@ -244,6 +244,7 @@ fn task_checkbox(body: &str) -> Option<&str> {
 
 fn rich_child_start(text: &str) -> bool {
     text.starts_with('|')
+        || super::grid_table_border(text).is_some()
         || text.starts_with("```")
         || text.starts_with("~~~")
         || text.starts_with("$$")

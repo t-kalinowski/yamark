@@ -1,0 +1,25 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters
+-- stdin
+1.  Intro text.
+
+    +------+------+
+    | A    | B    |
+    +======+======+
+    | x    | y    |
+    +------+------+
+
+    After table.
+-- stdout
+1. Intro text.
+
+    +---+---+
+    | A | B |
+    +===+===+
+    | x | y |
+    +---+---+
+
+   After table.
+-- stderr
+-- status
+0
