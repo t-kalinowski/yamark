@@ -18,6 +18,7 @@
 - With the optional `format-trace` feature, report retained preservation and unavailable layout plans as skipped, and omit descendant decisions for containers that are explicitly preserved.
 - Keep later paragraphs inside list items after an unindented lazy continuation. Unsupported continuation layouts remain unchanged instead of moving the later paragraph outside its item.
 - Keep setext headings whose text looks like a thematic break, such as `* * *`, instead of rewriting them into rules or an empty metadata block.
+- Keep indented setext headings inside footnote definitions instead of converting the definition itself into a top-level heading.
 
 ### YAML formatting
 

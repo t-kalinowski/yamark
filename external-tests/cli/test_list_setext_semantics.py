@@ -44,3 +44,20 @@ def test_setext_underline_precedes_thematic_text(source: str, wrap: str) -> None
     output = format_markdown(source, wrap)
     assert markdown_ast(output, "markdown") == markdown_ast(source, "markdown")
     assert format_markdown(output, wrap) == output
+
+
+@pytest.mark.parametrize("wrap", ["none", "72", "sentence"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Text[^1].\n\n[^1]: x\n    ---\n\n    Note.\n",
+        "Text[^1].\n\n[^1]: x\n    ===\n\n    Note.\n",
+        "Text[^1].\n\n[^1]: x\n---\n\n    Code.\n",
+        "Text[^1].\n\n[^1]: x\n===\n\n    Code.\n",
+        "Text[^1].\n\n[^1]: Plain first. Second.\n\n    Note.\n",
+    ],
+)
+def test_footnote_setext_underline_keeps_its_owner(source: str, wrap: str) -> None:
+    output = format_markdown(source, wrap)
+    assert markdown_ast(output, "markdown") == markdown_ast(source, "markdown")
+    assert format_markdown(output, wrap) == output

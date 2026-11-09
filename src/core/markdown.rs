@@ -1387,6 +1387,11 @@ fn setext_heading_at(
     if list_item_at(text) && !thematic_break_at(text) {
         return None;
     }
+    // An indented underline belongs to the footnote body. An unindented
+    // underline can make the full definition line a top-level heading instead.
+    if footnote_definition_at(text) && markdown_indented_code_at(source.line_text(line_index + 1)) {
+        return None;
+    }
     let line = source.lines[line_index];
     let body = source.line_text(line_index);
     let bom = bom_len(source, line_index);

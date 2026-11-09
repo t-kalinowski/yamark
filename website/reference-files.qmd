@@ -87,7 +87,7 @@ projection.
 | Setext headings | Formats | Converts supported headings to ATX. A following underline takes precedence over heading text that looks like a thematic break. |
 | Lists and task lists | Formats | Reflows list paragraphs with container indentation accounted for. Preserves GFM task markers. |
 | Blockquotes | Formats when supported | Wraps supported blockquote shapes recursively. |
-| Footnote blocks | Formats or preserves | Wraps definitions by default. A preserve setting keeps definitions byte-for-byte. |
+| Footnote blocks | Formats or preserves | Wraps definitions and formats supported nested blocks by default. Indented setext underlines stay inside the note. A preserve setting keeps definitions byte-for-byte. |
 | Reference links | Formats around | Treats reference-style links as atomic wrapping tokens. Preserves reference definitions without relocation. |
 | Inline code and math | Preserves contents; formats around | Recognized spans retain authored whitespace and line endings while surrounding prose formats. |
 | Nested image links | Formats when safe | Normalizes and wraps simple nested image labels and long destinations. |
