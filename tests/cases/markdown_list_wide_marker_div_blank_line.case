@@ -1,57 +1,59 @@
 -- args
-format --stdin-file-path input.md --skip-embedded-formatters
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
 -- stdin
-1.  Intro text.
+1.  Intro text. Second
+    sentence.
 
     ::: {.note}
     Inside div.
 
-    ```bash
-    code
-    ```
-
-    After code.
+    After blank. Second
+    sentence.
     :::
 
--   Bullet intro.
+- Bullet. Second
+  sentence.
 
-    ::: {.outer}
-    Outer.
+  ::: {.outer}
+  Outer. Second
+  sentence.
 
-    ::: {.inner}
-    Inner.
+  ::: {.inner}
+  Inner.
 
-    Inner after blank.
-    :::
+  Inner after blank. Second
+  sentence.
+  :::
 
-    Outer after blank.
-    :::
+  Outer after blank.
+  :::
 -- stdout
-1. Intro text.
+1.  Intro text. Second
+    sentence.
 
     ::: {.note}
     Inside div.
 
-    ```bash
-    code
-    ```
-
-    After code.
+    After blank. Second
+    sentence.
     :::
 
-- Bullet intro.
+- Bullet.
+  Second sentence.
 
-    ::: {.outer}
-    Outer.
+  ::: {.outer}
+  Outer.
+  Second sentence.
 
-    ::: {.inner}
-    Inner.
+  ::: {.inner}
+  Inner.
 
-    Inner after blank.
-    :::
+  Inner after blank.
+  Second sentence.
+  :::
 
-    Outer after blank.
-    :::
+  Outer after blank.
+  :::
 -- stderr
 -- status
 0

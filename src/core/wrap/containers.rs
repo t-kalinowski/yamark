@@ -82,7 +82,9 @@ pub(crate) fn prepare_markdown_list_structure(
                 source: span,
                 indent,
             } => {
-                if ListPrefix::new(source, item).makes_child_code(indent) {
+                let prefix = ListPrefix::new(source, item);
+                let opener = &span.span().slice(source)[indent..];
+                if prefix.makes_child_code(indent) || prefix.misaligns_div(opener, indent) {
                     return None;
                 }
                 let mut nested = String::with_capacity(span.len());
@@ -132,6 +134,12 @@ impl<'a> ListPrefix<'a> {
         // parent marker must not move such a child across the four-space code
         // boundary. Preserve the list until a separate reindent policy exists.
         child_indent >= self.content_indent + 4
+    }
+
+    fn misaligns_div(&self, opener: &str, child_indent: usize) -> bool {
+        // Pandoc recognizes a fenced div only at the item's content column.
+        // A retained div prefix cannot follow a narrowed marker.
+        opener.starts_with(":::") && child_indent != self.content_indent
     }
 }
 
