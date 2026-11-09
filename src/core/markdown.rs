@@ -274,7 +274,11 @@ fn parse_markdown_with_mode(
 
         if let Some(marker_len) = quarto_div_opening(text) {
             let start = i;
-            let Some(closing) = find_quarto_div_closing(source, i + 1, end_line, marker_len) else {
+            let Some(closing) = find_quarto_div_closing(
+                (i + 1..end_line).map(|line| source.line_text(line)),
+                marker_len,
+            )
+            .map(|offset| i + 1 + offset) else {
                 i = end_line;
                 let state = engine.state_for_node(&mut doc, true);
                 let span = Span::new(
@@ -1446,29 +1450,26 @@ fn quarto_div_opening(text: &str) -> Option<usize> {
     Some(marker_len)
 }
 
-fn find_quarto_div_closing(
-    source: &SourceBuffer,
-    mut line: usize,
-    end: usize,
+/// Returns the offset of the line closing a div whose opener precedes `lines`.
+fn find_quarto_div_closing<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
     marker_len: usize,
 ) -> Option<usize> {
     let mut depth = 1usize;
-    while line < end {
-        let trimmed = source.line_text(line).trim();
-        if let Some(opening_len) = quarto_div_opening(source.line_text(line))
+    for (offset, text) in lines.into_iter().enumerate() {
+        if let Some(opening_len) = quarto_div_opening(text)
             && opening_len >= marker_len
         {
             depth += 1;
-            line += 1;
             continue;
         }
+        let trimmed = text.trim();
         if trimmed.len() >= marker_len && trimmed.chars().all(|ch| ch == ':') {
             depth -= 1;
             if depth == 0 {
-                return Some(line);
+                return Some(offset);
             }
         }
-        line += 1;
     }
     None
 }
