@@ -1,0 +1,27 @@
+-- args
+format --stdin-file-path input.md --wrap 20 --skip-embedded-formatters
+-- stdin
+Text  
+* a
+
+Text  
+***
+
+Text  
+| a | b |
+|---|---|
+| c | d |
+-- stdout
+Text  
+* a
+
+Text  
+***
+
+Text  
+| a | b |
+|---|---|
+| c | d |
+-- stderr
+-- status
+0

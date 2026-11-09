@@ -15,6 +15,7 @@
 
 - Keep fenced divs open across code blocks containing `:::` so prose after the code is formatted, including inside list items.
 
+- Preserve hard line breaks when unsupported inline syntax or an unsafe layout prevents a paragraph from being reflowed.
 - Keep list item ownership through fenced child blocks and nested lists. Paragraphs after a fence and multiline nested items beneath wide parent markers can now be formatted without losing their container context.
 - Keep fenced divs and grid tables in list items intact. A div remains one child block across blank lines, and a list is preserved when shortening its marker would move a div off the item's content column.
 - Preserve unsupported list continuations containing non-breaking spaces without slicing through a UTF-8 character and panicking.

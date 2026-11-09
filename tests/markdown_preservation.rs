@@ -68,3 +68,29 @@ fn explicit_preservation_keeps_line_endings_and_eof_bytes() {
         "<!-- fmt: skip -->\nKeep   prose.  \t\n\nFormat outside.\n"
     );
 }
+
+#[test]
+fn unavailable_inline_layout_keeps_hard_breaks_and_literal_spans() {
+    use std::path::Path;
+    use yamark::core::document::{FormatOptions, MarkdownWrap};
+    use yamark::workspace::format_source_for_path;
+
+    // The last line forces layout fallback after many literals and hard breaks.
+    // Their protected spans must merge in source order without repeated scans.
+    let source = format!("{}* a\n", "Line `code`  \n".repeat(16_000));
+    for newline in ["\n", "\r\n", "\r"] {
+        let source = source.replace('\n', newline);
+        let options = FormatOptions {
+            markdown_wrap: MarkdownWrap::Column(20),
+            ..FormatOptions::default()
+        };
+        let first = format_source_for_path(Path::new("input.md"), source.clone(), options, None)
+            .unwrap()
+            .output;
+        assert_eq!(first, source);
+        let second = format_source_for_path(Path::new("input.md"), first.clone(), options, None)
+            .unwrap()
+            .output;
+        assert_eq!(second, first);
+    }
+}

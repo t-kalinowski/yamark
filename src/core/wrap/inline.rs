@@ -180,6 +180,53 @@ impl InlineSource {
             .collect()
     }
 
+    pub(super) fn fallback_hard_break_spans(&self, source: &str) -> Option<Box<[Span]>> {
+        let mut atoms = self.atoms.iter().peekable();
+        let mut breaks = markdown_lines(source).filter_map(move |line| {
+            let trimmed = line.body.trim_end_matches([' ', '\t']);
+            let trailing = &line.body[trimmed.len()..];
+            if trimmed.is_empty()
+                || line.body_start + line.full.len() == source.len()
+                || trailing.len() < 2 && !trailing.contains('\t')
+            {
+                return None;
+            }
+            let start = line.body_start + trimmed.len();
+            while atoms.peek().is_some_and(|atom| atom.span.end() <= start) {
+                atoms.next();
+            }
+            // Opaque markup/template interiors keep their existing cleanup;
+            // only whitespace in an inline gap can spell a hard line break.
+            if atoms.peek().is_some_and(|atom| atom.span.start() <= start) {
+                return None;
+            }
+            Some(Span::new(start, line.body_start + line.body.len()))
+        });
+        let first = breaks.next()?;
+        let mut breaks = std::iter::once(first).chain(breaks).peekable();
+        let mut literals = self
+            .atoms
+            .iter()
+            .filter(|atom| matches!(atom.kind, Kind::Literal))
+            .map(|atom| atom.span.span())
+            .peekable();
+        let mut spans = Vec::new();
+        // Both inputs are source-ordered and disjoint. Merge in linear time
+        // without sorting or rescanning the paragraph for each hard break.
+        while let Some(line_break) = breaks.peek() {
+            if literals
+                .peek()
+                .is_some_and(|literal| literal.start < line_break.start)
+            {
+                spans.push(literals.next().unwrap());
+            } else {
+                spans.push(breaks.next().unwrap());
+            }
+        }
+        spans.extend(literals);
+        Some(spans.into_boxed_slice())
+    }
+
     pub(super) fn normalize(
         &self,
         source: &str,

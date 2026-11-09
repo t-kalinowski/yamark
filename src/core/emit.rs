@@ -211,12 +211,12 @@ fn emit_document_inner(
             index += 1;
             continue;
         }
-        if document
-            .markdown
-            .get(index)
-            .is_some_and(|plan| plan.preserve)
-        {
-            out.push_str(source.slice(node.span));
+        if let Some(plan) = document.markdown.get(index).filter(|plan| plan.preserve) {
+            if plan.preserve_raw {
+                emit_markdown_fallback(&mut out, source, node);
+            } else {
+                out.push_str(source.slice(node.span));
+            }
             cursor = node.span.end;
             previous_adjacent_div = matches!(node.emit, EmitPlan::MarkdownDiv { .. });
             index += 1;
@@ -501,6 +501,32 @@ fn emit_document_inner(
         out.push_str(source.slice(Span::new(cursor, document.range.end)));
     }
     Ok(out.finish())
+}
+
+fn emit_markdown_fallback(out: &mut EmitOutput, source: &SourceBuffer, node: &Node) {
+    let text = source.slice(node.span);
+    if !matches!(node.kind, NodeKind::Markdown(MarkdownNodeKind::Paragraph)) {
+        out.push_str(text);
+        return;
+    }
+    // A paragraph that cannot be reflowed still owns its hard line breaks.
+    // Retain their spelling instead of interpreting unsupported inline syntax.
+    // Code blocks, opaque templates/HTML, and unsupported containers keep their
+    // separate cleanup policies.
+    for line in crate::core::lines::text_lines(text) {
+        let body = line.body.trim_end_matches([' ', '\t']);
+        let trailing = &line.body[body.len()..];
+        out.push_str(body);
+        if !body.is_empty()
+            && line.body_start + line.full.len() < text.len()
+            && (trailing.len() >= 2 || trailing.contains('\t'))
+        {
+            out.push_verbatim(trailing, false);
+        } else {
+            out.push_str(trailing);
+        }
+        out.push_str(line.newline);
+    }
 }
 
 struct EmitOutput {

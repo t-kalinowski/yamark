@@ -743,12 +743,27 @@ impl Draft {
                             )
                         })
                         .as_ref()?;
-                    let input = recognition.normalize(
+                    let unwrapped_fallback = |literals| {
+                        Item::Unwrapped(UnwrappedPlan {
+                            text: inline.source.clone(),
+                            literals,
+                            first_prefix: inline.first_prefix.clone(),
+                            continuation_prefix: inline.continuation_prefix.clone(),
+                            final_newline: inline.newline,
+                            escape_first: false,
+                        })
+                    };
+                    let Some(input) = recognition.normalize(
                         inline.source.get(source),
                         gaps,
                         options.markdown_canonical,
                         !unwrapped,
-                    )?;
+                    ) else {
+                        plan.items.push(unwrapped_fallback(
+                            recognition.fallback_hard_break_spans(inline.source.get(source))?,
+                        ));
+                        continue;
+                    };
                     let text = input.text.as_str();
                     // Both handles use the enclosing source; token and literal
                     // spans below still use coordinates in the inline text.
@@ -786,19 +801,17 @@ impl Draft {
                     ) else {
                         // Declining reflow must retain recognized literals so
                         // output cleanup touches only the surrounding gaps.
-                        plan.items.push(Item::Unwrapped(UnwrappedPlan {
-                            text: inline.source.clone(),
-                            literals: recognition.literal_spans(),
-                            first_prefix: inline.first_prefix.clone(),
-                            continuation_prefix: inline.continuation_prefix.clone(),
-                            final_newline: inline.newline,
-                            escape_first: false,
-                        }));
+                        plan.items.push(unwrapped_fallback(
+                            recognition
+                                .fallback_hard_break_spans(inline.source.get(source))
+                                .unwrap_or_else(|| recognition.literal_spans()),
+                        ));
                         continue;
                     };
                     let mut start = 0;
+                    let mut layout_failed = false;
                     for &(end, hard_break) in &input.breaks {
-                        write_markdown_token_lines(
+                        if write_markdown_token_lines(
                             &mut writer,
                             TokenSlice {
                                 text,
@@ -806,8 +819,19 @@ impl Draft {
                             },
                             options.markdown_wrap,
                             hard_break.map_or("", MarkdownHardBreakMarker::suffix),
-                        )?;
+                        )
+                        .is_none()
+                        {
+                            layout_failed = true;
+                            break;
+                        }
                         start = end;
+                    }
+                    if layout_failed {
+                        plan.items.push(unwrapped_fallback(
+                            recognition.fallback_hard_break_spans(inline.source.get(source))?,
+                        ));
+                        continue;
                     }
                     plan.items.push(Item::Inline(InlinePlan {
                         text: retained_text,
