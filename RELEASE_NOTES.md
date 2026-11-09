@@ -4,6 +4,7 @@
 
 ### Markdown formatting
 
+- Honor setext underlines beneath heading-like text such as `# Title`, preserving Pandoc's heading precedence.
 - Remove source indentation when converting setext headings to ATX so Pandoc still renders them as headings.
 - Preserve trailing hashes such as `C#` when converting setext headings to ATX, including hashes before heading attributes.
 - Keep pipe-table-looking lines in continuing paragraphs as text instead of padding them as tables.

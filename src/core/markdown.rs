@@ -1378,7 +1378,6 @@ fn setext_heading_at(
     let text = line_without_bom(source, line_index);
     if text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
-        || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
         || list_item_at(text)
     {
