@@ -84,9 +84,10 @@ projection.
 | --- | --- | --- |
 | Paragraphs | Formats | Wraps by column, paragraph, sentence, or not at all, according to the active Markdown settings. |
 | ATX headings | Formats | Normalizes spacing. Preserves and, when safe, compacts heading attributes. |
+| Setext headings | Formats | Converts supported headings to ATX. A following underline takes precedence over heading text that looks like a thematic break. |
 | Lists and task lists | Formats | Reflows list paragraphs with container indentation accounted for. Preserves GFM task markers. |
 | Blockquotes | Formats when supported | Wraps supported blockquote shapes recursively. |
-| Footnote blocks | Formats or preserves | Wraps definitions by default. A preserve setting keeps definitions byte-for-byte. |
+| Footnote blocks | Formats or preserves | Wraps definitions and formats supported nested blocks by default. Indented setext underlines stay inside the note. A preserve setting keeps definitions byte-for-byte. |
 | Reference links | Formats around | Treats reference-style links as atomic wrapping tokens. Preserves reference definitions without relocation. |
 | Inline code and math | Preserves contents; formats around | Recognized spans retain authored whitespace and line endings while surrounding prose formats. |
 | Nested image links | Formats when safe | Normalizes and wraps simple nested image labels and long destinations. |
@@ -105,6 +106,10 @@ projection.
 | Standalone Hugo shortcodes | Preserves tokens; formats between | Complete `{{< ... >}}` and `{{% ... %}}` tokens retain their bytes, including multiline tokens and quoted arguments. Markdown between tokens formats normally. |
 | Raw HTML, TeX, table captions, and line blocks | Preserves | Leaves the construct unchanged when Yamark does not have a safe rewrite. |
 | Template spans | Preserves contents; reflows prose | Complete single-line expressions using default or configured delimiters are opaque words in paragraphs and supported prose containers. See [template configuration](reference-config.qmd#template). |
+
+A backtick opener accepts a bare language and an optional attribute block, or an attribute block alone. Yamark preserves the opener and body when additional text follows, because Pandoc reads that form as inline code. Existing MyST `{code-cell} language` fences retain their executable-fence behavior.
+
+YAML fences follow Markdown's code-body cleanup: trailing ASCII spaces and tabs are removed before the YAML formatter chooses a layout. Formatting that cleaned body as standalone YAML produces the same result. Standalone YAML preserves trailing spaces that belong to scalar values; it does not apply Markdown's code cleanup. Markdown `fmt: skip` and `fmt: off` controls retain the original fenced bytes.
 
 For Quarto header promotion, a supported fence is a YAML or Markdown fence, a
 language with a built-in or configured formatter, or one of the opaque

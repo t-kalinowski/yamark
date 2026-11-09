@@ -32,6 +32,8 @@ give the exact syntax for each surface.
 `sentence:<n>` is a Yamark-specific extension. RStudio's visual writer does not
 recognize the combined value.
 
+Pandoc's default abbreviations, such as `Dr.`, `fig.`, and `e.g.`, stay on the same line as the following word and do not end a sentence for wrapping. Matching is case-sensitive. A group that cannot fit the requested column may exceed it.
+
 ### Table widths
 
 `fit` sizes supported pipe, simple, grid, and multiline table columns from

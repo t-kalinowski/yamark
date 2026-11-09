@@ -12,9 +12,7 @@
 - Keep thematic-break markers and later setext-like lines inside continuing paragraphs, following Pandoc's single-line setext heading rules.
 - Separate headings from following horizontal rules so normalizing a rule cannot turn the heading into a different setext heading.
 - Preserve backtick spans with trailing fence-header text, such as `python title="x.py"`, so embedded formatters cannot alter text that Pandoc reads as inline code.
-
 - Keep fenced divs open across code blocks containing `:::` so prose after the code is formatted, including inside list items.
-
 - Remove YAML fence body trailing whitespace before formatting its YAML, so folded scalars reach a stable layout in one pass. Standalone YAML continues to preserve whitespace that belongs to scalar values.
 - Keep long split link destinations stable on the second formatting pass when the paragraph also contains an autolink.
 - Keep Pandoc’s default abbreviations with the following word in column and sentence wrapping, preserving their non-breaking rendered spacing.
