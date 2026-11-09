@@ -66,6 +66,8 @@ The public standalone `format_markdown_list` helper uses the same recognizer and
 
 When extending list children, define their source boundary and item ownership in `markdown/list.rs`, then check whether the conservative capability rules permit the rewrite. Reuse the generic child-plan path where possible. Add public examples that prove useful formatting and preservation boundaries, including the construct before and after another child. The [Markdown development group](DEVELOPMENT.md#validation) is the focused check; the full gate still applies before handoff.
 
+With `format-trace` enabled, diagnostics inspect finalized retained preservation and layout decisions. A nominal formatting node can still have no usable plan; that is reported as skipped. Explicitly preserved parents and skipped documents do not produce success messages for descendants that emission will never enter. Tracing does not run a second recognizer.
+
 ## YAML parsing and planning
 
 `YamlParser` owns the input cursor, trivia, directive engine, and construction of semantic nodes. `YamlPlanner` in `yaml/plan.rs` borrows the source, effective options, document, and YAML arena to select emission plans. It has no input cursor or directive engine. Replanning an existing document uses this borrowed view directly; it does not construct a parser or ingest the YAML again.

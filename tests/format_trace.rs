@@ -4,6 +4,36 @@ use yamark::core::document::{FileKind, FormatOptions};
 use yamark::core::parser::{format_source_report, format_source_report_with_trace};
 use yamark::plugins::PluginRegistry;
 
+#[cfg(feature = "format-trace")]
+#[test]
+fn markdown_trace_uses_finalized_fallback_decisions() {
+    // Feature-specific transcripts are kept below cases/format-trace so the
+    // ordinary CLI suite does not require feature-dependent expected output.
+    for case in [
+        include_str!("cases/format-trace/markdown_unavailable_layout.case"),
+        include_str!("cases/format-trace/markdown_retained_preservation.case"),
+        include_str!("cases/format-trace/markdown_preserved_nested_documents.case"),
+    ] {
+        let (args, rest) = case
+            .strip_prefix("-- args\n")
+            .unwrap()
+            .split_once("-- stdin\n")
+            .unwrap();
+        let (input, rest) = rest.split_once("-- stdout\n").unwrap();
+        let (stdout, rest) = rest.split_once("-- stderr\n").unwrap();
+        let (stderr, status) = rest.split_once("-- status\n").unwrap();
+        let output = Command::cargo_bin("yamark")
+            .unwrap()
+            .args(args.split_whitespace())
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(status.trim().parse().unwrap()));
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), stdout);
+        assert_eq!(String::from_utf8(output.stderr).unwrap(), stderr);
+    }
+}
+
 #[test]
 fn yaml_trace_collection_is_opt_in_for_formatting() {
     let config = Config::default();

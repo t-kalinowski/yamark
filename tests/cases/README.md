@@ -17,6 +17,8 @@ expected stderr
 
 The test harness intentionally avoids calling library internals. This keeps the public CLI contract readable and prevents implementation details from becoming part of the test API.
 
+Feature-specific Markdown decision transcripts live in `cases/format-trace/` and are run by `cargo test --features format-trace --test format_trace`. They use the same exact invocation/input/output/status sections; keeping them separate lets the ordinary transcript suite run without feature-dependent output. They check that retained preservation and unavailable layout plans are reported as skipped, including when the node has a nominal formatting emit variant.
+
 ## Running selected cases
 
 Run the complete transcript suite with `cargo test --test cli_cases`. To run one case or a related group, set `YAMARK_CASE` for that command:

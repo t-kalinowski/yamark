@@ -1,0 +1,16 @@
+-- args
+format --diagnostics --stdin-file-path input.md --wrap sentence
+-- stdin
+> > First. Second
+> > wrapped.
+> Third. Fourth
+> wrapped.
+-- stdout
+> > First. Second
+> > wrapped.
+> Third. Fourth
+> wrapped.
+-- stderr
+input.md:1:1: note: markdown trace: skipped kind=Blockquote emit=MarkdownBlockquote reason=unavailable_layout_plan
+-- status
+0
