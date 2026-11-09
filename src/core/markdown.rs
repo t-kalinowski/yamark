@@ -1199,14 +1199,22 @@ fn paragraph_should_end_before(
     if !line_may_start_markdown_block(source, line, text) {
         return false;
     }
+    // Pandoc setext headings have one text line at the start of a block.
+    // Neither another text/underline pair nor a rule interrupts a paragraph.
+    // Check these before generic raw/list recognition, which also accepts
+    // underline and spaced thematic-break markers.
+    if thematic_break_at(text)
+        || setext_underline_depth(text).is_some()
+        || setext_heading_at(source, line, source.lines.len()).is_some()
+    {
+        return false;
+    }
     text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || pandoc_table_at(source, line, source.lines.len())
         || definition_list_at(source, line, source.lines.len())
         || paired_html_block_start(text).is_some()
-        || setext_heading_at(source, line, source.lines.len()).is_some()
         || heading_ranges(source, line).is_some()
-        || thematic_break_at(text)
         || quarto_div_opening(text).is_some()
         || pandoc_grid_table_at(source, line, source.lines.len())
         || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
@@ -1333,6 +1341,7 @@ fn setext_heading_at(
     if line_index + 1 >= end {
         return None;
     }
+    let depth = setext_underline_depth(source.line_text(line_index + 1))?;
     let text = line_without_bom(source, line_index);
     if text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
@@ -1342,14 +1351,6 @@ fn setext_heading_at(
     {
         return None;
     }
-    let underline = source.line_text(line_index + 1).trim();
-    let depth = if !underline.is_empty() && underline.chars().all(|ch| ch == '=') {
-        1
-    } else if !underline.is_empty() && underline.chars().all(|ch| ch == '-') {
-        2
-    } else {
-        return None;
-    };
     let line = source.lines[line_index];
     let body = source.line_text(line_index);
     let bom = bom_len(source, line_index);
@@ -1363,6 +1364,20 @@ fn setext_heading_at(
         Span::new(line.text.start() + start, line.text.start() + end),
         depth,
     ))
+}
+
+fn setext_underline_depth(text: &str) -> Option<usize> {
+    let underline = text.trim_matches([' ', '\t']).as_bytes();
+    let marker = *underline.first()?;
+    let depth = match marker {
+        b'=' => 1,
+        b'-' => 2,
+        _ => return None,
+    };
+    underline
+        .iter()
+        .all(|byte| *byte == marker)
+        .then_some(depth)
 }
 
 fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Span)> {

@@ -54,6 +54,8 @@ Retained quoted continuations keep their source indentation when the parent move
 
 ## Markdown list recognition and layout
 
+Paragraph boundaries follow Pandoc's single-line setext heading rule. Once a paragraph has begun, a later text/underline pair and thematic-break markers remain paragraph text. The underline check precedes generic raw-block and list recognition so those recognizers cannot promote a continuation into a new block. Fences still interrupt paragraphs to match knitr chunk detection.
+
 `markdown/list.rs` owns the authored structure inside a recognized list span. Its compact item vector records parent IDs, marker and checkbox spans, source indentation, and content offsets. Its ordered block vector records paragraph spans, blank runs, and recursive child blocks with their owning item. These spans are relative to the enclosing list slice; public document-node spans remain absolute in their source buffer.
 
 `markdown/containers.rs` owns the outer list boundary and conservative capability checks. Those checks consult the recorded item's indentation instead of reconstructing the current item from each line. Recognition of a child is not itself permission to rewrite its enclosing list: mixed raw regions, shifted siblings, child headings, and ambiguous ancestor continuations retain their existing preservation boundaries.

@@ -1,0 +1,49 @@
+-- args
+format --wrap sentence --skip-embedded-formatters --stdin-file-path input.md
+-- stdin
+Text
+***
+
+Text
+* * *
+
+Text
+- - -
+
+Text
+_ _ _
+
+Text
+more
+---
+
+Text
+  more
+---
+
+Text
+Title
+===
+
+Text
+[^a]: text
+---
+-- stdout
+Text ***
+
+Text * * *
+
+Text - - -
+
+Text _ _ _
+
+Text more ---
+
+Text more ---
+
+Text Title ===
+
+Text [^a]: text ---
+-- stderr
+-- status
+0
