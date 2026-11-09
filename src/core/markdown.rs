@@ -205,7 +205,7 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if text.trim().is_empty() {
+        if line_is_blank(source, i) {
             let state = engine.state_for_node(&mut doc, false);
             doc.push_node(Node {
                 kind: NodeKind::Markdown(MarkdownNodeKind::Blank),
@@ -458,7 +458,7 @@ fn parse_markdown_with_mode(
             continue;
         }
 
-        if thematic_break_at(text) {
+        if thematic_break_at(line_without_bom(source, i)) {
             let state = engine.state_for_node(&mut doc, true);
             validate_markdown_format_target(source, &doc, state, line.full.into(), true)?;
             doc.push_node(Node {
@@ -1141,13 +1141,13 @@ fn infer_markdown_directive_scope(
 }
 
 fn directive_is_isolated(source: &SourceBuffer, start: usize, line: usize, end: usize) -> bool {
-    let before_blank = line == start || source.line_text(line - 1).trim().is_empty();
-    let after_blank = line + 1 >= end || source.line_text(line + 1).trim().is_empty();
+    let before_blank = line == start || line_is_blank(source, line - 1);
+    let after_blank = line + 1 >= end || line_is_blank(source, line + 1);
     before_blank && after_blank
 }
 
 fn markdown_line_starts_target(source: &SourceBuffer, line: usize, end: usize) -> bool {
-    let text = source.line_text(line);
+    let text = line_without_bom(source, line);
     !text.trim().is_empty()
         && parse_markdown_html_directive(text).is_none()
         && paired_html_block_start(text).is_none()
@@ -1195,7 +1195,7 @@ fn paragraph_should_end_before(
     line: usize,
     standalone_template_delimiters: &[TemplateDelimiter],
 ) -> bool {
-    let text = source.line_text(line);
+    let text = line_without_bom(source, line);
     if !line_may_start_markdown_block(source, line, text) {
         return false;
     }
@@ -1308,6 +1308,23 @@ fn following_line_can_promote_paragraph(text: &str) -> bool {
         || matches!(marker.as_bytes().first(), Some(b':' | b'~'))
 }
 
+/// Pandoc drops a byte order mark only at the start of the input; a later
+/// U+FEFF, including one at the start of container content, is text.
+fn bom_len(source: &SourceBuffer, line: usize) -> usize {
+    match source.bom {
+        Some(bom) if line == 0 => bom.len(),
+        _ => 0,
+    }
+}
+
+fn line_without_bom(source: &SourceBuffer, line: usize) -> &str {
+    &source.line_text(line)[bom_len(source, line)..]
+}
+
+fn line_is_blank(source: &SourceBuffer, line: usize) -> bool {
+    line_without_bom(source, line).trim().is_empty()
+}
+
 fn setext_heading_at(
     source: &SourceBuffer,
     line_index: usize,
@@ -1316,7 +1333,7 @@ fn setext_heading_at(
     if line_index + 1 >= end {
         return None;
     }
-    let text = source.line_text(line_index);
+    let text = line_without_bom(source, line_index);
     if text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || heading_ranges(source, line_index).is_some()
@@ -1335,11 +1352,7 @@ fn setext_heading_at(
     };
     let line = source.lines[line_index];
     let body = source.line_text(line_index);
-    let bom = if body.starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
-    } else {
-        0
-    };
+    let bom = bom_len(source, line_index);
     let start = bom
         + body[bom..]
             .bytes()
@@ -1356,11 +1369,7 @@ fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Spa
     let line = source.lines[line_index];
     let text = source.line_text(line_index);
     let bytes = text.as_bytes();
-    let bom = if text.starts_with('\u{feff}') {
-        '\u{feff}'.len_utf8()
-    } else {
-        0
-    };
+    let bom = bom_len(source, line_index);
     let indent = bom
         + bytes[bom..]
             .iter()
@@ -1414,7 +1423,7 @@ fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Spa
 }
 
 fn thematic_break_at(text: &str) -> bool {
-    let trimmed = text.trim_start_matches('\u{feff}').trim();
+    let trimmed = text.trim();
     let mut marker = None;
     let mut count = 0usize;
     for ch in trimmed.chars() {
@@ -1684,11 +1693,7 @@ fn markdown_indented_code_at(text: &str) -> bool {
 fn shortcode_block_start(source: &SourceBuffer, line: usize) -> Option<usize> {
     let text = source.line_text(line);
     // A file-leading BOM is retained in the node's span, but is not indentation.
-    let content = if line == 0 {
-        text.strip_prefix('\u{feff}').unwrap_or(text)
-    } else {
-        text
-    };
+    let content = &text[bom_len(source, line)..];
     let trimmed = content.trim_start();
     let indent = content.len() - trimmed.len();
     (indent <= 3
