@@ -219,14 +219,6 @@ fn angle_inputs_preserve_links_during_normalization() {
                 ),
             ),
             (
-                format!(
-                    "Before <http://a/{marker}> [r](  t  ) then {marker}tail{marker} after [s](  u  ).\n"
-                ),
-                format!(
-                    "Before <http://a/{marker}> [r]( t ) then {marker}tail{marker} after [s]( u ).\n"
-                ),
-            ),
-            (
                 format!("Before <kbd title=\"{marker}[x](  v  ){marker}\">[r](  t  )</kbd>.\n"),
                 format!("Before <kbd title=\"{marker}[x](  v  ){marker}\">[r](  t  )</kbd>.\n"),
             ),
@@ -236,6 +228,32 @@ fn angle_inputs_preserve_links_during_normalization() {
                     let expected = if wrap == "none" { &source } else { &expected };
                     assert_format(&source, expected, wrap, canonical);
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn recognized_autolinks_keep_neighboring_links_eligible_for_normalization() {
+    // Pandoc recognizes each URI as an autolink, including backticks and dollars
+    // in its destination. Its atomic boundary keeps the following literals intact.
+    for (source, expected) in [
+        (
+            "Before <http://a/`> [r](  t  ) then `tail` after [s](  u  ).\n",
+            "Before <http://a/`> [r](t) then `tail` after [s](u).\n",
+        ),
+        (
+            "Before <http://a/$> [r](  t  ) then $tail$ after [s](  u  ).\n",
+            "Before <http://a/$> [r](t) then $tail$ after [s](u).\n",
+        ),
+        (
+            "Before `[a](  u  )` <http://x> then `[b](  v  )` after [r](  t  ).\n",
+            "Before `[a](  u  )` <http://x> then `[b](  v  )` after [r](t).\n",
+        ),
+    ] {
+        for wrap in ["none", "paragraph", "sentence", "240", "sentence:240"] {
+            for canonical in [false, true] {
+                assert_format(source, expected, wrap, canonical);
             }
         }
     }
@@ -483,7 +501,7 @@ fn raw_angles_preserve_the_entire_normalization_input() {
                 source
             };
             assert_format(source, expected, wrap, canonical);
-            for angle in ["< value", "<kbd>", "<http://x>", "<!--"] {
+            for angle in ["< value", "<kbd>", "<!--"] {
                 let real = if wrap == "none" || wrap == "sentence:240" && angle == "<!--" {
                     "[r](  t  )"
                 } else {

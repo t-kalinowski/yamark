@@ -129,7 +129,8 @@ impl InlineSource {
                 }
                 Some((end, Kind::Markup))
             } else if let Some(end) = commonmark_autolink_span_end(source, index) {
-                normalize_links = false;
+                // This recognized autolink is protected by its own atom; it
+                // does not prevent neighboring link destinations normalizing.
                 Some((end, Kind::Protected))
             } else if matches!(byte, b'[' | b'!') && (byte == b'[' || rest.starts_with("![")) {
                 // Retain label boundaries before editable soft breaks join.

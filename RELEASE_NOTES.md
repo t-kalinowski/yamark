@@ -15,6 +15,7 @@
 
 - Keep fenced divs open across code blocks containing `:::` so prose after the code is formatted, including inside list items.
 
+- Keep long split link destinations stable on the second formatting pass when the paragraph also contains an autolink.
 - Keep Pandoc’s default abbreviations with the following word in column and sentence wrapping, preserving their non-breaking rendered spacing.
 - Preserve hard line breaks when unsupported inline syntax or an unsafe layout prevents a paragraph from being reflowed.
 - Keep list item ownership through fenced child blocks and nested lists. Paragraphs after a fence and multiline nested items beneath wide parent markers can now be formatted without losing their container context.
