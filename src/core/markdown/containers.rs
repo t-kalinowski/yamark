@@ -69,8 +69,13 @@ pub(super) fn list_block_end(source: &SourceBuffer, start: usize, end: usize) ->
         // Low-indent prose can lazily continue the item's paragraph. Keep
         // scanning so a later indented paragraph remains inside the item;
         // unsupported continuation layouts are preserved by list planning.
-        // Mixed raw regions retain their existing boundary and extension scan.
-        if !block_openers.is_empty() || raw_sensitive_at(text) || code_fence_at(text).is_some() {
+        // Keep existing blockquote boundaries and mixed raw-region handling;
+        // their recognition is separate from this lazy-prose preservation rule.
+        if !block_openers.is_empty()
+            || blockquote_at(text)
+            || raw_sensitive_at(text)
+            || code_fence_at(text).is_some()
+        {
             break;
         }
         line += 1;
