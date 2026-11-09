@@ -1,0 +1,60 @@
+-- args
+format --wrap sentence --skip-embedded-formatters --stdin-file-path input.md
+-- stdin
+Learning C#
+---
+
+A# 
+---
+
+Hello #
+---
+
+Title # {#id}
+---
+
+Even \\#
+---
+
+Odd \#
+---
+
+Many ###
+---
+
+Run \##
+---
+
+Middle # stays
+---
+
+Attribute # {title="a b"}
+---
+
+Escaped \# {#escaped}
+---
+-- stdout
+## Learning C\#
+
+## A\#
+
+## Hello \#
+
+## Title \# {#id}
+
+## Even \\\#
+
+## Odd \#
+
+## Many ##\#
+
+## Run \#\#
+
+## Middle # stays
+
+## Attribute \# {title="a b"}
+
+## Escaped \# {#escaped}
+-- stderr
+-- status
+0

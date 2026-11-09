@@ -1070,6 +1070,7 @@ pub(crate) fn render_markdown_setext_heading(
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
+    escape_setext_closing_hash(&mut text);
     text = crate::core::wrap::normalize_heading_content(&text);
 
     let mut output = String::new();
@@ -1081,6 +1082,32 @@ pub(crate) fn render_markdown_setext_heading(
     }
     output.push_str(line_ending_for_span(source, span));
     output
+}
+
+fn escape_setext_closing_hash(text: &mut String) {
+    // Like heading attribute normalization, use the final opening brace.
+    // Braces inside quoted attribute values are intentionally unsupported.
+    // One reverse search avoids retrying a suffix scan at every opening brace.
+    let content_end = if text.ends_with('}') {
+        text.rfind('{').unwrap_or(text.len())
+    } else {
+        text.len()
+    };
+    let content = text[..content_end].trim_end_matches([' ', '\t']);
+    if !content.ends_with('#') {
+        return;
+    }
+    let hash = content.len() - 1;
+    let backslashes = content[..hash]
+        .bytes()
+        .rev()
+        .take_while(|byte| *byte == b'\\')
+        .count();
+    if backslashes % 2 == 0 {
+        // Escaping the final hash prevents the whole trailing run from being
+        // consumed as an ATX closing sequence, even without a preceding space.
+        text.insert(hash, '\\');
+    }
 }
 
 pub(crate) fn render_markdown_thematic_break(
