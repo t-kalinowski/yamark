@@ -273,6 +273,17 @@ fn child_end(lines: &[TextLine<'_>], start: usize, indent: usize) -> usize {
         }
         return lines.len();
     }
+    if let Some(marker_len) = super::quarto_div_opening(opener) {
+        // A div can contain blank lines. Its body belongs to the div, not to
+        // the list item. An unclosed div extends to the end of the list slice.
+        let body = &lines[start + 1..];
+        return super::find_quarto_div_closing(
+            body.iter()
+                .map(|line| line.body.get(indent..).unwrap_or("")),
+            marker_len,
+        )
+        .map_or(lines.len(), |offset| start + 2 + offset);
+    }
     let mut end = start + 1;
     while end < lines.len()
         && !lines[end].body.trim().is_empty()

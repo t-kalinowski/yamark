@@ -1,0 +1,57 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters
+-- stdin
+1.  Intro text.
+
+    ::: {.note}
+    Inside div.
+
+    ```bash
+    code
+    ```
+
+    After code.
+    :::
+
+-   Bullet intro.
+
+    ::: {.outer}
+    Outer.
+
+    ::: {.inner}
+    Inner.
+
+    Inner after blank.
+    :::
+
+    Outer after blank.
+    :::
+-- stdout
+1. Intro text.
+
+    ::: {.note}
+    Inside div.
+
+    ```bash
+    code
+    ```
+
+    After code.
+    :::
+
+- Bullet intro.
+
+    ::: {.outer}
+    Outer.
+
+    ::: {.inner}
+    Inner.
+
+    Inner after blank.
+    :::
+
+    Outer after blank.
+    :::
+-- stderr
+-- status
+0
