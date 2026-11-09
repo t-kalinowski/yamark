@@ -225,6 +225,21 @@ fn emit_document_inner(
         match &node.emit {
             EmitPlan::Copy | EmitPlan::Preserve => out.push_str(source.slice(node.span)),
             EmitPlan::MarkdownThematicBreak => {
+                if index > 0 {
+                    let previous = &document.nodes[index - 1];
+                    if previous.span.end == node.span.start
+                        && matches!(
+                            previous.kind,
+                            NodeKind::Markdown(
+                                MarkdownNodeKind::Heading | MarkdownNodeKind::SetextHeading
+                            )
+                        )
+                    {
+                        // A normalized --- must not become the preceding
+                        // heading's setext underline in Pandoc.
+                        out.push_str(line_ending_for_span(source, previous.span));
+                    }
+                }
                 out.push_str(&crate::core::markdown::render_markdown_thematic_break(
                     source,
                     node.span,
