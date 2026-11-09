@@ -15,6 +15,7 @@
 
 - Keep fenced divs open across code blocks containing `:::` so prose after the code is formatted, including inside list items.
 
+- Remove YAML fence body trailing whitespace before formatting its YAML, so folded scalars reach a stable layout in one pass. Standalone YAML continues to preserve whitespace that belongs to scalar values.
 - Keep long split link destinations stable on the second formatting pass when the paragraph also contains an autolink.
 - Keep Pandoc’s default abbreviations with the following word in column and sentence wrapping, preserving their non-breaking rendered spacing.
 - Preserve hard line breaks when unsupported inline syntax or an unsafe layout prevents a paragraph from being reflowed.

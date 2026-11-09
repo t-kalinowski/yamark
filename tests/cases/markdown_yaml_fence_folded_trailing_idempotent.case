@@ -1,0 +1,47 @@
+-- args
+format --stdin-file-path x.md --verify
+-- stdin
+```yaml
+abstract: >
+  The characteristic theme of the works of Stone is the bridge between
+  culture and society. ...
+```
+
+<!-- fmt: skip -->
+```yaml
+abstract: > 
+  The characteristic theme of the works of Stone is 
+  the bridge between culture and society. ...
+```
+
+<!-- fmt: off -->
+```yaml
+abstract: > 
+  The characteristic theme of the works of Stone is 
+  the bridge between culture and society. ...
+```
+<!-- fmt: on -->
+-- stdout
+```yaml
+abstract: >
+  The characteristic theme of the works of Stone is the bridge between
+  culture and society. ...
+```
+
+<!-- fmt: skip -->
+```yaml
+abstract: > 
+  The characteristic theme of the works of Stone is 
+  the bridge between culture and society. ...
+```
+
+<!-- fmt: off -->
+```yaml
+abstract: > 
+  The characteristic theme of the works of Stone is 
+  the bridge between culture and society. ...
+```
+<!-- fmt: on -->
+-- stderr
+-- status
+0

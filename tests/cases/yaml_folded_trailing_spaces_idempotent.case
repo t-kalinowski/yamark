@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path x.yaml --verify
+-- stdin
+abstract: >
+  The characteristic theme of the works of Stone is 
+  the bridge between culture and society. ...
+-- stdout
+abstract: >
+  The characteristic theme of the works of Stone is 
+  the bridge between culture and society. ...
+-- stderr
+-- status
+0

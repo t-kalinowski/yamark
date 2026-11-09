@@ -109,6 +109,8 @@ projection.
 
 A backtick opener accepts a bare language and an optional attribute block, or an attribute block alone. Yamark preserves the opener and body when additional text follows, because Pandoc reads that form as inline code. Existing MyST `{code-cell} language` fences retain their executable-fence behavior.
 
+YAML fences follow Markdown's code-body cleanup: trailing ASCII spaces and tabs are removed before the YAML formatter chooses a layout. Formatting that cleaned body as standalone YAML produces the same result. Standalone YAML preserves trailing spaces that belong to scalar values; it does not apply Markdown's code cleanup. Markdown `fmt: skip` and `fmt: off` controls retain the original fenced bytes.
+
 For Quarto header promotion, a supported fence is a YAML or Markdown fence, a
 language with a built-in or configured formatter, or one of the opaque
 languages Yamark preserves safely: `bash`, `sh`, `shell`, `zsh`, `ojs`, `text`,

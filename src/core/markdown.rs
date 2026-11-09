@@ -727,7 +727,7 @@ fn parse_markdown_with_mode(
                 None
             } else {
                 match language.as_deref() {
-                    Some("yaml" | "yml") => Some(doc.push_nested(parse_nested_yaml(
+                    Some("yaml" | "yml") => Some(doc.push_nested(parse_nested_yaml_fence(
                         source,
                         content,
                         nested_options,
@@ -813,6 +813,42 @@ fn parse_markdown_with_mode(
     }
 
     Ok(doc)
+}
+
+fn parse_nested_yaml_fence(
+    source: &SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+    mode: MarkdownParseMode,
+) -> Result<Document> {
+    // Fence bodies contain whole source lines. Inspect their indexed endpoints
+    // first so already-clean bodies keep borrowing the original source.
+    let lines = &source.lines[source.line_at_byte(range.start)..source.line_at_byte(range.end)];
+    if !lines.iter().any(|line| {
+        matches!(
+            source.slice(line.text).as_bytes().last(),
+            Some(b' ' | b'\t')
+        )
+    }) {
+        return parse_nested_yaml(source, range, options, config, mode);
+    }
+
+    // Markdown removes code-body trailing whitespace. Do it before YAML chooses
+    // scalar layouts, otherwise its first plan is based on bytes removed during
+    // emission and the next pass can choose a different layout. Standalone YAML
+    // keeps those bytes because they can be part of its scalar values.
+    let mut cleaned = String::with_capacity(range.len());
+    for line in lines {
+        cleaned.push_str(source.slice(line.text).trim_end_matches([' ', '\t']));
+        cleaned.push_str(line.ending.as_str());
+    }
+    let (line, column) = source.line_column_at_byte(range.start);
+    let cleaned = SourceBuffer::nested(cleaned).with_diagnostic_origin(line, column);
+    let cleaned_range = Span::new(0, cleaned.as_str().len());
+    let mut nested = parse_nested_yaml(&cleaned, cleaned_range, options, config, mode)?;
+    nested.source = Some(cleaned);
+    Ok(nested)
 }
 
 fn parse_nested_yaml(
