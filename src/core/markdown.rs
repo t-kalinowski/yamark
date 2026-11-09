@@ -1379,8 +1379,12 @@ fn setext_heading_at(
     if text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || code_fence_at(text).is_some()
-        || list_item_at(text)
     {
+        return None;
+    }
+    // The underline takes precedence over thematic-break text such as "* * *".
+    // Check that exception only after a real underline, not for every list line.
+    if list_item_at(text) && !thematic_break_at(text) {
         return None;
     }
     let line = source.lines[line_index];

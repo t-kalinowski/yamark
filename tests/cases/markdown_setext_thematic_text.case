@@ -1,0 +1,46 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+* * *
+---
+
+* * *
+===
+
+- - -
+---
+
+_ _ _
+===
+
+* item
+---
+
+- item
+===
+
+* * *
+
+After break. Next sentence.
+-- stdout
+## * * *
+
+# * * *
+
+## - - -
+
+# _ _ _
+
+- item
+---
+
+- item
+===
+
+---
+
+After break.
+Next sentence.
+-- stderr
+-- status
+0

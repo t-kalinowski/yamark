@@ -25,3 +25,22 @@ def test_lazy_list_continuation_preserves_item_paragraphs(
     output = format_markdown(source, wrap)
     assert markdown_ast(output, "markdown") == markdown_ast(source, "markdown")
     assert format_markdown(output, wrap) == output
+
+
+@pytest.mark.parametrize("wrap", ["none", "72", "sentence"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "* * *\n---\n",
+        "* * *\n===\n",
+        "- - -\n---\n",
+        "_ _ _\n===\n",
+        "* item\n---\n",
+        "- item\n===\n",
+        "* * *\n\nAfter break. Next sentence.\n",
+    ],
+)
+def test_setext_underline_precedes_thematic_text(source: str, wrap: str) -> None:
+    output = format_markdown(source, wrap)
+    assert markdown_ast(output, "markdown") == markdown_ast(source, "markdown")
+    assert format_markdown(output, wrap) == output
