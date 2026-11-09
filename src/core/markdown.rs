@@ -1206,6 +1206,7 @@ fn paragraph_should_end_before(
     if thematic_break_at(text)
         || setext_underline_depth(text).is_some()
         || setext_heading_at(source, line, source.lines.len()).is_some()
+        || list_item_at(text)
     {
         return false;
     }
@@ -1219,7 +1220,6 @@ fn paragraph_should_end_before(
         || pandoc_grid_table_at(source, line, source.lines.len())
         || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
         || pipe_table_at(source, line, source.lines.len())
-        || list_item_at(text)
         || blockquote_at(text)
         || raw_sensitive_at(text)
         || standalone_template_line_at(text, standalone_template_delimiters)

@@ -4,6 +4,7 @@
 
 ### Markdown formatting
 
+- Keep list-like lines inside a continuing paragraph as text, while retaining nested lists directly beneath their parent items.
 - Keep thematic-break markers and later setext-like lines inside continuing paragraphs, following Pandoc's single-line setext heading rules.
 - Separate headings from following horizontal rules so normalizing a rule cannot turn the heading into a different setext heading.
 - Keep list item ownership through fenced child blocks and nested lists. Paragraphs after a fence and multiline nested items beneath wide parent markers can now be formatted without losing their container context.
