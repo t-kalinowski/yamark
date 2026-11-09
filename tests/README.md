@@ -6,6 +6,7 @@ Test observable behavior through the CLI or public library API. Start fixes with
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | [`cases/`](cases/README.md), run by `cli_cases.rs` | Exact invocation, input, stdout, stderr, and exit status. Every CLI behavior change needs a case.                                         |
 | `spec_cli/`                                        | Public CLI specifications grouped by commands, workspace/config, Markdown, YAML, front matter, source languages, and external formatters. |
+| `markdown_container_contracts.rs`                  | Public Markdown source ranges, nested formatting, late directives, and literal/preservation boundaries.                                   |
 | Other `tests/*.rs`                                 | Focused public API/CLI regressions, packaging, tooling, and documentation checks.                                                         |
 | [`external-tests/`](../external-tests/run.py)      | Public CLI, external parser semantics, corpus, smoke, and snapshot comparisons.                                                           |
 | [`editors/vscode/test/`](../editors/vscode/test/)  | Editor-facing commands and process integration.                                                                                           |
@@ -20,6 +21,10 @@ The Cargo target remains `spec_cli`; select a contract or case with a filter:
 uv run --no-project --with ruff --with py-yaml12 -- cargo test --test spec_cli yaml_collections
 cargo test --test cli_cases
 ```
+
+Use `scripts/check-markdown.sh` for the Markdown development group, or `scripts/check-markdown.sh --semantic` to include the existing sentence-wrap Pandoc comparisons. The group selects transcript filenames containing `markdown` and reports the selected count. A smaller transcript run uses the existing `YAMARK_CASE` filter; no matching fixtures is an error.
+
+The container contracts assert exact changed output for supported formatting, then check idempotence. Explicit preservation cases check unchanged protected bytes together with formatting outside the protected region. Keep those expectations distinct: unchanged output can satisfy idempotence and semantic equivalence while still failing to format supported prose. The source-range checks use the public `parse_source` API and absolute spans in a source subrange; they do not expose private container helpers.
 
 Keep test bodies near their owning contract. `spec_cli/support.rs` contains only shared CLI invocation helpers; formatter and filesystem fixtures stay with the suites that use them. Do not add internal production visibility for tests.
 
