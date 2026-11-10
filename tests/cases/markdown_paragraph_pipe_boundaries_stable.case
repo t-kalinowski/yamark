@@ -1,0 +1,17 @@
+-- args
+format --wrap sentence --skip-embedded-formatters --stdin-file-path input.md
+-- stdin
+Text | a | b | |---|---| | c | d |
+
+| a   | b   |
+| --- | --- |
+| c   | d   |
+-- stdout
+Text | a | b | |---|---| | c | d |
+
+| a   | b   |
+| --- | --- |
+| c   | d   |
+-- stderr
+-- status
+0

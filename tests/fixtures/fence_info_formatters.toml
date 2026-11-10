@@ -1,0 +1,6 @@
+# Deterministic controls for recognized executable code fences.
+[embedded.python]
+formatter = { command = ["python", "-c", 'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b"x=1", b"x = 1"))', "{path}"], path_suffix = ".py" }
+
+[embedded.r]
+formatter = { command = ["python", "-c", 'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b"x=1", b"x = 1"))', "{path}"], path_suffix = ".R" }

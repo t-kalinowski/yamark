@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --preserve-footnotes --skip-embedded-formatters
+-- stdin
+Text[^1].
+
+[^1]: x
+    ---
+
+    Note.
+-- stdout
+Text[^1].
+
+[^1]: x
+    ---
+
+    Note.
+-- stderr
+-- status
+0

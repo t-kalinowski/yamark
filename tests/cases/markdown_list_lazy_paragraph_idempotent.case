@@ -1,0 +1,87 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+- item one
+lazy text
+
+  para in item
+- next
+
+Outside first.
+Outside second.
+
+- item two
+x  continued
+
+  para in item
+
+Outside third.
+Outside fourth.
+
+- Parent.
+  - Child.
+
+  Outer first. Outer second.
+- Next.
+
+- Item.
+ ~~~text
+ alpha    beta
+ ~~~
+- Next.
+ <pre>
+ gamma    delta
+ </pre>
+Outside fifth.
+Outside sixth.
+
+- Before fence.
+~~~text
+keep  code
+~~~
+Outside seventh.
+Outside eighth.
+-- stdout
+- item one
+lazy text
+
+  para in item
+- next
+
+Outside first.
+Outside second.
+
+- item two
+x  continued
+
+  para in item
+
+Outside third.
+Outside fourth.
+
+- Parent.
+  - Child.
+
+  Outer first. Outer second.
+- Next.
+
+- Item.
+ ~~~text
+ alpha    beta
+ ~~~
+- Next.
+ <pre>
+ gamma    delta
+ </pre>
+Outside fifth.
+Outside sixth.
+
+- Before fence.
+~~~text
+keep  code
+~~~
+Outside seventh.
+Outside eighth.
+-- stderr
+-- status
+0

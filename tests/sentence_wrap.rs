@@ -119,6 +119,10 @@ fn sentence_wrapping_escapes_literal_block_markers() {
 fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
     for (case, wrap) in [
         (
+            include_str!("cases/markdown_split_links_after_autolinks.case"),
+            MarkdownWrap::Column(72),
+        ),
+        (
             include_str!("cases/markdown_container_inline_html.case"),
             MarkdownWrap::Sentence,
         ),
@@ -316,4 +320,69 @@ fn sentence_transcripts_keep_hard_breaks_and_narrow_columns_idempotent() {
             }
         }
     }
+}
+
+#[test]
+fn pandoc_abbreviations_keep_the_following_word() {
+    // The default data file printed by Pandoc 3.13, including its exact case.
+    const ABBREVIATIONS: &str = "aet. aetat. al. Apr. Aug. bk. Bros. c. Capt. cf. ch. chap. chs. Co. col. Corp. cp. d. Dec. Dr. e.g. ed. eds. esp. f. fasc. Feb. ff. fig. fl. fol. fols. Fr. Gen. Gov. Hon. i.e. ill. Inc. incl. Jan. Jr. Jul. Jun. Ltd. M.A. M.D. Mar. Mr. Mrs. Ms. n. n.b. nn. No. Nov. Oct. p. Ph.D. pp. Pres. Prof. pt. q.v. Rep. Rev. s.v. s.vv. saec. sec. Sen. Sep. Sept. Sgt. Sr. St. univ. viz. vol. vs.";
+    for abbreviation in ABBREVIATIONS.split(' ') {
+        for prefix in ["", "(", "x-"] {
+            let pair = format!("{prefix}{abbreviation} word");
+            let source = format!("Opening words {pair} follow here. Another sentence.\n");
+            for wrap in [
+                MarkdownWrap::Sentence,
+                MarkdownWrap::Column(1),
+                MarkdownWrap::Column(16),
+                MarkdownWrap::SentenceAndColumn(16),
+            ] {
+                let options = FormatOptions {
+                    markdown_wrap: wrap,
+                    ..FormatOptions::default()
+                };
+                let first =
+                    format_source_for_path(Path::new("input.md"), source.clone(), options, None)
+                        .unwrap()
+                        .output;
+                assert!(first.contains(&pair), "{wrap:?}, {source:?}, {first:?}");
+                let second =
+                    format_source_for_path(Path::new("input.md"), first.clone(), options, None)
+                        .unwrap()
+                        .output;
+                assert_eq!(second, first, "{wrap:?}, {source:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn long_abbreviation_runs_remain_one_unbroken_group() {
+    let source = format!("{}word.\n", "Dr. ".repeat(32_000));
+    let options = FormatOptions {
+        markdown_wrap: MarkdownWrap::Column(20),
+        ..FormatOptions::default()
+    };
+    let output = format_source_for_path(Path::new("input.md"), source.clone(), options, None)
+        .unwrap()
+        .output;
+    assert_eq!(output, source);
+}
+
+#[test]
+fn ellipsis_abbreviation_boundaries_scale_with_long_punctuation_runs() {
+    let source = format!("Prefix {}Dr. word.\n", ".".repeat(96_000));
+    let options = FormatOptions {
+        markdown_wrap: MarkdownWrap::Column(20),
+        ..FormatOptions::default()
+    };
+    let first = format_source_for_path(Path::new("input.md"), source, options, None)
+        .unwrap()
+        .output;
+    assert!(first.contains("Dr. word."));
+    assert_eq!(
+        format_source_for_path(Path::new("input.md"), first.clone(), options, None)
+            .unwrap()
+            .output,
+        first
+    );
 }

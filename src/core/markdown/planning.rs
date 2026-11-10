@@ -89,6 +89,7 @@ impl MarkdownPlans {
 #[derive(Debug, Clone)]
 pub(crate) struct RetainedMarkdown {
     pub(crate) preserve: bool,
+    pub(crate) preserve_raw: bool,
     pub(crate) plan: Option<crate::core::wrap::Plan>,
 }
 
@@ -96,7 +97,6 @@ pub(crate) struct RetainedMarkdown {
 #[derive(Debug, Clone)]
 struct MarkdownPlanning {
     state: StateId,
-    preserve_raw: bool,
     options: FormatOptions,
     draft: Option<crate::core::wrap::Draft>,
     template_spans: Option<crate::core::wrap::ProseTemplateSpans>,
@@ -313,11 +313,11 @@ fn initialize_markdown_planning(
         crate::core::wrap::markdown_reflow_changes_raw_semantics(input, &state.template_delimiters);
     let mut retained = RetainedMarkdown {
         preserve: preserve_raw,
+        preserve_raw,
         plan: None,
     };
     let mut planning = MarkdownPlanning {
         state: node.state,
-        preserve_raw,
         options,
         draft: None,
         template_spans: None,
@@ -372,7 +372,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                 if template_changed {
                     planning.template_spans = None;
                     planning.draft = None;
-                    planning.preserve_raw =
+                    retained.preserve_raw =
                         crate::core::wrap::markdown_reflow_changes_raw_semantics(
                             source.slice(node.span),
                             &state.template_delimiters,
@@ -382,7 +382,7 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
                         kind,
                         &state.template_delimiters,
                     );
-                    retained.preserve = planning.preserve_raw || template;
+                    retained.preserve = retained.preserve_raw || template;
                 }
                 let needs_preparation = !retained.preserve && planning.draft.is_none();
                 if needs_preparation {
@@ -461,10 +461,13 @@ fn finalize_markdown_plans(source: &SourceBuffer, doc: &mut Document, options: F
             doc.markdown.insert(
                 index,
                 (
-                    RetainedMarkdown { preserve, plan },
+                    RetainedMarkdown {
+                        preserve,
+                        preserve_raw: false,
+                        plan,
+                    },
                     MarkdownPlanning {
                         state: node.state,
-                        preserve_raw: false,
                         options,
                         draft: None,
                         template_spans: None,

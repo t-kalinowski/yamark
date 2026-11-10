@@ -1,0 +1,19 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap 20
+-- stdin
+one two three
+(e.g. foo bar baz)
+and more words.
+
+Meet Dr. Smith
+today. He left.
+-- stdout
+one two three
+(e.g. foo bar baz)
+and more words.
+
+Meet Dr. Smith
+today. He left.
+-- stderr
+-- status
+0

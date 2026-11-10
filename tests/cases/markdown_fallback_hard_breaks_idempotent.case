@@ -1,0 +1,47 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+Line  one  
+\foo next.
+
+Line  tabs		
+\foo next.
+
+Single  space
+\foo next.
+
+Normal one \
+next x.
+
+::: {.note}
+Nested  line  
+\foo next.
+:::
+
+```text
+code body
+```
+-- stdout
+Line  one  
+\foo next.
+
+Line  tabs		
+\foo next.
+
+Single  space
+\foo next.
+
+Normal one \
+next x.
+
+::: {.note}
+Nested  line  
+\foo next.
+:::
+
+```text
+code body
+```
+-- stderr
+-- status
+0

@@ -1,0 +1,46 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --skip-embedded-formatters
+-- stdin
+Text[^1].
+
+[^1]: x
+    ---
+
+    Note.
+
+Second[^2].
+
+[^2]: y
+    ===
+
+    Other note.
+
+Literal[^3].
+
+[^3]: z
+---
+
+    Code.
+-- stdout
+Text[^1].
+
+[^1]:
+    ## x
+
+    Note.
+
+Second[^2].
+
+[^2]:
+    # y
+
+    Other note.
+
+Literal[^3].
+
+## [^3]: z
+
+    Code.
+-- stderr
+-- status
+0

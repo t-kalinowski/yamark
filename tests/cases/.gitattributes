@@ -1,2 +1,4 @@
+# Trailing whitespace in transcript input and output is significant test data.
+*.case whitespace=-blank-at-eol
 # Literal scalar content starts with a tab after YAML indentation.
-yaml_tab_leading_literal.case whitespace=-space-before-tab
+yaml_tab_leading_literal.case whitespace=-blank-at-eol,-space-before-tab

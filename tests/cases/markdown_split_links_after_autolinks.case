@@ -1,0 +1,36 @@
+-- args
+format --stdin-file-path input.md --wrap 72 --skip-embedded-formatters
+-- stdin
+Before <http://a/`> [r](  t  ) then `tail` after [s](  u  ).
+
+Before <http://a/$> [r](  t  ) then $tail$ after [s](  u  ).
+
+Before `[a](  u  )` <http://x> then `[b](  v  )` after [r](  t  ).
+
+See <person@example.com> and the [compiler](https://github.com/asg017/unofficial-observablehq-compiler/tree/beta) that runs.
+
+See <https://observablehq.com/> and
+the [compiler](https://github.com/asg017/unofficial-observablehq-compiler/tree/beta) that runs.
+
+See the [compiler](https://github.com/asg017/unofficial-observablehq-compiler/tree/beta) that runs.
+-- stdout
+Before <http://a/`> [r](t) then `tail` after [s](u).
+
+Before <http://a/$> [r](t) then $tail$ after [s](u).
+
+Before `[a](  u  )` <http://x> then `[b](  v  )` after [r](t).
+
+See <person@example.com> and the [compiler](
+  https://github.com/asg017/unofficial-observablehq-compiler/tree/beta
+) that runs.
+
+See <https://observablehq.com/> and the [compiler](
+  https://github.com/asg017/unofficial-observablehq-compiler/tree/beta
+) that runs.
+
+See the [compiler](
+  https://github.com/asg017/unofficial-observablehq-compiler/tree/beta
+) that runs.
+-- stderr
+-- status
+0

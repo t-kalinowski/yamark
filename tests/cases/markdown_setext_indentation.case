@@ -1,0 +1,27 @@
+-- args
+format --wrap sentence --skip-embedded-formatters --stdin-file-path input.md
+-- stdin
+ One space
+===
+
+   Three spaces
+---
+
+<!-- fmt: skip -->
+  Kept indentation
+---
+
+    Four spaces stays code
+-- stdout
+# One space
+
+## Three spaces
+
+<!-- fmt: skip -->
+  Kept indentation
+---
+
+    Four spaces stays code
+-- stderr
+-- status
+0

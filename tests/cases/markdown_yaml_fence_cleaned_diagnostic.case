@@ -1,0 +1,14 @@
+-- args
+format --stdin-file-path input.md
+-- stdin
+Before.
+
+```yaml
+key: value 
+# fmt: wrap=bad
+```
+-- stdout
+-- stderr
+input.md:5:1: error: fmt: wrap must be none, paragraph, sentence, a positive integer, or sentence:<positive integer>
+-- status
+1

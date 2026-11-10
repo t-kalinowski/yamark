@@ -46,5 +46,11 @@ Automatic fallback retains its existing cleanup policy. For example, a list
 starting with `100.` and a four-space continuation remains unsupported by the
 existing list formatter. Multiline templates and opaque HTML can also fall back.
 Unlike recognized literals and explicit preservation directives, automatic
-fallback does not promise byte-for-byte preservation or idempotence after its
-trailing-space cleanup. The CLI cases retain controls for these boundaries.
+fallback does not promise byte-for-byte preservation. When raw inline syntax or
+an unsafe inline layout prevents a paragraph from being reflowed, its spaces or
+tabs that spell a hard line break between lines survive cleanup, including
+through nested Markdown emission. A failed inline layout retains the original
+lines and recognized literals, with protected hard-break gaps; it does not emit
+a partially resolved layout. Opaque template/HTML interiors and unsupported
+containers keep their existing cleanup policies. Formatting must remain
+idempotent. The CLI cases retain controls for these boundaries.

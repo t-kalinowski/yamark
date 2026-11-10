@@ -1,0 +1,35 @@
+-- args
+format --wrap sentence --skip-embedded-formatters --stdin-file-path input.md
+-- stdin
+# ATX title
+
+---
+
+# Setext title
+
+---
+
+## Already separated
+
+---
+
+## Following prose
+Text follows.
+-- stdout
+# ATX title
+
+---
+
+# Setext title
+
+---
+
+## Already separated
+
+---
+
+## Following prose
+Text follows.
+-- stderr
+-- status
+0

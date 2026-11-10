@@ -1,0 +1,42 @@
+-- args
+format --wrap sentence --skip-embedded-formatters --stdin-file-path input.md
+-- stdin
+Text
+* a
+
+Text
+- a
+
+Text
++ a
+
+Text
+1. a
+
+- a
+  - b
+
+Text before fence.
+```text
+code
+```
+-- stdout
+Text * a
+
+Text - a
+
+Text + a
+
+Text 1.
+a
+
+- a
+  - b
+
+Text before fence.
+```text
+code
+```
+-- stderr
+-- status
+0

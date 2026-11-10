@@ -149,7 +149,12 @@ fn write_sentence_token_slices<'token>(
                 unmatched_math_opener.is_some_and(|open| open < start),
                 preserve_asterisk_escapes,
             );
-            if markdown_block_start_line(&safety_line) && escape.is_none() {
+            if markdown_block_start_line(&safety_line)
+                && (escape.is_none()
+                    || token_is_pandoc_abbreviation(
+                        tokens.measured[from].0.span().slice(tokens.text),
+                    ))
+            {
                 pending = Some((previous_from, to, previous_escape));
                 return Some(());
             }
@@ -164,7 +169,7 @@ fn write_sentence_token_slices<'token>(
     };
     let mut start = 0usize;
     for (index, token) in tokens.iter(unmatched_math_opener).enumerate() {
-        if !token_ends_sentence(token.text()) || token_is_sentence_abbreviation(token.text()) {
+        if !token_ends_sentence(token.text()) || token_is_pandoc_abbreviation(token.text()) {
             continue;
         }
         // A marker such as `2.` at a new sentence boundary will have its
@@ -200,14 +205,111 @@ fn token_ends_sentence(token: &str) -> bool {
         .is_some_and(|(index, ch)| matches!(ch, '.' | '!' | '?') && !escaped_at(token, index))
 }
 
-fn token_is_sentence_abbreviation(token: &str) -> bool {
-    ascii_ends_with_ignore_case(token, "e.g.") || ascii_ends_with_ignore_case(token, "i.e.")
-}
-
-fn ascii_ends_with_ignore_case(value: &str, suffix: &str) -> bool {
-    value
-        .get(value.len().saturating_sub(suffix.len())..)
-        .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+fn token_is_pandoc_abbreviation(token: &str) -> bool {
+    if !token.ends_with('.') {
+        return false;
+    }
+    // Pandoc's default abbreviations are case-sensitive. A punctuation boundary
+    // can precede the word (`(Dr.` or `x-Dr.`), but letters/digits cannot (`xDr.`).
+    // Periods belong to abbreviations such as `Ph.D.` and `e.g.`.
+    let word = token
+        .rsplit(|ch: char| !ch.is_alphanumeric() && ch != '.')
+        .next()
+        .unwrap_or(token);
+    let word = if word.starts_with('.') && escaped_at(token, token.len() - word.len()) {
+        // An escaped leading dot has already formed its own inline token.
+        &word[1..]
+    } else {
+        word
+    };
+    // Pandoc's default smart punctuation consumes nonoverlapping `...` runs
+    // as ellipses, which also form a word boundary. A remaining dot in `.Dr.`
+    // or `....Dr.` still belongs to the word and prevents a match.
+    let word = word.split("...").last().unwrap_or(word);
+    // Keep in sync with `pandoc --print-default-data-file abbreviations` (3.13).
+    matches!(
+        word,
+        "aet."
+            | "aetat."
+            | "al."
+            | "Apr."
+            | "Aug."
+            | "bk."
+            | "Bros."
+            | "c."
+            | "Capt."
+            | "cf."
+            | "ch."
+            | "chap."
+            | "chs."
+            | "Co."
+            | "col."
+            | "Corp."
+            | "cp."
+            | "d."
+            | "Dec."
+            | "Dr."
+            | "e.g."
+            | "ed."
+            | "eds."
+            | "esp."
+            | "f."
+            | "fasc."
+            | "Feb."
+            | "ff."
+            | "fig."
+            | "fl."
+            | "fol."
+            | "fols."
+            | "Fr."
+            | "Gen."
+            | "Gov."
+            | "Hon."
+            | "i.e."
+            | "ill."
+            | "Inc."
+            | "incl."
+            | "Jan."
+            | "Jr."
+            | "Jul."
+            | "Jun."
+            | "Ltd."
+            | "M.A."
+            | "M.D."
+            | "Mar."
+            | "Mr."
+            | "Mrs."
+            | "Ms."
+            | "n."
+            | "n.b."
+            | "nn."
+            | "No."
+            | "Nov."
+            | "Oct."
+            | "p."
+            | "Ph.D."
+            | "pp."
+            | "Pres."
+            | "Prof."
+            | "pt."
+            | "q.v."
+            | "Rep."
+            | "Rev."
+            | "s.v."
+            | "s.vv."
+            | "saec."
+            | "sec."
+            | "Sen."
+            | "Sep."
+            | "Sept."
+            | "Sgt."
+            | "Sr."
+            | "St."
+            | "univ."
+            | "viz."
+            | "vol."
+            | "vs."
+    )
 }
 
 #[derive(Debug, Clone, Default)]
@@ -569,6 +671,16 @@ impl<'a> WrapLineBuffer<'a> {
     }
 
     fn commit_current(&mut self, writer: &mut TokenLineWriter<'_, '_>) -> Option<()> {
+        // A soft break here would remove Pandoc's non-breaking abbreviation
+        // space. Keep the following token with it even when the pair is wide.
+        if self
+            .current
+            .tokens
+            .last()
+            .is_some_and(|token| token_is_pandoc_abbreviation(token.text()))
+        {
+            return Some(());
+        }
         // Pandoc can pair a trailing literal asterisk across a newline. Keep
         // it with the following text when another asterisk could pair.
         if writer.preserve_asterisk_escapes
@@ -686,6 +798,15 @@ impl<'a> WrapLineBuffer<'a> {
             self.current.tokens[0].preserve_math_closers,
             preserve_asterisk_escapes,
         );
+        if escape.is_some() && token_is_pandoc_abbreviation(self.current.tokens[0].text()) {
+            // `c.` and similar abbreviations can become ordered markers at a
+            // new line. Escaping their period would remove Pandoc's NBSP too.
+            // Keep enough preceding prose to leave them inside the paragraph.
+            let mut joined = self.pending.take()?;
+            joined.append(std::mem::take(&mut self.current));
+            self.current = joined;
+            return Some(());
+        }
         if self.sentence_wrap
             && let Some(offset) = escape
         {
@@ -695,8 +816,9 @@ impl<'a> WrapLineBuffer<'a> {
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
-            if preserve_asterisk_escapes
-                && trailing_asterisk_may_open(previous.tokens[split - 1].text())
+            if token_is_pandoc_abbreviation(previous.tokens[split - 1].text())
+                || preserve_asterisk_escapes
+                    && trailing_asterisk_may_open(previous.tokens[split - 1].text())
             {
                 continue;
             }
@@ -759,7 +881,7 @@ fn write_wrapped_tokens_with_first_width(
         if sentence_wrap
             && lines.current.tokens.last().is_some_and(|previous| {
                 token_ends_sentence(previous.text())
-                    && !token_is_sentence_abbreviation(previous.text())
+                    && !token_is_pandoc_abbreviation(previous.text())
             })
         {
             let mut escape = None;
@@ -769,7 +891,7 @@ fn write_wrapped_tokens_with_first_width(
                     .iter()
                     .find(|(span, _)| {
                         let text = span.span().slice(tokens.text);
-                        token_ends_sentence(text) && !token_is_sentence_abbreviation(text)
+                        token_ends_sentence(text) && !token_is_pandoc_abbreviation(text)
                     })
                     .unwrap_or(&tokens.measured[tokens.len() - 1])
                     .0
@@ -783,7 +905,8 @@ fn write_wrapped_tokens_with_first_width(
                     token.preserve_math_closers,
                     writer.preserve_asterisk_escapes,
                 );
-                !markdown_block_start_line(&writer.safety_line) || escape.is_some()
+                !markdown_block_start_line(&writer.safety_line)
+                    || escape.is_some() && !token_is_pandoc_abbreviation(token.text())
             } else {
                 true
             };
@@ -801,6 +924,20 @@ fn write_wrapped_tokens_with_first_width(
         // Retain their escapes when another asterisk could pair with them.
         if !sentence_wrap && index > 0 && !literal {
             token.remove_literal_marker_escape(writer.preserve_asterisk_escapes);
+        }
+        // Reserve the next word before placing an abbreviation near the edge.
+        // One-token lookahead stays linear even for long abbreviation runs;
+        // commit_current keeps such a run together if it exceeds the width.
+        if token_is_pandoc_abbreviation(token.text())
+            && !lines.current.is_empty()
+            && tokens
+                .measured
+                .get(index + 1)
+                .is_some_and(|(_, next_width)| {
+                    lines.current.width + 1 + token.width + 1 + next_width > lines.width
+                })
+        {
+            lines.commit_current(writer)?;
         }
         if token.width > lines.width
             && !literal

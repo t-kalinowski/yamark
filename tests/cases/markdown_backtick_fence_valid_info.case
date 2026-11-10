@@ -1,0 +1,61 @@
+-- args
+format --stdin-file-path input.md --wrap sentence --config tests/fixtures/fence_info_formatters.toml
+-- stdin
+```{r}
+x=1
+```
+
+```{python}
+x=1
+```
+
+```{.yaml filename="x"}
+a:   1
+```
+
+```yaml {.x}
+a:   1
+```
+
+``` {.yaml}
+a:   1
+```
+
+```{.yaml title="}"}
+a:   1
+```
+
+```{code-cell} python
+x=1
+```
+-- stdout
+```{r}
+x = 1
+```
+
+```{python}
+x = 1
+```
+
+```{.yaml filename="x"}
+a: 1
+```
+
+```yaml {.x}
+a: 1
+```
+
+```{.yaml}
+a: 1
+```
+
+```{.yaml title="}"}
+a: 1
+```
+
+```{code-cell} python
+x = 1
+```
+-- stderr
+-- status
+0

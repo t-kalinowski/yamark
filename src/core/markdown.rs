@@ -25,10 +25,11 @@ use containers::{
     list_block_supported, list_item_at,
 };
 use fences::{
-    code_cell_formatter_body, code_fence_at, code_fence_code_cell_without_language,
-    code_fence_info, code_fence_is_code_cell, code_fence_language,
-    code_fence_language_supported_opaque, code_fence_local_skip, code_fence_raw_format,
-    find_code_fence_closing, normalized_code_fence_opening, quarto_fence_skip,
+    backtick_fence_has_trailing_info, code_cell_formatter_body, code_fence_at,
+    code_fence_code_cell_without_language, code_fence_info, code_fence_is_code_cell,
+    code_fence_language, code_fence_language_supported_opaque, code_fence_local_skip,
+    code_fence_raw_format, find_code_fence_closing, normalized_code_fence_opening,
+    quarto_fence_skip,
 };
 use frontmatter::{find_front_matter_closing, front_matter_markdown_delta, front_matter_opening};
 pub(crate) use list::{
@@ -661,6 +662,25 @@ fn parse_markdown_with_mode(
             let opening = line.full;
             let closing_span = source.lines[closing].full;
             let content = Span::new(opening.end(), source.lines[closing].full.start());
+            if backtick_fence_has_trailing_info(text, fence) {
+                let state = engine.state_for_node(&mut doc, true);
+                let span = Span::new(opening.start(), closing_span.end());
+                validate_markdown_format_target(
+                    source,
+                    &doc,
+                    state,
+                    span,
+                    code_fence_local_skip(text),
+                )?;
+                doc.push_node(Node {
+                    kind: NodeKind::Markdown(MarkdownNodeKind::Raw),
+                    span,
+                    state,
+                    emit: EmitPlan::Preserve,
+                });
+                i = closing + 1;
+                continue;
+            }
             let language = code_fence_language(text);
             let raw_format = code_fence_raw_format(text);
             let code_cell_without_language = code_fence_code_cell_without_language(text);
@@ -707,7 +727,7 @@ fn parse_markdown_with_mode(
                 None
             } else {
                 match language.as_deref() {
-                    Some("yaml" | "yml") => Some(doc.push_nested(parse_nested_yaml(
+                    Some("yaml" | "yml") => Some(doc.push_nested(parse_nested_yaml_fence(
                         source,
                         content,
                         nested_options,
@@ -793,6 +813,42 @@ fn parse_markdown_with_mode(
     }
 
     Ok(doc)
+}
+
+fn parse_nested_yaml_fence(
+    source: &SourceBuffer,
+    range: Span,
+    options: FormatOptions,
+    config: &Config,
+    mode: MarkdownParseMode,
+) -> Result<Document> {
+    // Fence bodies contain whole source lines. Inspect their indexed endpoints
+    // first so already-clean bodies keep borrowing the original source.
+    let lines = &source.lines[source.line_at_byte(range.start)..source.line_at_byte(range.end)];
+    if !lines.iter().any(|line| {
+        matches!(
+            source.slice(line.text).as_bytes().last(),
+            Some(b' ' | b'\t')
+        )
+    }) {
+        return parse_nested_yaml(source, range, options, config, mode);
+    }
+
+    // Markdown removes code-body trailing whitespace. Do it before YAML chooses
+    // scalar layouts, otherwise its first plan is based on bytes removed during
+    // emission and the next pass can choose a different layout. Standalone YAML
+    // keeps those bytes because they can be part of its scalar values.
+    let mut cleaned = String::with_capacity(range.len());
+    for line in lines {
+        cleaned.push_str(source.slice(line.text).trim_end_matches([' ', '\t']));
+        cleaned.push_str(line.ending.as_str());
+    }
+    let (line, column) = source.line_column_at_byte(range.start);
+    let cleaned = SourceBuffer::nested(cleaned).with_diagnostic_origin(line, column);
+    let cleaned_range = Span::new(0, cleaned.as_str().len());
+    let mut nested = parse_nested_yaml(&cleaned, cleaned_range, options, config, mode)?;
+    nested.source = Some(cleaned);
+    Ok(nested)
 }
 
 fn parse_nested_yaml(
@@ -1070,10 +1126,17 @@ pub(crate) fn render_markdown_setext_heading(
     if options.markdown_canonical {
         text = crate::core::wrap::canonicalize_inline(&text);
     }
+    escape_setext_closing_hash(&mut text);
     text = crate::core::wrap::normalize_heading_content(&text);
 
     let mut output = String::new();
-    output.push_str(source.slice(Span::new(span.start, content.start)));
+    // Pandoc permits indented setext text, but an ATX heading must start at
+    // the content column. Retain a leading BOM while dropping source padding.
+    output.push_str(
+        source
+            .slice(Span::new(span.start, content.start))
+            .trim_end_matches([' ', '\t']),
+    );
     output.push_str(&"#".repeat(depth));
     if !text.is_empty() {
         output.push(' ');
@@ -1081,6 +1144,32 @@ pub(crate) fn render_markdown_setext_heading(
     }
     output.push_str(line_ending_for_span(source, span));
     output
+}
+
+fn escape_setext_closing_hash(text: &mut String) {
+    // Like heading attribute normalization, use the final opening brace.
+    // Braces inside quoted attribute values are intentionally unsupported.
+    // One reverse search avoids retrying a suffix scan at every opening brace.
+    let content_end = if text.ends_with('}') {
+        text.rfind('{').unwrap_or(text.len())
+    } else {
+        text.len()
+    };
+    let content = text[..content_end].trim_end_matches([' ', '\t']);
+    if !content.ends_with('#') {
+        return;
+    }
+    let hash = content.len() - 1;
+    let backslashes = content[..hash]
+        .bytes()
+        .rev()
+        .take_while(|byte| *byte == b'\\')
+        .count();
+    if backslashes % 2 == 0 {
+        // Escaping the final hash prevents the whole trailing run from being
+        // consumed as an ATX closing sequence, even without a preceding space.
+        text.insert(hash, '\\');
+    }
 }
 
 pub(crate) fn render_markdown_thematic_break(
@@ -1199,19 +1288,27 @@ fn paragraph_should_end_before(
     if !line_may_start_markdown_block(source, line, text) {
         return false;
     }
+    // Pandoc setext headings have one text line at the start of a block.
+    // Text/underline pairs, rules, lists, and pipe lines need a block boundary.
+    // Check these before generic raw recognition, which also accepts their
+    // markers. List children use the separate container recognizer.
+    if thematic_break_at(text)
+        || setext_underline_depth(text).is_some()
+        || setext_heading_at(source, line, source.lines.len()).is_some()
+        || list_item_at(text)
+        || text.trim_start_matches([' ', '\t']).starts_with('|')
+    {
+        return false;
+    }
     text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
         || pandoc_table_at(source, line, source.lines.len())
         || definition_list_at(source, line, source.lines.len())
         || paired_html_block_start(text).is_some()
-        || setext_heading_at(source, line, source.lines.len()).is_some()
         || heading_ranges(source, line).is_some()
-        || thematic_break_at(text)
         || quarto_div_opening(text).is_some()
         || pandoc_grid_table_at(source, line, source.lines.len())
         || pandoc_multiline_table_end(source, line, source.lines.len()).is_some()
-        || pipe_table_at(source, line, source.lines.len())
-        || list_item_at(text)
         || blockquote_at(text)
         || raw_sensitive_at(text)
         || standalone_template_line_at(text, standalone_template_delimiters)
@@ -1333,23 +1430,24 @@ fn setext_heading_at(
     if line_index + 1 >= end {
         return None;
     }
+    let depth = setext_underline_depth(source.line_text(line_index + 1))?;
     let text = line_without_bom(source, line_index);
     if text.trim().is_empty()
         || parse_markdown_html_directive(text).is_some()
-        || heading_ranges(source, line_index).is_some()
         || code_fence_at(text).is_some()
-        || list_item_at(text)
     {
         return None;
     }
-    let underline = source.line_text(line_index + 1).trim();
-    let depth = if !underline.is_empty() && underline.chars().all(|ch| ch == '=') {
-        1
-    } else if !underline.is_empty() && underline.chars().all(|ch| ch == '-') {
-        2
-    } else {
+    // The underline takes precedence over thematic-break text such as "* * *".
+    // Check that exception only after a real underline, not for every list line.
+    if list_item_at(text) && !thematic_break_at(text) {
         return None;
-    };
+    }
+    // An indented underline belongs to the footnote body. An unindented
+    // underline can make the full definition line a top-level heading instead.
+    if footnote_definition_at(text) && markdown_indented_code_at(source.line_text(line_index + 1)) {
+        return None;
+    }
     let line = source.lines[line_index];
     let body = source.line_text(line_index);
     let bom = bom_len(source, line_index);
@@ -1363,6 +1461,20 @@ fn setext_heading_at(
         Span::new(line.text.start() + start, line.text.start() + end),
         depth,
     ))
+}
+
+fn setext_underline_depth(text: &str) -> Option<usize> {
+    let underline = text.trim_matches([' ', '\t']).as_bytes();
+    let marker = *underline.first()?;
+    let depth = match marker {
+        b'=' => 1,
+        b'-' => 2,
+        _ => return None,
+    };
+    underline
+        .iter()
+        .all(|byte| *byte == marker)
+        .then_some(depth)
 }
 
 fn heading_ranges(source: &SourceBuffer, line_index: usize) -> Option<(Span, Span)> {
@@ -1465,7 +1577,27 @@ fn find_quarto_div_closing<'a>(
     marker_len: usize,
 ) -> Option<usize> {
     let mut depth = 1usize;
+    let mut code_fence: Option<fences::Fence> = None;
     for (offset, text) in lines.into_iter().enumerate() {
+        let candidate = code_fence_at(text);
+        if let Some(fence) = code_fence {
+            // Consume the code body in this same walk. Searching ahead for
+            // each fence-looking line would repeatedly scan nested examples.
+            if let Some(candidate) = candidate
+                && candidate.marker == fence.marker
+                && candidate.len >= fence.len
+                && text.trim_start_matches(' ')[candidate.len..]
+                    .bytes()
+                    .all(|byte| matches!(byte, b' ' | b'\t'))
+            {
+                code_fence = None;
+            }
+            continue;
+        }
+        if let Some(fence) = candidate {
+            code_fence = Some(fence);
+            continue;
+        }
         if let Some(opening_len) = quarto_div_opening(text)
             && opening_len >= marker_len
         {
