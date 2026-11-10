@@ -238,6 +238,13 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # The artifact listing can omit an artifact uploaded seconds earlier.
+      # Rerunning this job after a failure downloads the complete set.
+      - name: Check archive count
+        run: |
+          ls -l dist
+          test "$(find dist -type f | wc -l)" -eq 5
+
       - name: Generate checksums
         working-directory: dist
         run: sha256sum ./* > SHA256SUMS
@@ -264,6 +271,13 @@ jobs:
           pattern: python-*
           path: dist
           merge-multiple: true
+
+      # See the archive count check in the release job.
+      - name: Check distribution count
+        run: |
+          ls -l dist
+          test "$(find dist -type f -name '*.whl' | wc -l)" -eq 5
+          test "$(find dist -type f -name '*.tar.gz' | wc -l)" -eq 1
 
       - name: Publish Python distributions
         uses: pypa/gh-action-pypi-publish@release/v1
