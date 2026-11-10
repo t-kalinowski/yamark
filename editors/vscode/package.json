@@ -2,7 +2,7 @@
   "name": "yamark",
   "displayName": "Yamark",
   "description": "Format YAML, Markdown, and marked embedded Markdown with yamark.",
-  "version": "0.6.1",
+  "version": "0.6.1+dev",
   "publisher": "yamark",
   "license": "MIT",
   "repository": {
