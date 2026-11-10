@@ -34,6 +34,8 @@ recognize the combined value.
 
 Pandoc's default abbreviations, such as `Dr.`, `fig.`, and `e.g.`, stay on the same line as the following word and do not end a sentence for wrapping. Matching is case-sensitive. A group that cannot fit the requested column may exceed it.
 
+`No.` is treated as an abbreviation only when the next whitespace-separated source token starts with an ASCII digit, as in `No. 5`. Otherwise, it ends a sentence: sentence wrapping starts a new line after it, and column wrapping may break there. An answer followed by a sentence starting with a digit, as in `No. 5 people asked.`, is still treated as an abbreviation. Pandoc renders a non-breaking space after `No.` when the next word is on the same line. A line break after an answer renders as an ordinary space instead.
+
 ### Table widths
 
 `fit` sizes supported pipe, simple, grid, and multiline table columns from
