@@ -1,4 +1,6 @@
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::core::directives::{DirectiveDelta, DirectiveState, DirectiveStateTable, StateId};
 use crate::core::source::{SourceBuffer, SourceSpan, Span};
@@ -143,6 +145,78 @@ impl MarkdownTableWidths {
     }
 }
 
+/// Per-word corrections to the built-in abbreviation rules, set by
+/// `fmt: abbreviations.add` and `fmt: abbreviations.remove`. `true` makes a
+/// word an abbreviation wherever it appears; `false` makes it an ordinary word.
+///
+/// `FormatOptions` is `Copy`, so each distinct list is interned for the life of
+/// the process. Entries are sorted by word, so equal corrections compare equal.
+/// The handle is one pointer wide because options and every directive state
+/// and delta carry it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AbbreviationOverrides(Option<&'static Vec<(Box<str>, bool)>>);
+
+impl AbbreviationOverrides {
+    /// Whether `word` can match a token: letters, digits, and periods, ending
+    /// with a period.
+    pub fn accepts(word: &str) -> bool {
+        word.ends_with('.') && word.chars().all(|ch| ch.is_alphanumeric() || ch == '.')
+    }
+
+    /// Applies `edits` in order. A later edit to the same word wins.
+    pub fn with<'a>(self, edits: impl IntoIterator<Item = (&'a str, bool)>) -> Self {
+        static INTERNED: Mutex<Vec<AbbreviationOverrides>> = Mutex::new(Vec::new());
+
+        let mut words = self.iter().collect::<BTreeMap<_, _>>();
+        words.extend(edits);
+        if words.is_empty() {
+            return Self::default();
+        }
+        let words = words
+            .into_iter()
+            .map(|(word, abbreviation)| (Box::from(word), abbreviation))
+            .collect::<Vec<(Box<str>, bool)>>();
+        let mut interned = INTERNED.lock().expect("no panic while interning");
+        if let Some(existing) = interned
+            .iter()
+            .find(|existing| existing.0.is_some_and(|listed| *listed == words))
+        {
+            return *existing;
+        }
+        let words = Self(Some(Box::leak(Box::new(words))));
+        interned.push(words);
+        words
+    }
+
+    /// Applies the corrections in `later` over these.
+    pub fn merged(self, later: Self) -> Self {
+        if later.is_empty() {
+            self
+        } else if self.is_empty() {
+            later
+        } else {
+            self.with(later.iter())
+        }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.0.is_none()
+    }
+
+    pub fn get(self, word: &str) -> Option<bool> {
+        self.iter()
+            .find(|(listed, _)| *listed == word)
+            .map(|(_, abbreviation)| abbreviation)
+    }
+
+    fn iter(self) -> impl Iterator<Item = (&'static str, bool)> {
+        self.0
+            .into_iter()
+            .flatten()
+            .map(|(word, abbreviation)| (&**word, *abbreviation))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormatOptions {
     pub line_width: usize,
@@ -151,6 +225,7 @@ pub struct FormatOptions {
     pub markdown_compact_tables: bool,
     pub yaml_compact: bool,
     pub markdown_wrap: MarkdownWrap,
+    pub abbreviations: AbbreviationOverrides,
     pub markdown_table_widths: MarkdownTableWidths,
     pub markdown_canonical: bool,
     pub markdown_format_footnotes: bool,
@@ -170,6 +245,7 @@ impl Default for FormatOptions {
             markdown_compact_tables: false,
             yaml_compact: false,
             markdown_wrap: MarkdownWrap::Column(72),
+            abbreviations: AbbreviationOverrides::default(),
             markdown_table_widths: MarkdownTableWidths::Fit,
             markdown_canonical: false,
             markdown_format_footnotes: true,

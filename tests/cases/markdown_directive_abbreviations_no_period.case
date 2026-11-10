@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+Text.
+
+<!-- fmt: abbreviations.add "Fig." "et al" -->
+
+See Tab. 3 now.
+-- stdout
+-- stderr
+input.md:3:6: error: fmt: abbreviations.add: "et al" must contain only letters, digits, and periods and end with a period
+-- status
+1

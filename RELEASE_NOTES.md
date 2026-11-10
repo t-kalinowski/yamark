@@ -8,3 +8,4 @@
 - Treat `a.k.a.`, `approx.`, `E.g.`, `eg.`, `Eq.`, `Eqs.`, `Fig.`, `Figs.`, `I.e.`, `ie.`, `resp.`, and `w.r.t.` as abbreviations: they stay on the same line as the following word and do not end a sentence for wrapping. Treat `etc.` and `i.i.d.` the same way when the next whitespace-separated source token starts with a lowercase letter.
 - Do not end a sentence at an abbreviation followed by closing quotation marks or brackets, as in `you could (e.g.) have a policy`.
 - End a sentence at `&#46;`, the decimal character reference for a period, so that an author can mark a sentence end after an abbreviation, as in `We follow Smith et al&#46; Their method is faster.` It renders as a period.
+- Add `fmt: abbreviations.add` and `fmt: abbreviations.remove` directives, which make the listed words abbreviations or ordinary words for wrapping, as in `<!-- fmt: abbreviations.add "Tab." "Thm." -->`. They accept `scope=next`, `scope=from-here`, and `scope=file`.

@@ -1,0 +1,78 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
+-- stdin
+<!-- fmt: abbreviations.add "Tab." "Thm." -->
+
+See Tab. 3 now. Use Thm. 2 here. A (Tab.) Then more. Press tab. Then stop.
+
+<!-- fmt: abbreviations.remove "al." scope=next -->
+
+Smith et al. We then left. See Tab. 3 now.
+
+Smith et al. We then left.
+
+<!-- fmt: abbreviations.remove "Tab." "e.g." scope=from-here -->
+
+Press Tab. Then stop. Use Thm. 2 here. Use e.g. Then stop.
+
+<!-- fmt: abbreviations.add "n." "etc." scope=next -->
+
+Size n. Then etc. More here. Done.
+
+<!-- fmt: abbreviations.add "Tab." scope=next -->
+<!-- fmt: abbreviations.remove "Tab." "Thm." scope=next -->
+
+Press Tab. Then Thm. 2 here.
+
+<!-- fmt: wrap=none abbreviations.remove "Thm." scope=next -->
+
+Use Thm. 2 here. Then stop.
+
+Size n. Then p. 5 too. Use Thm. 2 here.
+-- stdout
+<!-- fmt: abbreviations.add "Tab." "Thm." -->
+
+See Tab. 3 now.
+Use Thm. 2 here.
+A (Tab.) Then more.
+Press tab.
+Then stop.
+
+<!-- fmt: abbreviations.remove "al." scope=next -->
+
+Smith et al.
+We then left.
+See Tab. 3 now.
+
+Smith et al. We then left.
+
+<!-- fmt: abbreviations.remove "Tab." "e.g." scope=from-here -->
+
+Press Tab.
+Then stop.
+Use Thm. 2 here.
+Use e.g.
+Then stop.
+
+<!-- fmt: abbreviations.add "n." "etc." scope=next -->
+
+Size n. Then etc. More here.
+Done.
+
+<!-- fmt: abbreviations.add "Tab." scope=next -->
+<!-- fmt: abbreviations.remove "Tab." "Thm." scope=next -->
+
+Press Tab.
+Then Thm.
+2 here.
+
+<!-- fmt: wrap=none abbreviations.remove "Thm." scope=next -->
+
+Use Thm. 2 here. Then stop.
+
+Size n.
+Then p. 5 too.
+Use Thm. 2 here.
+-- stderr
+-- status
+0

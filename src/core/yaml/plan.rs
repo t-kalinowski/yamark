@@ -53,6 +53,7 @@ impl YamlPlanRefresh {
             table_compact: _,
             add_template_delimiters,
             embedded_formatter,
+            abbreviations: _,
         } = delta;
         if preserve.is_some()
             || markdown_target.is_some()

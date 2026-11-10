@@ -1,4 +1,6 @@
-use crate::core::document::{Document, FormatOptions, MarkdownTableWidths, MarkdownWrap};
+use crate::core::document::{
+    AbbreviationOverrides, Document, FormatOptions, MarkdownTableWidths, MarkdownWrap,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateId(pub u32);
@@ -95,6 +97,7 @@ pub struct DirectiveState {
     pub table_compact: Option<bool>,
     pub template_delimiters: Vec<TemplateDelimiter>,
     pub embedded_formatter: Option<String>,
+    pub abbreviations: AbbreviationOverrides,
 }
 
 impl DirectiveState {
@@ -115,6 +118,7 @@ impl DirectiveState {
         if base.markdown_preserve_footnotes {
             options.markdown_format_footnotes = false;
         }
+        options.abbreviations = base.abbreviations.merged(self.abbreviations);
         options
     }
 
@@ -139,6 +143,7 @@ pub struct DirectiveDelta {
     pub table_compact: Option<bool>,
     pub add_template_delimiters: Vec<TemplateDelimiter>,
     pub embedded_formatter: Option<String>,
+    pub abbreviations: AbbreviationOverrides,
 }
 
 impl DirectiveDelta {
@@ -188,6 +193,7 @@ impl DirectiveDelta {
         if let Some(value) = &self.embedded_formatter {
             state.embedded_formatter = Some(value.clone());
         }
+        state.abbreviations = state.abbreviations.merged(self.abbreviations);
     }
 
     pub fn merge_from(&mut self, other: DirectiveDelta) {
@@ -220,6 +226,7 @@ impl DirectiveDelta {
         if other.embedded_formatter.is_some() {
             self.embedded_formatter = other.embedded_formatter;
         }
+        self.abbreviations = self.abbreviations.merged(other.abbreviations);
     }
 }
 
@@ -357,6 +364,7 @@ pub(crate) fn directive_delta_affects_markdown(delta: &DirectiveDelta) -> bool {
         || delta.markdown_canonical.is_some()
         || delta.markdown_format_footnotes.is_some()
         || !delta.add_template_delimiters.is_empty()
+        || !delta.abbreviations.is_empty()
 }
 
 #[derive(Debug, Clone)]
@@ -774,7 +782,10 @@ fn parse_markdown_fmt_directive(rest: &str) -> std::result::Result<Directive, St
         "embedded" => Err(format!("invalid fmt directive: {rest}")),
         "table" => Err(format!("invalid fmt directive: {rest}")),
         _ if !action.text.contains('=')
-            && !matches!(action.text.as_str(), "canonical" | "markdown") =>
+            && !matches!(
+                action.text.as_str(),
+                "canonical" | "markdown" | "abbreviations.add" | "abbreviations.remove"
+            ) =>
         {
             Err(format!("invalid fmt directive: {rest}"))
         }
@@ -845,7 +856,10 @@ fn parse_source_fmt_directive(rest: &str) -> std::result::Result<Directive, Stri
         "embedded" => parse_yaml_embedded_keyword_directive(&fields, rest),
         "compact" | "table" => Err(format!("invalid fmt directive: {rest}")),
         _ if !action.text.contains('=')
-            && !matches!(action.text.as_str(), "canonical" | "markdown") =>
+            && !matches!(
+                action.text.as_str(),
+                "canonical" | "markdown" | "abbreviations.add" | "abbreviations.remove"
+            ) =>
         {
             parse_yaml_embedded_name_directive(action.text, &fields, rest)
         }
@@ -890,7 +904,10 @@ fn parse_yaml_fmt_directive(rest: &str) -> std::result::Result<Directive, String
         "embedded" => parse_yaml_embedded_keyword_directive(&fields, rest),
         "table" => parse_yaml_table_directive(&fields, false),
         _ if !action.text.contains('=')
-            && !matches!(action.text.as_str(), "canonical" | "markdown") =>
+            && !matches!(
+                action.text.as_str(),
+                "canonical" | "markdown" | "abbreviations.add" | "abbreviations.remove"
+            ) =>
         {
             parse_yaml_embedded_name_directive(action.text, &fields, rest)
         }
@@ -1104,6 +1121,29 @@ fn parse_scope_and_options_checked(
                 .add_template_delimiters
                 .push(TemplateDelimiter { open, close });
             index += 2;
+        } else if matches!(field, "abbreviations.add" | "abbreviations.remove") {
+            let words = &fields[index + 1..];
+            let words = &words[..words.iter().take_while(|word| word.quoted).count()];
+            if words.is_empty() {
+                return Err(format!(
+                    "fmt: {field} requires one or more quoted words, such as \"Fig.\""
+                ));
+            }
+            if let Some(word) = words
+                .iter()
+                .find(|word| !AbbreviationOverrides::accepts(&word.text))
+            {
+                return Err(format!(
+                    "fmt: {field}: \"{}\" must contain only letters, digits, and periods and end with a period",
+                    word.text
+                ));
+            }
+            delta.abbreviations = delta.abbreviations.with(
+                words
+                    .iter()
+                    .map(|word| (word.text.as_str(), field == "abbreviations.add")),
+            );
+            index += words.len();
         } else {
             return Err(format!("invalid fmt directive option: {field}"));
         }
@@ -1233,6 +1273,7 @@ fn markdown_delta_has_actual_options(delta: &DirectiveDelta) -> bool {
         || delta.table_compact.is_some()
         || !delta.add_template_delimiters.is_empty()
         || delta.embedded_formatter.is_some()
+        || !delta.abbreviations.is_empty()
 }
 
 fn scope_name(scope: Scope) -> &'static str {

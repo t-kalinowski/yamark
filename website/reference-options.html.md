@@ -17,6 +17,7 @@ give the exact syntax for each surface.
 | Table widths | `table-widths=` | `editor_options.markdown.table-widths` | `[format].table_widths` | `--table-widths` | `fit` |
 | Canonical spelling | `canonical=` or `canonical` | `editor_options.markdown.canonical` | - | `--canonical` | Off |
 | Footnote definitions | `footnotes=` | `editor_options.markdown.footnotes` | - | `--preserve-footnotes` | Format |
+| Abbreviations | `abbreviations.add`, `abbreviations.remove` | - | - | - | [Built-in rules](#wrapping-values) |
 | Horizontal-rule marker | - | - | `[format].markdown_horizontal_rule` | - | `---` |
 
 ### Wrapping values
@@ -55,6 +56,8 @@ No word list fits every text. To correct one occurrence, change how the period o
 `\!` and `\?` continue a sentence in the same way as `\.`. Column wrapping without sentence wrapping may remove the backslash from a word that could start a list, such as `p\.`.
 
 `&nbsp;` renders as a non-breaking space. Pandoc's `markdown` reader also accepts a backslash-escaped space, as in `Tab.\ 3`; CommonMark and GFM render that backslash literally.
+
+To correct every occurrence of a word in a document or region, use the [`fmt: abbreviations.add` and `fmt: abbreviations.remove` directives](reference-directives.qmd#markdown-targets-and-settings).
 
 ### Table widths
 

@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+<!-- fmt: abbreviations.remove scope=file -->
+
+See Tab. 3 now.
+-- stdout
+-- stderr
+input.md:1:6: error: fmt: abbreviations.remove requires one or more quoted words, such as "Fig."
+-- status
+1

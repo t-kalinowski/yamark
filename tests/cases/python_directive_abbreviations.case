@@ -1,0 +1,34 @@
+-- args
+format --stdin-file-path input.py --skip-embedded-formatters --wrap sentence
+-- stdin
+# fmt: abbreviations.add "Tab."
+
+# fmt: markdown
+DOC = """
+See Tab. 3 now. Use Thm. 2 here. Next one.
+"""
+
+# fmt: markdown abbreviations.add "Thm."
+OTHER = """
+See Tab. 3 now. Use Thm. 2 here. Next one.
+"""
+-- stdout
+# fmt: abbreviations.add "Tab."
+
+# fmt: markdown
+DOC = """
+See Tab. 3 now.
+Use Thm.
+2 here.
+Next one.
+"""
+
+# fmt: markdown abbreviations.add "Thm."
+OTHER = """
+See Tab. 3 now.
+Use Thm. 2 here.
+Next one.
+"""
+-- stderr
+-- status
+0
