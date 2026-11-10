@@ -17,7 +17,7 @@ give the exact syntax for each surface.
 | Table widths | `table-widths=` | `editor_options.markdown.table-widths` | `[format].table_widths` | `--table-widths` | `fit` |
 | Canonical spelling | `canonical=` or `canonical` | `editor_options.markdown.canonical` | - | `--canonical` | Off |
 | Footnote definitions | `footnotes=` | `editor_options.markdown.footnotes` | - | `--preserve-footnotes` | Format |
-| Abbreviations | `abbreviations.add`, `abbreviations.remove` | - | - | - | [Built-in rules](#wrapping-values) |
+| Abbreviations | `abbreviations.add`, `abbreviations.remove` | - | [`[format.abbreviations]`](reference-config.qmd#format.abbreviations) | - | [Built-in rules](#wrapping-values) |
 | Horizontal-rule marker | - | - | `[format].markdown_horizontal_rule` | - | `---` |
 
 ### Wrapping values
@@ -57,7 +57,7 @@ No word list fits every text. To correct one occurrence, change how the period o
 
 `&nbsp;` renders as a non-breaking space. Pandoc's `markdown` reader also accepts a backslash-escaped space, as in `Tab.\ 3`; CommonMark and GFM render that backslash literally.
 
-To correct every occurrence of a word in a document or region, use the [`fmt: abbreviations.add` and `fmt: abbreviations.remove` directives](reference-directives.qmd#markdown-targets-and-settings).
+To correct every occurrence of a word in a document or region, use the [`fmt: abbreviations.add` and `fmt: abbreviations.remove` directives](reference-directives.qmd#markdown-targets-and-settings). To correct it in every file of a project, use [`[format.abbreviations]`](reference-config.qmd#format.abbreviations) in `yamark.toml`.
 
 ### Table widths
 

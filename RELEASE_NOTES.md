@@ -9,3 +9,4 @@
 - Do not end a sentence at an abbreviation followed by closing quotation marks or brackets, as in `you could (e.g.) have a policy`.
 - End a sentence at `&#46;`, the decimal character reference for a period, so that an author can mark a sentence end after an abbreviation, as in `We follow Smith et al&#46; Their method is faster.` It renders as a period.
 - Add `fmt: abbreviations.add` and `fmt: abbreviations.remove` directives, which make the listed words abbreviations or ordinary words for wrapping, as in `<!-- fmt: abbreviations.add "Tab." "Thm." -->`. They accept `scope=next`, `scope=from-here`, and `scope=file`.
+- Add a `[format.abbreviations]` table to `yamark.toml`. Its `add` and `remove` arrays make the same corrections as the directives for every file the configuration applies to; a directive that names the same word overrides them.

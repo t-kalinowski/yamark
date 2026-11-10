@@ -124,6 +124,7 @@ and follows the built-in words: `"Tab."` matches `Tab.` and `(Tab.`, but not
 Either form can follow other Markdown options, as in
 `fmt: wrap=sentence abbreviations.add "Tab."`. To correct a single occurrence,
 see [Correcting a sentence boundary](reference-options.qmd#correcting-a-sentence-boundary).
+To correct a word in every file of a project, see [`[format.abbreviations]`](reference-config.qmd#format.abbreviations).
 
 Pandoc renders a non-breaking space after a word on its own abbreviation list
 when the next word is on the same line. Where Yamark breaks the line after a

@@ -1,0 +1,18 @@
+-- git-fixture
+{
+  "config": {
+    "core.autocrlf": "false"
+  },
+  "files": {
+    "yamark.toml": "[format.abbreviations]\nremove = \"al.\"\n"
+  }
+}
+-- args
+format --config yamark.toml --stdin-file-path input.md
+-- stdin
+See Tab. 3 for details.
+-- stdout
+-- stderr
+yamark.toml:1:1: error: format.abbreviations.remove must be an array of strings
+-- status
+1
