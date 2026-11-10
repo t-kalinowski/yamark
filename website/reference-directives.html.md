@@ -37,6 +37,8 @@ sibling fences. A `scope=file` directive inside one hashpipe YAML block does not
 span later blocks. `fmt: skip file` in Markdown front matter is the exception:
 it preserves the outer Markdown document.
 
+When two directives set the same option or correct the same abbreviation, the later one takes precedence in Markdown. In YAML, a `scope=file` directive takes precedence over `scope=next` and `scope=from-here` directives wherever it appears, and over a `scope=file` directive inside a nested Markdown scalar.
+
 ## Preserve content
 
 | Directive | Scope | Effect |

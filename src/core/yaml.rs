@@ -425,6 +425,10 @@ impl<'src, 'cfg> YamlParser<'src, 'cfg> {
                 message,
             ));
         }
+        // The replay applies the file-scoped delta over every node, including
+        // one whose state was set by a later `scope=next` or `scope=from-here`
+        // directive. In YAML, a file-scoped directive therefore overrides
+        // narrower directives for the same option. See `docs/TODO.md`.
         let plan_refresh = if self.file_scope_delta != DirectiveDelta::default() {
             let delta = self.file_scope_delta.clone();
             self.patch_existing_ast_states(&delta);
