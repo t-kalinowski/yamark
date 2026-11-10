@@ -73,4 +73,6 @@ Confirm that `main` and `origin/main` match, while `v0.4.0` still points to the 
 
 The process follows one path and stops at the first failure. It does not undo or resume partial releases automatically. Inspect the commits, tag, Actions runs, release assets, PyPI project, and version files before continuing manually.
 
+The GitHub release and PyPI jobs stop before publishing unless they downloaded five native archives, or five wheels and one source distribution. An artifact uploaded seconds earlier can be missing from the artifact listing; rerun the failed job to download the complete set.
+
 Do not rerun the release from the beginning after its tag exists. If PyPI publication fails while the workflow artifacts still exist, rerun the failed job so it uses the original distributions. PyPI filenames are immutable; if an uploaded distribution cannot be completed from the original artifacts, release a new version. Complete the `+dev` commit manually after recovering a partial release.
