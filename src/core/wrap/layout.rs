@@ -243,10 +243,18 @@ fn write_sentence_token_slices<'token>(
     Some(())
 }
 
+/// The decimal character reference for a period.
+const PERIOD_REFERENCE: &str = "&#46;";
+
 fn token_ends_sentence(token: &str, next: NextToken) -> bool {
     // Closing quotes and brackets may follow the terminal punctuation. An
     // abbreviation before them, as in `(e.g.)`, still does not end a sentence.
     let token = token.trim_end_matches(['"', '\'', ')', ']', '}']);
+    // `&#46;` renders as a period. An author writes it to end a sentence
+    // where the abbreviation rules would continue it, as in `et al&#46; We`.
+    if let Some(word) = token.strip_suffix(PERIOD_REFERENCE) {
+        return !escaped_at(token, word.len());
+    }
     token
         .char_indices()
         .next_back()

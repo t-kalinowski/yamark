@@ -40,6 +40,22 @@ An abbreviation followed by closing quotation marks or brackets, as in `(e.g.)` 
 
 Yamark also treats these words, common in technical prose, as abbreviations: `a.k.a.`, `approx.`, `E.g.`, `eg.`, `Eq.`, `Eqs.`, `Fig.`, `Figs.`, `I.e.`, `ie.`, `resp.`, and `w.r.t.`. It treats `etc.` and `i.i.d.` as abbreviations only when the next whitespace-separated source token starts with a lowercase letter, as in `etc. and more`. Otherwise, they end a sentence. Pandoc does not list any of these words and renders an ordinary space after them.
 
+### Correcting a sentence boundary
+
+No word list fits every text. To correct one occurrence, change how the period or the following space is written:
+
+| Goal | Write | Example |
+| --- | --- | --- |
+| End a sentence where Yamark continues it | `&#46;` instead of the period | `We follow Smith et al&#46; Their method is faster.` |
+| Continue a sentence where Yamark ends it | `\.` instead of the period | `See Tab\. 3 for the totals.` |
+| Keep two words on the same line | `&nbsp;` instead of the space | `Tab.&nbsp;3` |
+
+`&#46;` and `\.` both render as a period. `&#46;` always ends a sentence, including before closing quotation marks or brackets, as in `(n&#46;)`. Yamark recognizes only this decimal form; `&#x2E;` and `&period;` are ordinary text. After a word on Pandoc's abbreviation list, either spelling makes Pandoc render an ordinary space where it would otherwise render a non-breaking space.
+
+`\!` and `\?` continue a sentence in the same way as `\.`. Column wrapping without sentence wrapping may remove the backslash from a word that could start a list, such as `p\.`.
+
+`&nbsp;` renders as a non-breaking space. Pandoc's `markdown` reader also accepts a backslash-escaped space, as in `Tab.\ 3`; CommonMark and GFM render that backslash literally.
+
 ### Table widths
 
 `fit` sizes supported pipe, simple, grid, and multiline table columns from

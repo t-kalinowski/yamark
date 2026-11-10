@@ -1,0 +1,11 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence:24
+-- stdin
+The patient was ill&#46; He recovered and then left again.
+-- stdout
+The patient was ill&#46;
+He recovered and then
+left again.
+-- stderr
+-- status
+0

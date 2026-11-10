@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap 24
+-- stdin
+He was ill&#46;
+He left.
+
+The patient was ill&#46; He recovered.
+-- stdout
+He was ill&#46; He left.
+
+The patient was ill&#46;
+He recovered.
+-- stderr
+-- status
+0
