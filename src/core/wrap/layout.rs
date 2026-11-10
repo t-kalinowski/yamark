@@ -47,8 +47,8 @@ impl<'a> InlineToken<'a> {
         }
     }
 
-    fn is_pandoc_abbreviation(&self, abbreviations: AbbreviationOverrides) -> bool {
-        token_is_pandoc_abbreviation(self.text(), self.next, abbreviations)
+    fn is_abbreviation(&self, abbreviations: AbbreviationOverrides) -> bool {
+        token_is_abbreviation(self.text(), self.next, abbreviations)
     }
 
     fn ends_sentence(&self, abbreviations: AbbreviationOverrides) -> bool {
@@ -123,8 +123,8 @@ impl<'a> TokenSlice<'a> {
         }
     }
 
-    fn is_pandoc_abbreviation_at(self, index: usize) -> bool {
-        token_is_pandoc_abbreviation(self.token_text(index), self.next(index), self.abbreviations)
+    fn is_abbreviation_at(self, index: usize) -> bool {
+        token_is_abbreviation(self.token_text(index), self.next(index), self.abbreviations)
     }
 
     fn ends_sentence_at(self, index: usize) -> bool {
@@ -200,7 +200,7 @@ fn write_sentence_token_slices<'token>(
                 preserve_asterisk_escapes,
             );
             if markdown_block_start_line(&safety_line)
-                && (escape.is_none() || tokens.is_pandoc_abbreviation_at(from))
+                && (escape.is_none() || tokens.is_abbreviation_at(from))
             {
                 pending = Some((previous_from, to, previous_escape));
                 return Some(());
@@ -260,10 +260,10 @@ fn token_ends_sentence(token: &str, next: NextToken, abbreviations: Abbreviation
         .char_indices()
         .next_back()
         .is_some_and(|(index, ch)| matches!(ch, '.' | '!' | '?') && !escaped_at(token, index))
-        && !token_is_pandoc_abbreviation(token, next, abbreviations)
+        && !token_is_abbreviation(token, next, abbreviations)
 }
 
-fn token_is_pandoc_abbreviation(
+fn token_is_abbreviation(
     token: &str,
     next: NextToken,
     abbreviations: AbbreviationOverrides,
@@ -781,7 +781,7 @@ impl<'a> WrapLineBuffer<'a> {
             .current
             .tokens
             .last()
-            .is_some_and(|token| token.is_pandoc_abbreviation(self.abbreviations))
+            .is_some_and(|token| token.is_abbreviation(self.abbreviations))
         {
             return Some(());
         }
@@ -902,7 +902,7 @@ impl<'a> WrapLineBuffer<'a> {
             self.current.tokens[0].preserve_math_closers,
             preserve_asterisk_escapes,
         );
-        if escape.is_some() && self.current.tokens[0].is_pandoc_abbreviation(self.abbreviations) {
+        if escape.is_some() && self.current.tokens[0].is_abbreviation(self.abbreviations) {
             // `c.` and similar abbreviations can become ordered markers at a
             // new line. Escaping their period would remove Pandoc's NBSP too.
             // Keep enough preceding prose to leave them inside the paragraph.
@@ -920,7 +920,7 @@ impl<'a> WrapLineBuffer<'a> {
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
-            if previous.tokens[split - 1].is_pandoc_abbreviation(self.abbreviations)
+            if previous.tokens[split - 1].is_abbreviation(self.abbreviations)
                 || preserve_asterisk_escapes
                     && trailing_asterisk_may_open(previous.tokens[split - 1].text())
             {
@@ -1011,7 +1011,7 @@ fn write_wrapped_tokens_with_first_width(
                     writer.preserve_asterisk_escapes,
                 );
                 !markdown_block_start_line(&writer.safety_line)
-                    || escape.is_some() && !token.is_pandoc_abbreviation(tokens.abbreviations)
+                    || escape.is_some() && !token.is_abbreviation(tokens.abbreviations)
             } else {
                 true
             };
@@ -1033,7 +1033,7 @@ fn write_wrapped_tokens_with_first_width(
         // Reserve the next word before placing an abbreviation near the edge.
         // One-token lookahead stays linear even for long abbreviation runs;
         // commit_current keeps such a run together if it exceeds the width.
-        if token.is_pandoc_abbreviation(tokens.abbreviations)
+        if token.is_abbreviation(tokens.abbreviations)
             && !lines.current.is_empty()
             && tokens
                 .measured
