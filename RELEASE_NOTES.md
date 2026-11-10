@@ -1,4 +1,4 @@
-<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
+Yamark 0.6.0 fixes Markdown heading, paragraph, and list formatting so that rendered output is preserved and a second formatting pass makes no further changes. It also fixes late YAML template directives and embedded formatters that close stdin early.
 
 ## Command line
 
@@ -33,3 +33,5 @@
 ### Embedded formatters
 
 - An embedded formatter that exits successfully may now close stdin before reading all of its input. Yamark previously reported a broken-pipe error for large inputs. The formatter's output still receives normal validation, and other stdin write errors still fail.
+
+**Full changelog:** <https://github.com/t-kalinowski/yamark/compare/v0.5.0...v0.6.0>
