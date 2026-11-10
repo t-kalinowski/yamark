@@ -318,10 +318,10 @@ fn release_process_uses_pending_curated_notes() {
         );
     } else {
         assert!(release_notes.starts_with(&format!("Yamark {package_version} ")));
-        assert!(
-            release_notes.find("## Command line").unwrap()
-                < release_notes.find("## VS Code and Positron").unwrap()
-        );
+        // A release without editor-only changes has no editor section.
+        if let Some(editor_section) = release_notes.find("## VS Code and Positron") {
+            assert!(release_notes.find("## Command line").unwrap() < editor_section);
+        }
     }
     assert!(!release_notes.contains("## New Contributors"));
     assert!(workflow.contains("--notes-file RELEASE_NOTES.md"));
