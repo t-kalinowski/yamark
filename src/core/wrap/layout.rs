@@ -23,8 +23,15 @@ struct InlineToken<'a> {
     text: Cow<'a, str>,
     width: usize,
     preserve_math_closers: bool,
-    /// Whether the next source token starts with an ASCII digit, as in `No. 5`.
-    number_follows: bool,
+    next: NextToken,
+}
+
+/// How the next source token starts. Some abbreviations depend on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NextToken {
+    /// An ASCII digit, as in `No. 5`.
+    Digit,
+    Other,
 }
 
 impl<'a> InlineToken<'a> {
@@ -34,12 +41,12 @@ impl<'a> InlineToken<'a> {
             text: Cow::Owned(text),
             width,
             preserve_math_closers,
-            number_follows: false,
+            next: NextToken::Other,
         }
     }
 
     fn is_pandoc_abbreviation(&self) -> bool {
-        token_is_pandoc_abbreviation(self.text(), self.number_follows)
+        token_is_pandoc_abbreviation(self.text(), self.next)
     }
 
     fn text(&self) -> &str {
@@ -69,7 +76,7 @@ impl<'a> InlineToken<'a> {
         {
             candidate.pop();
             *self = Self {
-                number_follows: self.number_follows,
+                next: self.next,
                 ..Self::owned(candidate, self.preserve_math_closers)
             };
         }
@@ -100,15 +107,20 @@ impl<'a> TokenSlice<'a> {
         self.measured[index].0.span().slice(self.text)
     }
 
-    fn number_follows(self, index: usize) -> bool {
-        index + 1 < self.len()
+    fn next(self, index: usize) -> NextToken {
+        if index + 1 < self.len()
             && self
                 .token_text(index + 1)
                 .starts_with(|ch: char| ch.is_ascii_digit())
+        {
+            NextToken::Digit
+        } else {
+            NextToken::Other
+        }
     }
 
     fn is_pandoc_abbreviation_at(self, index: usize) -> bool {
-        token_is_pandoc_abbreviation(self.token_text(index), self.number_follows(index))
+        token_is_pandoc_abbreviation(self.token_text(index), self.next(index))
     }
 
     fn iter(self, unmatched_math_opener: Option<usize>) -> impl Iterator<Item = InlineToken<'a>> {
@@ -120,7 +132,7 @@ impl<'a> TokenSlice<'a> {
                 width: *width,
                 preserve_math_closers: unmatched_math_opener
                     .is_some_and(|open| open < span.start()),
-                number_follows: self.number_follows(index),
+                next: self.next(index),
             })
     }
 }
@@ -232,7 +244,7 @@ fn token_ends_sentence(token: &str) -> bool {
         .is_some_and(|(index, ch)| matches!(ch, '.' | '!' | '?') && !escaped_at(token, index))
 }
 
-fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
+fn token_is_pandoc_abbreviation(token: &str, next: NextToken) -> bool {
     if !token.ends_with('.') {
         return false;
     }
@@ -253,14 +265,19 @@ fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
     // as ellipses, which also form a word boundary. A remaining dot in `.Dr.`
     // or `....Dr.` still belongs to the word and prevents a match.
     let word = word.split("...").last().unwrap_or(word);
-    // Treat `No.` as an abbreviation only before a token starting with an ASCII
-    // digit, allowing an answer `No.` to end a sentence. Pandoc renders a
-    // non-breaking space after `No.` on the same line; a break renders as an
-    // ordinary space instead.
-    if word == "No." {
-        return number_follows;
+    // These words usually end a sentence in technical prose (`of size n.`,
+    // `the answer is No.`) and usually abbreviate before a number (`p. 5`,
+    // `No. 5`). Treat them as abbreviations only before a token starting with
+    // an ASCII digit. Pandoc renders a non-breaking space after them on the
+    // same line; a line break renders as an ordinary space instead.
+    if matches!(
+        word,
+        "c." | "d." | "f." | "ill." | "n." | "No." | "p." | "pt." | "sec."
+    ) {
+        return next == NextToken::Digit;
     }
-    // Keep in sync with `pandoc --print-default-data-file abbreviations` (3.13).
+    // With the words above, keep in sync with
+    // `pandoc --print-default-data-file abbreviations` (3.13).
     matches!(
         word,
         "aet."
@@ -270,7 +287,6 @@ fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
             | "Aug."
             | "bk."
             | "Bros."
-            | "c."
             | "Capt."
             | "cf."
             | "ch."
@@ -280,14 +296,12 @@ fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
             | "col."
             | "Corp."
             | "cp."
-            | "d."
             | "Dec."
             | "Dr."
             | "e.g."
             | "ed."
             | "eds."
             | "esp."
-            | "f."
             | "fasc."
             | "Feb."
             | "ff."
@@ -300,7 +314,6 @@ fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
             | "Gov."
             | "Hon."
             | "i.e."
-            | "ill."
             | "Inc."
             | "incl."
             | "Jan."
@@ -314,25 +327,20 @@ fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
             | "Mr."
             | "Mrs."
             | "Ms."
-            | "n."
             | "n.b."
             | "nn."
-            | "No."
             | "Nov."
             | "Oct."
-            | "p."
             | "Ph.D."
             | "pp."
             | "Pres."
             | "Prof."
-            | "pt."
             | "q.v."
             | "Rep."
             | "Rev."
             | "s.v."
             | "s.vv."
             | "saec."
-            | "sec."
             | "Sen."
             | "Sep."
             | "Sept."

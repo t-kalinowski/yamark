@@ -1,0 +1,56 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
+-- stdin
+Take a sample of size n. Then compute the mean. See n. 4 for details.
+
+The event has probability p. We estimate it. See p. 5 and pp. 6 for details.
+
+The patient was ill. He recovered. See ill. 3 for details.
+
+The size is in pt. If you print it, check pt. 2 first.
+
+It takes one sec. Then read sec. 3 again.
+
+Call the function f. Use distance d. Use constant c. It was built c. 1900 by hand.
+
+See p.
+5 for details.
+
+(See p. 12) and "sec. 7" are references. The size is n.
+
+Opening sentence. c. word follows. End.
+-- stdout
+Take a sample of size n.
+Then compute the mean.
+See n. 4 for details.
+
+The event has probability p.
+We estimate it.
+See p. 5 and pp. 6 for details.
+
+The patient was ill.
+He recovered.
+See ill. 3 for details.
+
+The size is in pt.
+If you print it, check pt. 2 first.
+
+It takes one sec.
+Then read sec. 3 again.
+
+Call the function f.
+Use distance d.
+Use constant c.
+It was built c. 1900 by hand.
+
+See p. 5 for details.
+
+(See p. 12) and "sec. 7" are references.
+The size is n.
+
+Opening sentence.
+c\. word follows.
+End.
+-- stderr
+-- status
+0

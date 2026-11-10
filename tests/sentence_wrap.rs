@@ -327,8 +327,12 @@ fn pandoc_abbreviations_keep_the_following_word() {
     // The default data file printed by Pandoc 3.13, including its exact case.
     const ABBREVIATIONS: &str = "aet. aetat. al. Apr. Aug. bk. Bros. c. Capt. cf. ch. chap. chs. Co. col. Corp. cp. d. Dec. Dr. e.g. ed. eds. esp. f. fasc. Feb. ff. fig. fl. fol. fols. Fr. Gen. Gov. Hon. i.e. ill. Inc. incl. Jan. Jr. Jul. Jun. Ltd. M.A. M.D. Mar. Mr. Mrs. Ms. n. n.b. nn. No. Nov. Oct. p. Ph.D. pp. Pres. Prof. pt. q.v. Rep. Rev. s.v. s.vv. saec. sec. Sen. Sep. Sept. Sgt. Sr. St. univ. viz. vol. vs.";
     for abbreviation in ABBREVIATIONS.split(' ') {
-        // `No.` is treated as an abbreviation before an ASCII digit.
-        let next = if abbreviation == "No." { "5" } else { "word" };
+        // These words are abbreviations only before an ASCII digit.
+        let before_digit = matches!(
+            abbreviation,
+            "c." | "d." | "f." | "ill." | "n." | "No." | "p." | "pt." | "sec."
+        );
+        let next = if before_digit { "5" } else { "word" };
         for prefix in ["", "(", "x-"] {
             let pair = format!("{prefix}{abbreviation} {next}");
             let source = format!("Opening words {pair} follow here. Another sentence.\n");
