@@ -1,4 +1,4 @@
-<!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
+Yamark 0.6.1 tunes where Markdown sentence wrapping ends a sentence in technical prose. It also adds ways to correct a boundary: the `&#46;` sentence-end marker, `fmt: abbreviations.add` and `fmt: abbreviations.remove` directives, and a `[format.abbreviations]` table in `yamark.toml`.
 
 ## Command line
 
@@ -11,3 +11,5 @@
 - End a sentence at `&#46;`, the decimal character reference for a period, so that an author can mark a sentence end after an abbreviation, as in `We work with Acme Inc&#46; Their API is faster.` It renders as a period.
 - Add `fmt: abbreviations.add` and `fmt: abbreviations.remove` directives, which make the listed words abbreviations or ordinary words for wrapping, as in `<!-- fmt: abbreviations.add "Tab." "Thm." -->`. They accept `scope=next`, `scope=from-here`, and `scope=file`.
 - Add a `[format.abbreviations]` table to `yamark.toml`. Its `add` and `remove` arrays make the same corrections as the directives for every file the configuration applies to; a directive that names the same word overrides them.
+
+**Full changelog:** <https://github.com/t-kalinowski/yamark/compare/v0.6.0...v0.6.1>
