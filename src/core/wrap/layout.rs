@@ -51,6 +51,10 @@ impl<'a> InlineToken<'a> {
         token_is_pandoc_abbreviation(self.text(), self.next)
     }
 
+    fn ends_sentence(&self) -> bool {
+        token_ends_sentence(self.text(), self.next)
+    }
+
     fn text(&self) -> &str {
         &self.text
     }
@@ -120,6 +124,10 @@ impl<'a> TokenSlice<'a> {
 
     fn is_pandoc_abbreviation_at(self, index: usize) -> bool {
         token_is_pandoc_abbreviation(self.token_text(index), self.next(index))
+    }
+
+    fn ends_sentence_at(self, index: usize) -> bool {
+        token_ends_sentence(self.token_text(index), self.next(index))
     }
 
     fn iter(self, unmatched_math_opener: Option<usize>) -> impl Iterator<Item = InlineToken<'a>> {
@@ -207,7 +215,7 @@ fn write_sentence_token_slices<'token>(
     };
     let mut start = 0usize;
     for (index, token) in tokens.iter(unmatched_math_opener).enumerate() {
-        if !token_ends_sentence(token.text()) || token.is_pandoc_abbreviation() {
+        if !token.ends_sentence() {
             continue;
         }
         // A marker such as `2.` at a new sentence boundary will have its
@@ -235,12 +243,15 @@ fn write_sentence_token_slices<'token>(
     Some(())
 }
 
-fn token_ends_sentence(token: &str) -> bool {
+fn token_ends_sentence(token: &str, next: NextToken) -> bool {
+    // Closing quotes and brackets may follow the terminal punctuation. An
+    // abbreviation before them, as in `(e.g.)`, still does not end a sentence.
     let token = token.trim_end_matches(['"', '\'', ')', ']', '}']);
     token
         .char_indices()
         .next_back()
         .is_some_and(|(index, ch)| matches!(ch, '.' | '!' | '?') && !escaped_at(token, index))
+        && !token_is_pandoc_abbreviation(token, next)
 }
 
 fn token_is_pandoc_abbreviation(token: &str, next: NextToken) -> bool {
@@ -946,18 +957,17 @@ fn write_wrapped_tokens_with_first_width(
         // Column layout may have escaped the previous period. Decide whether
         // it ends a sentence using the text that will actually be written.
         if sentence_wrap
-            && lines.current.tokens.last().is_some_and(|previous| {
-                token_ends_sentence(previous.text()) && !previous.is_pandoc_abbreviation()
-            })
+            && lines
+                .current
+                .tokens
+                .last()
+                .is_some_and(InlineToken::ends_sentence)
         {
             let mut escape = None;
             let safe_break = if token_may_start_markdown_block(token.text()) {
                 let start = tokens.measured[index].0.start();
                 let last = (index..tokens.len())
-                    .find(|&index| {
-                        token_ends_sentence(tokens.token_text(index))
-                            && !tokens.is_pandoc_abbreviation_at(index)
-                    })
+                    .find(|&index| tokens.ends_sentence_at(index))
                     .unwrap_or(tokens.len() - 1);
                 let end = tokens.measured[last].0.end();
                 writer.safety_line.clear();

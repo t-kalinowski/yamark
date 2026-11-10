@@ -34,6 +34,8 @@ recognize the combined value.
 
 Pandoc's default abbreviations, such as `Dr.`, `fig.`, and `e.g.`, stay on the same line as the following word and do not end a sentence for wrapping. Matching is case-sensitive. A group that cannot fit the requested column may exceed it.
 
+An abbreviation followed by closing quotation marks or brackets, as in `(e.g.)` or `(lists, vectors, etc.) and`, does not end a sentence either. The word after the closing punctuation may move to the next line.
+
 `c.`, `d.`, `f.`, `ill.`, `n.`, `No.`, `p.`, `pt.`, and `sec.` are treated as abbreviations only when the next whitespace-separated source token starts with an ASCII digit, as in `p. 5` or `No. 5`. Otherwise, they end a sentence, as in `a sample of size n.` or an answer `No.`: sentence wrapping starts a new line after them, and column wrapping may break there. One of these words followed by a sentence starting with a digit, as in `No. 5 people asked.`, is still treated as an abbreviation. Pandoc renders a non-breaking space after these words when the next word is on the same line. A line break after them renders as an ordinary space instead.
 
 Yamark also treats these words, common in technical prose, as abbreviations: `a.k.a.`, `approx.`, `E.g.`, `eg.`, `Eq.`, `Eqs.`, `Fig.`, `Figs.`, `I.e.`, `ie.`, `resp.`, and `w.r.t.`. It treats `etc.` and `i.i.d.` as abbreviations only when the next whitespace-separated source token starts with a lowercase letter, as in `etc. and more`. Otherwise, they end a sentence. Pandoc does not list any of these words and renders an ordinary space after them.

@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
+-- stdin
+You could (e.g.) have a policy. It supports lists (vectors, etc.) and more. It supports lists (vectors, etc.) Then it stops.
+
+(See p.) Then read on. He said "see fig." and left. Read (cf.) Smith. See [p.] 5 and (size n.) Then go.
+-- stdout
+You could (e.g.) have a policy.
+It supports lists (vectors, etc.) and more.
+It supports lists (vectors, etc.)
+Then it stops.
+
+(See p.)
+Then read on.
+He said "see fig." and left.
+Read (cf.) Smith.
+See [p.] 5 and (size n.)
+Then go.
+-- stderr
+-- status
+0

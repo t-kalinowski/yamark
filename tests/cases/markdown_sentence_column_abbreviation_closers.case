@@ -1,0 +1,13 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence:24
+-- stdin
+You could (e.g.) have a policy. Lists (sets, etc.) are fine (see p.) Then stop.
+-- stdout
+You could (e.g.) have a
+policy.
+Lists (sets, etc.) are
+fine (see p.)
+Then stop.
+-- stderr
+-- status
+0
