@@ -1,0 +1,44 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
+-- stdin
+E.g. this works. I.e. that works too. Use a tibble a.k.a. a data frame. Fit eg. a model or ie. two.
+
+The mean and variance resp. the median are shown. It is approx. 5 cm long. Derive it w.r.t. the mean.
+
+See Fig. 6 and Figs. 7 and 8 too. Solve Eq. (2) and Eqs. 3 and 4 first.
+
+Use lists, vectors, etc. to store values. It handles lists, vectors, etc. Then it returns. Count them, etc. 5 remain.
+
+The draws are i.i.d. normal variables. The draws are i.i.d. We sample them.
+
+Press Tab. Then press Etc. to continue. Add approx. Five is fine.
+-- stdout
+E.g. this works.
+I.e. that works too.
+Use a tibble a.k.a. a data frame.
+Fit eg. a model or ie. two.
+
+The mean and variance resp. the median are shown.
+It is approx. 5 cm long.
+Derive it w.r.t. the mean.
+
+See Fig. 6 and Figs. 7 and 8 too.
+Solve Eq. (2) and Eqs. 3 and 4 first.
+
+Use lists, vectors, etc. to store values.
+It handles lists, vectors, etc.
+Then it returns.
+Count them, etc.
+5 remain.
+
+The draws are i.i.d. normal variables.
+The draws are i.i.d.
+We sample them.
+
+Press Tab.
+Then press Etc.
+to continue.
+Add approx. Five is fine.
+-- stderr
+-- status
+0

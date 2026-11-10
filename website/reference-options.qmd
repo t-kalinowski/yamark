@@ -36,6 +36,8 @@ Pandoc's default abbreviations, such as `Dr.`, `fig.`, and `e.g.`, stay on the s
 
 `c.`, `d.`, `f.`, `ill.`, `n.`, `No.`, `p.`, `pt.`, and `sec.` are treated as abbreviations only when the next whitespace-separated source token starts with an ASCII digit, as in `p. 5` or `No. 5`. Otherwise, they end a sentence, as in `a sample of size n.` or an answer `No.`: sentence wrapping starts a new line after them, and column wrapping may break there. One of these words followed by a sentence starting with a digit, as in `No. 5 people asked.`, is still treated as an abbreviation. Pandoc renders a non-breaking space after these words when the next word is on the same line. A line break after them renders as an ordinary space instead.
 
+Yamark also treats these words, common in technical prose, as abbreviations: `a.k.a.`, `approx.`, `E.g.`, `eg.`, `Eq.`, `Eqs.`, `Fig.`, `Figs.`, `I.e.`, `ie.`, `resp.`, and `w.r.t.`. It treats `etc.` and `i.i.d.` as abbreviations only when the next whitespace-separated source token starts with a lowercase letter, as in `etc. and more`. Otherwise, they end a sentence. Pandoc does not list any of these words and renders an ordinary space after them.
+
 ### Table widths
 
 `fit` sizes supported pipe, simple, grid, and multiline table columns from

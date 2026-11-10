@@ -31,6 +31,8 @@ struct InlineToken<'a> {
 enum NextToken {
     /// An ASCII digit, as in `No. 5`.
     Digit,
+    /// A lowercase letter, as in `etc. and`.
+    Lowercase,
     Other,
 }
 
@@ -108,14 +110,11 @@ impl<'a> TokenSlice<'a> {
     }
 
     fn next(self, index: usize) -> NextToken {
-        if index + 1 < self.len()
-            && self
-                .token_text(index + 1)
-                .starts_with(|ch: char| ch.is_ascii_digit())
-        {
-            NextToken::Digit
-        } else {
-            NextToken::Other
+        let next = (index + 1 < self.len()).then(|| self.token_text(index + 1));
+        match next.and_then(|next| next.chars().next()) {
+            Some(ch) if ch.is_ascii_digit() => NextToken::Digit,
+            Some(ch) if ch.is_lowercase() => NextToken::Lowercase,
+            _ => NextToken::Other,
         }
     }
 
@@ -276,7 +275,33 @@ fn token_is_pandoc_abbreviation(token: &str, next: NextToken) -> bool {
     ) {
         return next == NextToken::Digit;
     }
-    // With the words above, keep in sync with
+    // These words end a sentence about as often as they continue one. A
+    // lowercase word after them rarely starts a sentence. Pandoc does not
+    // list them, so no rendered non-breaking space depends on this choice.
+    if matches!(word, "etc." | "i.i.d.") {
+        return next == NextToken::Lowercase;
+    }
+    // Common in technical prose but missing from Pandoc's list, which is
+    // case-sensitive (`e.g.` and `fig.`, but not `E.g.` or `Fig.`). Pandoc
+    // renders an ordinary space after them.
+    if matches!(
+        word,
+        "a.k.a."
+            | "approx."
+            | "E.g."
+            | "eg."
+            | "Eq."
+            | "Eqs."
+            | "Fig."
+            | "Figs."
+            | "I.e."
+            | "ie."
+            | "resp."
+            | "w.r.t."
+    ) {
+        return true;
+    }
+    // With the words limited to a following digit, keep in sync with
     // `pandoc --print-default-data-file abbreviations` (3.13).
     matches!(
         word,

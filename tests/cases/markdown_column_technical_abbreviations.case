@@ -1,0 +1,20 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap 18
+-- stdin
+Compare it to Fig. 6 now.
+
+We use lists etc. as needed.
+
+So use them etc. Then stop.
+-- stdout
+Compare it to
+Fig. 6 now.
+
+We use lists
+etc. as needed.
+
+So use them etc.
+Then stop.
+-- stderr
+-- status
+0
