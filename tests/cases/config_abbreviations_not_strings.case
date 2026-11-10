@@ -4,7 +4,7 @@
     "core.autocrlf": "false"
   },
   "files": {
-    "yamark.toml": "[format.abbreviations]\nremove = \"al.\"\n"
+    "yamark.toml": "[format.abbreviations]\nremove = \"Inc.\"\n"
   }
 }
 -- args

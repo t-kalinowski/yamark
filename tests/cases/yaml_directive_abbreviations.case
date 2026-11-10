@@ -8,10 +8,10 @@ a: !md |
 b: !md |
   See Tab. 3 now. Use Thm. 2 here.
 c: !md |
-  <!-- fmt: abbreviations.remove "al." -->
-  Smith et al. We left. Use Thm. 2 here.
+  <!-- fmt: abbreviations.remove "Inc." -->
+  Acme Inc. We left. Use Thm. 2 here.
 d: !md |
-  Smith et al. We left. See Tab. 3 now.
+  Acme Inc. We left. See Tab. 3 now.
 -- stdout
 # fmt: abbreviations.add "Tab." scope=file
 a: !md |
@@ -23,13 +23,13 @@ b: !md |
   See Tab. 3 now.
   Use Thm. 2 here.
 c: !md |
-  <!-- fmt: abbreviations.remove "al." -->
-  Smith et al.
+  <!-- fmt: abbreviations.remove "Inc." -->
+  Acme Inc.
   We left.
   Use Thm.
   2 here.
 d: !md |
-  Smith et al. We left.
+  Acme Inc. We left.
   See Tab. 3 now.
 -- stderr
 -- status

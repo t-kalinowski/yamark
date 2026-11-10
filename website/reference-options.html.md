@@ -39,6 +39,8 @@ An abbreviation followed by closing quotation marks or brackets, as in `(e.g.)` 
 
 `c.`, `d.`, `f.`, `ill.`, `n.`, `No.`, `p.`, `pt.`, and `sec.` are treated as abbreviations only when the next whitespace-separated source token starts with an ASCII digit, as in `p. 5` or `No. 5`. Otherwise, they end a sentence, as in `a sample of size n.` or an answer `No.`: sentence wrapping starts a new line after them, and column wrapping may break there. One of these words followed by a sentence starting with a digit, as in `No. 5 people asked.`, is still treated as an abbreviation. Pandoc renders a non-breaking space after these words when the next word is on the same line. A line break after them renders as an ordinary space instead.
 
+`al.` is treated as an abbreviation unless the next whitespace-separated source token starts with an uppercase letter: `et al. (2020)` and `et al. showed` continue a sentence, and `et al. We` ends one. Pandoc renders a non-breaking space after `al.` when the next word is on the same line. A line break after it renders as an ordinary space instead.
+
 Yamark also treats these words, common in technical prose, as abbreviations: `a.k.a.`, `approx.`, `E.g.`, `eg.`, `Eq.`, `Eqs.`, `Fig.`, `Figs.`, `I.e.`, `ie.`, `resp.`, and `w.r.t.`. It treats `etc.` and `i.i.d.` as abbreviations only when the next whitespace-separated source token starts with a lowercase letter, as in `etc. and more`. Otherwise, they end a sentence. Pandoc does not list any of these words and renders an ordinary space after them.
 
 ### Correcting a sentence boundary
@@ -47,7 +49,7 @@ No word list fits every text. To correct one occurrence, change how the period o
 
 | Goal | Write | Example |
 | --- | --- | --- |
-| End a sentence where Yamark continues it | `&#46;` instead of the period | `We follow Smith et al&#46; Their method is faster.` |
+| End a sentence where Yamark continues it | `&#46;` instead of the period | `We work with Acme Inc&#46; Their API is faster.` |
 | Continue a sentence where Yamark ends it | `\.` instead of the period | `See Tab\. 3 for the totals.` |
 | Keep two words on the same line | `&nbsp;` instead of the space | `Tab.&nbsp;3` |
 

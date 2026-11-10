@@ -1,28 +1,28 @@
 -- args
 format --stdin-file-path input.R --skip-embedded-formatters --wrap sentence
 -- stdin
-# fmt: abbreviations.remove "al."
+# fmt: abbreviations.remove "Inc."
 
 # fmt: markdown
-# Smith et al. We then left. See Fig. 3 now.
+# Acme Inc. We then left. See Fig. 3 now.
 x <- 1
 
 # fmt: markdown abbreviations.add "Thm."
 doc <- "
-Smith et al. We then left. Use Thm. 2 here.
+Acme Inc. We then left. Use Thm. 2 here.
 "
 -- stdout
-# fmt: abbreviations.remove "al."
+# fmt: abbreviations.remove "Inc."
 
 # fmt: markdown
-# Smith et al.
+# Acme Inc.
 # We then left.
 # See Fig. 3 now.
 x <- 1
 
 # fmt: markdown abbreviations.add "Thm."
 doc <- "
-Smith et al.
+Acme Inc.
 We then left.
 Use Thm. 2 here.
 "

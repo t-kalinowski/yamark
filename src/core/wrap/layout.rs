@@ -33,6 +33,8 @@ enum NextToken {
     Digit,
     /// A lowercase letter, as in `etc. and`.
     Lowercase,
+    /// An uppercase letter, as in `et al. We`.
+    Uppercase,
     Other,
 }
 
@@ -119,6 +121,7 @@ impl<'a> TokenSlice<'a> {
         match next.and_then(|next| next.chars().next()) {
             Some(ch) if ch.is_ascii_digit() => NextToken::Digit,
             Some(ch) if ch.is_lowercase() => NextToken::Lowercase,
+            Some(ch) if ch.is_uppercase() => NextToken::Uppercase,
             _ => NextToken::Other,
         }
     }
@@ -252,7 +255,7 @@ fn token_ends_sentence(token: &str, next: NextToken, abbreviations: Abbreviation
     // abbreviation before them, as in `(e.g.)`, still does not end a sentence.
     let token = token.trim_end_matches(['"', '\'', ')', ']', '}']);
     // `&#46;` renders as a period. An author writes it to end a sentence
-    // where the abbreviation rules would continue it, as in `et al&#46; We`.
+    // where the abbreviation rules would continue it, as in `Inc&#46; We`.
     if let Some(word) = token.strip_suffix(PERIOD_REFERENCE) {
         return !escaped_at(token, word.len());
     }
@@ -311,6 +314,14 @@ fn token_is_abbreviation(
     if matches!(word, "etc." | "i.i.d.") {
         return next == NextToken::Lowercase;
     }
+    // `et al.` usually continues into a citation or a verb (`et al. (2020)`,
+    // `et al. showed`). If the next whitespace-separated source token starts
+    // with an uppercase letter, it usually starts a sentence. Pandoc renders
+    // a non-breaking space after `al.` on the same line; a line break renders
+    // as an ordinary space instead.
+    if word == "al." {
+        return next != NextToken::Uppercase;
+    }
     // Common in technical prose but missing from Pandoc's list, which is
     // case-sensitive (`e.g.` and `fig.`, but not `E.g.` or `Fig.`). Pandoc
     // renders an ordinary space after them.
@@ -331,13 +342,12 @@ fn token_is_abbreviation(
     ) {
         return true;
     }
-    // With the words limited to a following digit, keep in sync with
+    // With `al.` and the words limited to a following digit, keep in sync with
     // `pandoc --print-default-data-file abbreviations` (3.13).
     matches!(
         word,
         "aet."
             | "aetat."
-            | "al."
             | "Apr."
             | "Aug."
             | "bk."

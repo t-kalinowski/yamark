@@ -35,7 +35,7 @@ other surfaces that expose these behaviors.
 ```toml
 [format.abbreviations]
 add = ["Tab.", "Thm."]
-remove = ["al."]
+remove = ["Inc."]
 ```
 
 | Key | Type | Effect |

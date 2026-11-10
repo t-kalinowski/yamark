@@ -3,7 +3,7 @@ format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
 -- stdin
 The patient was ill&#46; He recovered. See Fig&#46; Then stop. Use e.g&#46; Next one.
 
-Size (n&#46;) Then more. He left with Smith et al&#46; We stayed.
+Size (n&#46;) Then more. He left with Acme Inc&#46; We stayed.
 
 A&#46;B stays one word. Dr&#46; Smith left. Literal \&#46; stays. Hex &#x2E; stays.
 
@@ -19,7 +19,7 @@ Next one.
 
 Size (n&#46;)
 Then more.
-He left with Smith et al&#46;
+He left with Acme Inc&#46;
 We stayed.
 
 A&#46;B stays one word.

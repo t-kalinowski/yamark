@@ -4,13 +4,13 @@
     "core.autocrlf": "false"
   },
   "files": {
-    "yamark.toml": "[format]\nwrap = \"sentence\"\n\n[format.abbreviations]\nadd = [\"Tab.\", \"Thm.\"]\nremove = [\"al.\"]\n"
+    "yamark.toml": "[format]\nwrap = \"sentence\"\n\n[format.abbreviations]\nadd = [\"Tab.\", \"Thm.\"]\nremove = [\"Inc.\"]\n"
   }
 }
 -- args
 format --stdin-file-path input.md
 -- stdin
-See Tab. 3 and Thm. 2 for details. We follow Smith et al. Their method is faster.
+See Tab. 3 and Thm. 2 for details. We follow Acme Inc. Their method is faster.
 
 <!-- fmt: abbreviations.remove "Tab." scope=next -->
 A directive overrides the file. See Tab. Then continue with Thm. 4 here.
@@ -18,7 +18,7 @@ A directive overrides the file. See Tab. Then continue with Thm. 4 here.
 After that paragraph, Tab. 5 is an abbreviation again. The end.
 -- stdout
 See Tab. 3 and Thm. 2 for details.
-We follow Smith et al.
+We follow Acme Inc.
 Their method is faster.
 
 <!-- fmt: abbreviations.remove "Tab." scope=next -->

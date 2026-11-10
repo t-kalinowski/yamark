@@ -5,11 +5,11 @@ format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
 
 See Tab. 3 now. Use Thm. 2 here. A (Tab.) Then more. Press tab. Then stop.
 
-<!-- fmt: abbreviations.remove "al." scope=next -->
+<!-- fmt: abbreviations.remove "Inc." scope=next -->
 
-Smith et al. We then left. See Tab. 3 now.
+Acme Inc. We then left. See Tab. 3 now.
 
-Smith et al. We then left.
+Acme Inc. We then left.
 
 <!-- fmt: abbreviations.remove "Tab." "e.g." scope=from-here -->
 
@@ -38,13 +38,13 @@ A (Tab.) Then more.
 Press tab.
 Then stop.
 
-<!-- fmt: abbreviations.remove "al." scope=next -->
+<!-- fmt: abbreviations.remove "Inc." scope=next -->
 
-Smith et al.
+Acme Inc.
 We then left.
 See Tab. 3 now.
 
-Smith et al. We then left.
+Acme Inc. We then left.
 
 <!-- fmt: abbreviations.remove "Tab." "e.g." scope=from-here -->
 

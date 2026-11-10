@@ -1,22 +1,22 @@
 -- args
 format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
 -- stdin
-See Tab. 3 now. Smith et al. We then left.
+See Tab. 3 now. Acme Inc. We then left.
 
 <!-- fmt: abbreviations.add "Tab." scope=file -->
-<!-- fmt: abbreviations.remove "al." scope=file -->
+<!-- fmt: abbreviations.remove "Inc." scope=file -->
 
-See Tab. 3 again. Smith et al. We then left.
+See Tab. 3 again. Acme Inc. We then left.
 -- stdout
 See Tab. 3 now.
-Smith et al.
+Acme Inc.
 We then left.
 
 <!-- fmt: abbreviations.add "Tab." scope=file -->
-<!-- fmt: abbreviations.remove "al." scope=file -->
+<!-- fmt: abbreviations.remove "Inc." scope=file -->
 
 See Tab. 3 again.
-Smith et al.
+Acme Inc.
 We then left.
 -- stderr
 -- status

@@ -77,7 +77,7 @@ through the end of the region.
 | `fmt: canonical` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Enable canonical Markdown spelling. `canonical=true` is equivalent. |
 | `fmt: footnotes=preserve` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Preserve footnote definitions in the affected Markdown. |
 | `fmt: abbreviations.add "Tab." "Thm."` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Treat each listed word as an abbreviation when wrapping. |
-| `fmt: abbreviations.remove "al." "Dr."` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Treat each listed word as an ordinary word when wrapping. |
+| `fmt: abbreviations.remove "Inc." "Dr."` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Treat each listed word as an ordinary word when wrapping. |
 
 Option-only YAML directives tune the next scalar only if it is already marked
 as Markdown:
@@ -114,7 +114,7 @@ before any token, not only before a digit.
 
 ```markdown
 <!-- fmt: abbreviations.add "Tab." "Thm." -->
-<!-- fmt: abbreviations.remove "al." scope=next -->
+<!-- fmt: abbreviations.remove "Inc." scope=next -->
 ```
 
 Each directive takes one or more double-quoted words. A word consists of
