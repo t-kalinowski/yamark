@@ -327,8 +327,10 @@ fn pandoc_abbreviations_keep_the_following_word() {
     // The default data file printed by Pandoc 3.13, including its exact case.
     const ABBREVIATIONS: &str = "aet. aetat. al. Apr. Aug. bk. Bros. c. Capt. cf. ch. chap. chs. Co. col. Corp. cp. d. Dec. Dr. e.g. ed. eds. esp. f. fasc. Feb. ff. fig. fl. fol. fols. Fr. Gen. Gov. Hon. i.e. ill. Inc. incl. Jan. Jr. Jul. Jun. Ltd. M.A. M.D. Mar. Mr. Mrs. Ms. n. n.b. nn. No. Nov. Oct. p. Ph.D. pp. Pres. Prof. pt. q.v. Rep. Rev. s.v. s.vv. saec. sec. Sen. Sep. Sept. Sgt. Sr. St. univ. viz. vol. vs.";
     for abbreviation in ABBREVIATIONS.split(' ') {
+        // `No.` is treated as an abbreviation before an ASCII digit.
+        let next = if abbreviation == "No." { "5" } else { "word" };
         for prefix in ["", "(", "x-"] {
-            let pair = format!("{prefix}{abbreviation} word");
+            let pair = format!("{prefix}{abbreviation} {next}");
             let source = format!("Opening words {pair} follow here. Another sentence.\n");
             for wrap in [
                 MarkdownWrap::Sentence,
@@ -350,6 +352,42 @@ fn pandoc_abbreviations_keep_the_following_word() {
                         .unwrap()
                         .output;
                 assert_eq!(second, first, "{wrap:?}, {source:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn no_ends_a_sentence_unless_a_number_follows() {
+    for (wrap, source, expected) in [
+        (
+            MarkdownWrap::Sentence,
+            "Is it enabled? No. It is disabled. See item No. 5 for details.\n",
+            "Is it enabled?\nNo.\nIt is disabled.\nSee item No. 5 for details.\n",
+        ),
+        (
+            MarkdownWrap::SentenceAndColumn(12),
+            "Is it enabled? No. It is disabled. See item No. 5 for details.\n",
+            "Is it\nenabled?\nNo.\nIt is\ndisabled.\nSee item\nNo. 5 for\ndetails.\n",
+        ),
+        (
+            MarkdownWrap::Column(12),
+            "It is a No. It is so. Read at No. 5 now.\n",
+            "It is a No.\nIt is so.\nRead at\nNo. 5 now.\n",
+        ),
+    ] {
+        let options = FormatOptions {
+            markdown_wrap: wrap,
+            ..FormatOptions::default()
+        };
+        for newline in ["\n", "\r\n", "\r"] {
+            let expected = expected.replace('\n', newline);
+            for source in [source.replace('\n', newline), expected.clone()] {
+                let output =
+                    format_source_for_path(Path::new("input.md"), source.clone(), options, None)
+                        .unwrap()
+                        .output;
+                assert_eq!(output, expected, "{wrap:?}, {source:?}");
             }
         }
     }

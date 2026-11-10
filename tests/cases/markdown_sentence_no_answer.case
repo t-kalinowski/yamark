@@ -1,0 +1,44 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap sentence
+-- stdin
+No. Integrations work. Second sentence.
+
+Is it enabled? No. It is disabled.
+
+See item No. 5 for details. Second sentence.
+
+Yes. It works. Second sentence.
+
+No.
+Doing X isn't supported.
+
+See item No.
+5 for details.
+
+(No. 12) and "No. 7" are numbers. The answer is No.
+-- stdout
+No.
+Integrations work.
+Second sentence.
+
+Is it enabled?
+No.
+It is disabled.
+
+See item No. 5 for details.
+Second sentence.
+
+Yes.
+It works.
+Second sentence.
+
+No.
+Doing X isn't supported.
+
+See item No. 5 for details.
+
+(No. 12) and "No. 7" are numbers.
+The answer is No.
+-- stderr
+-- status
+0

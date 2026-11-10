@@ -1,0 +1,15 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap 18
+-- stdin
+Is it enabled? No. It is disabled.
+
+Read the item No. 5 now.
+-- stdout
+Is it enabled? No.
+It is disabled.
+
+Read the item
+No. 5 now.
+-- stderr
+-- status
+0

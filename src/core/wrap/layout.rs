@@ -23,6 +23,8 @@ struct InlineToken<'a> {
     text: Cow<'a, str>,
     width: usize,
     preserve_math_closers: bool,
+    /// Whether the next source token starts with an ASCII digit, as in `No. 5`.
+    number_follows: bool,
 }
 
 impl<'a> InlineToken<'a> {
@@ -32,7 +34,12 @@ impl<'a> InlineToken<'a> {
             text: Cow::Owned(text),
             width,
             preserve_math_closers,
+            number_follows: false,
         }
+    }
+
+    fn is_pandoc_abbreviation(&self) -> bool {
+        token_is_pandoc_abbreviation(self.text(), self.number_follows)
     }
 
     fn text(&self) -> &str {
@@ -61,7 +68,10 @@ impl<'a> InlineToken<'a> {
         ) == Some(offset)
         {
             candidate.pop();
-            *self = Self::owned(candidate, self.preserve_math_closers);
+            *self = Self {
+                number_follows: self.number_follows,
+                ..Self::owned(candidate, self.preserve_math_closers)
+            };
         }
     }
 }
@@ -86,12 +96,32 @@ impl<'a> TokenSlice<'a> {
         }
     }
 
+    fn token_text(self, index: usize) -> &'a str {
+        self.measured[index].0.span().slice(self.text)
+    }
+
+    fn number_follows(self, index: usize) -> bool {
+        index + 1 < self.len()
+            && self
+                .token_text(index + 1)
+                .starts_with(|ch: char| ch.is_ascii_digit())
+    }
+
+    fn is_pandoc_abbreviation_at(self, index: usize) -> bool {
+        token_is_pandoc_abbreviation(self.token_text(index), self.number_follows(index))
+    }
+
     fn iter(self, unmatched_math_opener: Option<usize>) -> impl Iterator<Item = InlineToken<'a>> {
-        self.measured.iter().map(move |(span, width)| InlineToken {
-            text: Cow::Borrowed(span.span().slice(self.text)),
-            width: *width,
-            preserve_math_closers: unmatched_math_opener.is_some_and(|open| open < span.start()),
-        })
+        self.measured
+            .iter()
+            .enumerate()
+            .map(move |(index, (span, width))| InlineToken {
+                text: Cow::Borrowed(span.span().slice(self.text)),
+                width: *width,
+                preserve_math_closers: unmatched_math_opener
+                    .is_some_and(|open| open < span.start()),
+                number_follows: self.number_follows(index),
+            })
     }
 }
 
@@ -150,10 +180,7 @@ fn write_sentence_token_slices<'token>(
                 preserve_asterisk_escapes,
             );
             if markdown_block_start_line(&safety_line)
-                && (escape.is_none()
-                    || token_is_pandoc_abbreviation(
-                        tokens.measured[from].0.span().slice(tokens.text),
-                    ))
+                && (escape.is_none() || tokens.is_pandoc_abbreviation_at(from))
             {
                 pending = Some((previous_from, to, previous_escape));
                 return Some(());
@@ -169,7 +196,7 @@ fn write_sentence_token_slices<'token>(
     };
     let mut start = 0usize;
     for (index, token) in tokens.iter(unmatched_math_opener).enumerate() {
-        if !token_ends_sentence(token.text()) || token_is_pandoc_abbreviation(token.text()) {
+        if !token_ends_sentence(token.text()) || token.is_pandoc_abbreviation() {
             continue;
         }
         // A marker such as `2.` at a new sentence boundary will have its
@@ -205,7 +232,7 @@ fn token_ends_sentence(token: &str) -> bool {
         .is_some_and(|(index, ch)| matches!(ch, '.' | '!' | '?') && !escaped_at(token, index))
 }
 
-fn token_is_pandoc_abbreviation(token: &str) -> bool {
+fn token_is_pandoc_abbreviation(token: &str, number_follows: bool) -> bool {
     if !token.ends_with('.') {
         return false;
     }
@@ -226,6 +253,13 @@ fn token_is_pandoc_abbreviation(token: &str) -> bool {
     // as ellipses, which also form a word boundary. A remaining dot in `.Dr.`
     // or `....Dr.` still belongs to the word and prevents a match.
     let word = word.split("...").last().unwrap_or(word);
+    // Treat `No.` as an abbreviation only before a token starting with an ASCII
+    // digit, allowing an answer `No.` to end a sentence. Pandoc renders a
+    // non-breaking space after `No.` on the same line; a break renders as an
+    // ordinary space instead.
+    if word == "No." {
+        return number_follows;
+    }
     // Keep in sync with `pandoc --print-default-data-file abbreviations` (3.13).
     matches!(
         word,
@@ -677,7 +711,7 @@ impl<'a> WrapLineBuffer<'a> {
             .current
             .tokens
             .last()
-            .is_some_and(|token| token_is_pandoc_abbreviation(token.text()))
+            .is_some_and(InlineToken::is_pandoc_abbreviation)
         {
             return Some(());
         }
@@ -798,7 +832,7 @@ impl<'a> WrapLineBuffer<'a> {
             self.current.tokens[0].preserve_math_closers,
             preserve_asterisk_escapes,
         );
-        if escape.is_some() && token_is_pandoc_abbreviation(self.current.tokens[0].text()) {
+        if escape.is_some() && self.current.tokens[0].is_pandoc_abbreviation() {
             // `c.` and similar abbreviations can become ordered markers at a
             // new line. Escaping their period would remove Pandoc's NBSP too.
             // Keep enough preceding prose to leave them inside the paragraph.
@@ -816,7 +850,7 @@ impl<'a> WrapLineBuffer<'a> {
         }
         let previous = self.pending.as_mut()?;
         for split in (1..previous.len()).rev() {
-            if token_is_pandoc_abbreviation(previous.tokens[split - 1].text())
+            if previous.tokens[split - 1].is_pandoc_abbreviation()
                 || preserve_asterisk_escapes
                     && trailing_asterisk_may_open(previous.tokens[split - 1].text())
             {
@@ -880,22 +914,19 @@ fn write_wrapped_tokens_with_first_width(
         // it ends a sentence using the text that will actually be written.
         if sentence_wrap
             && lines.current.tokens.last().is_some_and(|previous| {
-                token_ends_sentence(previous.text())
-                    && !token_is_pandoc_abbreviation(previous.text())
+                token_ends_sentence(previous.text()) && !previous.is_pandoc_abbreviation()
             })
         {
             let mut escape = None;
             let safe_break = if token_may_start_markdown_block(token.text()) {
                 let start = tokens.measured[index].0.start();
-                let end = tokens.measured[index..]
-                    .iter()
-                    .find(|(span, _)| {
-                        let text = span.span().slice(tokens.text);
-                        token_ends_sentence(text) && !token_is_pandoc_abbreviation(text)
+                let last = (index..tokens.len())
+                    .find(|&index| {
+                        token_ends_sentence(tokens.token_text(index))
+                            && !tokens.is_pandoc_abbreviation_at(index)
                     })
-                    .unwrap_or(&tokens.measured[tokens.len() - 1])
-                    .0
-                    .end();
+                    .unwrap_or(tokens.len() - 1);
+                let end = tokens.measured[last].0.end();
                 writer.safety_line.clear();
                 writer.safety_line.push_str(&tokens.text[start..end]);
                 // Recognize a standalone ordered marker at the end, too.
@@ -906,7 +937,7 @@ fn write_wrapped_tokens_with_first_width(
                     writer.preserve_asterisk_escapes,
                 );
                 !markdown_block_start_line(&writer.safety_line)
-                    || escape.is_some() && !token_is_pandoc_abbreviation(token.text())
+                    || escape.is_some() && !token.is_pandoc_abbreviation()
             } else {
                 true
             };
@@ -928,7 +959,7 @@ fn write_wrapped_tokens_with_first_width(
         // Reserve the next word before placing an abbreviation near the edge.
         // One-token lookahead stays linear even for long abbreviation runs;
         // commit_current keeps such a run together if it exceeds the width.
-        if token_is_pandoc_abbreviation(token.text())
+        if token.is_pandoc_abbreviation()
             && !lines.current.is_empty()
             && tokens
                 .measured
