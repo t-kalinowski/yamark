@@ -1,0 +1,21 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap 14
+-- stdin
+<!-- fmt: abbreviations.add "Tab." -->
+<!-- fmt: abbreviations.remove "Dr." -->
+
+Look at Tab. 3 now and Dr. Smith went there and Tab. 44 too then Dr. Jones left.
+-- stdout
+<!-- fmt: abbreviations.add "Tab." -->
+<!-- fmt: abbreviations.remove "Dr." -->
+
+Look at Tab. 3
+now and Dr.
+Smith went
+there and
+Tab. 44 too
+then Dr. Jones
+left.
+-- stderr
+-- status
+0

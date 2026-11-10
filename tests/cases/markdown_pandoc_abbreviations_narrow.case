@@ -1,12 +1,12 @@
 -- args
 format --stdin-file-path input.md --skip-embedded-formatters --wrap 1
 -- stdin
-Opening sentence. c. word follows. End.
+Opening sentence. c. 1900 follows. End.
 
 Before Dr. Mr. Smith follows.
 -- stdout
 Opening
-sentence. c. word
+sentence. c. 1900
 follows.
 End.
 

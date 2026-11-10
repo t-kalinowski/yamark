@@ -17,6 +17,7 @@ give the exact syntax for each surface.
 | Table widths | `table-widths=` | `editor_options.markdown.table-widths` | `[format].table_widths` | `--table-widths` | `fit` |
 | Canonical spelling | `canonical=` or `canonical` | `editor_options.markdown.canonical` | - | `--canonical` | Off |
 | Footnote definitions | `footnotes=` | `editor_options.markdown.footnotes` | - | `--preserve-footnotes` | Format |
+| Abbreviations | `abbreviations.add`, `abbreviations.remove` | - | [`[format.abbreviations]`](reference-config.qmd#format.abbreviations) | - | [Built-in rules](#wrapping-values) |
 | Horizontal-rule marker | - | - | `[format].markdown_horizontal_rule` | - | `---` |
 
 ### Wrapping values
@@ -34,7 +35,31 @@ recognize the combined value.
 
 Pandoc's default abbreviations, such as `Dr.`, `fig.`, and `e.g.`, stay on the same line as the following word and do not end a sentence for wrapping. Matching is case-sensitive. A group that cannot fit the requested column may exceed it.
 
-`No.` is treated as an abbreviation only when the next whitespace-separated source token starts with an ASCII digit, as in `No. 5`. Otherwise, it ends a sentence: sentence wrapping starts a new line after it, and column wrapping may break there. An answer followed by a sentence starting with a digit, as in `No. 5 people asked.`, is still treated as an abbreviation. Pandoc renders a non-breaking space after `No.` when the next word is on the same line. A line break after an answer renders as an ordinary space instead.
+An abbreviation followed by closing quotation marks or brackets, as in `(e.g.)` or `(lists, vectors, etc.) and`, does not end a sentence either. The word after the closing punctuation may move to the next line.
+
+`c.`, `d.`, `f.`, `ill.`, `n.`, `No.`, `p.`, `pt.`, and `sec.` are treated as abbreviations only when the next whitespace-separated source token starts with an ASCII digit, as in `p. 5` or `No. 5`. Otherwise, they end a sentence, as in `a sample of size n.` or an answer `No.`: sentence wrapping starts a new line after them, and column wrapping may break there. One of these words followed by a sentence starting with a digit, as in `No. 5 people asked.`, is still treated as an abbreviation. Pandoc renders a non-breaking space after these words when the next word is on the same line. A line break after them renders as an ordinary space instead.
+
+`al.` is treated as an abbreviation unless the next whitespace-separated source token starts with an uppercase letter: `et al. (2020)` and `et al. showed` continue a sentence, and `et al. We` ends one. Pandoc renders a non-breaking space after `al.` when the next word is on the same line. A line break after it renders as an ordinary space instead.
+
+Yamark also treats these words, common in technical prose, as abbreviations: `a.k.a.`, `approx.`, `E.g.`, `eg.`, `Eq.`, `Eqs.`, `Fig.`, `Figs.`, `I.e.`, `ie.`, `resp.`, and `w.r.t.`. It treats `etc.` and `i.i.d.` as abbreviations only when the next whitespace-separated source token starts with a lowercase letter, as in `etc. and more`. Otherwise, they end a sentence. Pandoc does not list any of these words and renders an ordinary space after them.
+
+### Correcting a sentence boundary
+
+No word list fits every text. To correct one occurrence, change how the period or the following space is written:
+
+| Goal | Write | Example |
+| --- | --- | --- |
+| End a sentence where Yamark continues it | `&#46;` instead of the period | `We work with Acme Inc&#46; Their API is faster.` |
+| Continue a sentence where Yamark ends it | `\.` instead of the period | `See Tab\. 3 for the totals.` |
+| Keep two words on the same line | `&nbsp;` instead of the space | `Tab.&nbsp;3` |
+
+`&#46;` and `\.` both render as a period. `&#46;` always ends a sentence, including before closing quotation marks or brackets, as in `(n&#46;)`. Yamark recognizes only this decimal form; `&#x2E;` and `&period;` are ordinary text. After a word on Pandoc's abbreviation list, either spelling makes Pandoc render an ordinary space where it would otherwise render a non-breaking space.
+
+`\!` and `\?` continue a sentence in the same way as `\.`. Column wrapping without sentence wrapping may remove the backslash from a word that could start a list, such as `p\.`.
+
+`&nbsp;` renders as a non-breaking space. Pandoc's `markdown` reader also accepts a backslash-escaped space, as in `Tab.\ 3`; CommonMark and GFM render that backslash literally.
+
+To correct every occurrence of a word in a document or region, use the [`fmt: abbreviations.add` and `fmt: abbreviations.remove` directives](reference-directives.qmd#markdown-targets-and-settings). To correct it in every file of a project, use [`[format.abbreviations]`](reference-config.qmd#format.abbreviations) in `yamark.toml`.
 
 ### Table widths
 

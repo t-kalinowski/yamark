@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::core::directives::TemplateDelimiter;
-use crate::core::document::{MarkdownTableWidths, MarkdownWrap};
+use crate::core::document::{AbbreviationOverrides, MarkdownTableWidths, MarkdownWrap};
 use crate::diagnostic::{Diagnostic, Result, YamarkError};
 use crate::plugins::{ExternalFormatter, ExternalFormatterMode, builtin_formatter};
 
@@ -25,6 +25,7 @@ pub struct FormatConfig {
     pub markdown_wrap: Option<MarkdownWrap>,
     pub markdown_table_widths: Option<MarkdownTableWidths>,
     pub markdown_horizontal_rule: Option<&'static str>,
+    pub abbreviations: AbbreviationOverrides,
 }
 
 #[derive(Debug, Clone)]
@@ -246,7 +247,7 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
     for key in table.keys() {
         if !matches!(
             key.as_str(),
-            "compact" | "wrap" | "table_widths" | "markdown_horizontal_rule"
+            "compact" | "wrap" | "table_widths" | "markdown_horizontal_rule" | "abbreviations"
         ) {
             return Err(YamarkError::new(format!(
                 "unknown format config key: format.{key}"
@@ -291,7 +292,54 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
             }
         });
     }
+    if let Some(value) = table.get("abbreviations") {
+        format.abbreviations = parse_abbreviations(value)?;
+    }
     Ok(())
+}
+
+fn parse_abbreviations(value: &toml::Value) -> Result<AbbreviationOverrides> {
+    let table = value
+        .as_table()
+        .ok_or_else(|| YamarkError::new("format.abbreviations must be a table"))?;
+    let mut edits = Vec::new();
+    for (key, words) in table {
+        if !matches!(key.as_str(), "add" | "remove") {
+            return Err(YamarkError::new(format!(
+                "unknown format config key: format.abbreviations.{key}"
+            )));
+        }
+        let words = words
+            .as_array()
+            .and_then(|words| {
+                words
+                    .iter()
+                    .map(toml::Value::as_str)
+                    .collect::<Option<Vec<_>>>()
+            })
+            .ok_or_else(|| {
+                YamarkError::new(format!(
+                    "format.abbreviations.{key} must be an array of strings"
+                ))
+            })?;
+        for word in words {
+            if !AbbreviationOverrides::accepts(word) {
+                return Err(YamarkError::new(format!(
+                    "format.abbreviations.{key}: \"{word}\" must contain only letters, digits, and periods and end with a period"
+                )));
+            }
+            if edits
+                .iter()
+                .any(|(listed, add)| *listed == word && *add != (key == "add"))
+            {
+                return Err(YamarkError::new(format!(
+                    "format.abbreviations lists \"{word}\" in both add and remove"
+                )));
+            }
+            edits.push((word, key == "add"));
+        }
+    }
+    Ok(AbbreviationOverrides::default().with(edits))
 }
 
 fn parse_delimiters(value: &toml::Value, context: &str) -> Result<Vec<TemplateDelimiter>> {

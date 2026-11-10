@@ -816,6 +816,7 @@ impl Draft {
                             TokenSlice {
                                 text,
                                 measured: &input.tokens[start..end],
+                                abbreviations: options.abbreviations,
                             },
                             options.markdown_wrap,
                             hard_break.map_or("", MarkdownHardBreakMarker::suffix),

@@ -1,0 +1,36 @@
+-- args
+format --stdin-file-path input.yaml --skip-embedded-formatters --wrap sentence
+-- stdin
+# fmt: abbreviations.add "Tab." scope=file
+a: !md |
+  See Tab. 3 now. Use Thm. 2 here.
+# fmt: abbreviations.add "Thm."
+b: !md |
+  See Tab. 3 now. Use Thm. 2 here.
+c: !md |
+  <!-- fmt: abbreviations.remove "Inc." -->
+  Acme Inc. We left. Use Thm. 2 here.
+d: !md |
+  Acme Inc. We left. See Tab. 3 now.
+-- stdout
+# fmt: abbreviations.add "Tab." scope=file
+a: !md |
+  See Tab. 3 now.
+  Use Thm.
+  2 here.
+# fmt: abbreviations.add "Thm."
+b: !md |
+  See Tab. 3 now.
+  Use Thm. 2 here.
+c: !md |
+  <!-- fmt: abbreviations.remove "Inc." -->
+  Acme Inc.
+  We left.
+  Use Thm.
+  2 here.
+d: !md |
+  Acme Inc. We left.
+  See Tab. 3 now.
+-- stderr
+-- status
+0

@@ -37,6 +37,8 @@ sibling fences. A `scope=file` directive inside one hashpipe YAML block does not
 span later blocks. `fmt: skip file` in Markdown front matter is the exception:
 it preserves the outer Markdown document.
 
+When two directives set the same option or correct the same abbreviation, the later one takes precedence in Markdown. In YAML, a `scope=file` directive takes precedence over `scope=next` and `scope=from-here` directives wherever it appears, and over a `scope=file` directive inside a nested Markdown scalar.
+
 ## Preserve content
 
 | Directive | Scope | Effect |
@@ -76,6 +78,8 @@ through the end of the region.
 | `fmt: table-widths=preserve` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Preserve widths in supported Markdown tables while formatting contents. Use `scope=next` immediately before one table. |
 | `fmt: canonical` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Enable canonical Markdown spelling. `canonical=true` is equivalent. |
 | `fmt: footnotes=preserve` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Preserve footnote definitions in the affected Markdown. |
+| `fmt: abbreviations.add "Tab." "Thm."` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Treat each listed word as an abbreviation when wrapping. |
+| `fmt: abbreviations.remove "Inc." "Dr."` | `scope=next` in YAML; `scope=file` in Markdown or source regions | Treat each listed word as an ordinary word when wrapping. |
 
 Option-only YAML directives tune the next scalar only if it is already marked
 as Markdown:
@@ -101,6 +105,33 @@ Accepted option values:
 
 For `footnotes`, `wrap`, `format`, `true`, `yes`, and `1` request formatting;
 `preserve`, `none`, `false`, `no`, and `0` request preservation.
+
+`abbreviations.add` and `abbreviations.remove` correct the
+[abbreviation rules](reference-options.qmd#wrapping-values) for every
+occurrence of a word in their scope. An added word does not end a sentence and
+stays on the same line as the following word. A removed word is an ordinary
+word, so its period ends a sentence. Either correction replaces the built-in
+rule for that word: after `abbreviations.add "n."`, `n.` is an abbreviation
+before any token, not only before a digit.
+
+```markdown
+<!-- fmt: abbreviations.add "Tab." "Thm." -->
+<!-- fmt: abbreviations.remove "Inc." scope=next -->
+```
+
+Each directive takes one or more double-quoted words. A word consists of
+letters, digits, and periods and ends with a period. Matching is case-sensitive
+and follows the built-in words: `"Tab."` matches `Tab.` and `(Tab.`, but not
+`tab.` or `Tab`. When directives disagree about a word, the later one wins.
+Either form can follow other Markdown options, as in
+`fmt: wrap=sentence abbreviations.add "Tab."`. To correct a single occurrence,
+see [Correcting a sentence boundary](reference-options.qmd#correcting-a-sentence-boundary).
+To correct a word in every file of a project, see [`[format.abbreviations]`](reference-config.qmd#format.abbreviations).
+
+Pandoc renders a non-breaking space after a word on its own abbreviation list
+when the next word is on the same line. Where Yamark breaks the line after a
+removed word, Pandoc renders an ordinary space. Adding a word does not add a
+non-breaking space.
 
 ## YAML collections
 

@@ -1,0 +1,32 @@
+-- args
+format --stdin-file-path input.md --wrap sentence
+-- stdin
+We follow Smith et al. Their method is faster. This extends Kingma et al. We borrow the implementation.
+
+Smith et al. (2020) show that it converges. Smith et al. 2020 report the same result. Smith et al. showed that it converges. Smith et al. [3] agree. As shown by Smith et al., the method converges.
+
+We use the Vaswani et al\. Transformer architecture. Vaswani et al. Curran Associates, Inc. 2017.
+
+<!-- fmt: abbreviations.add "al." scope=next -->
+We follow Smith et al. Their method is faster.
+-- stdout
+We follow Smith et al.
+Their method is faster.
+This extends Kingma et al.
+We borrow the implementation.
+
+Smith et al. (2020) show that it converges.
+Smith et al. 2020 report the same result.
+Smith et al. showed that it converges.
+Smith et al. [3] agree.
+As shown by Smith et al., the method converges.
+
+We use the Vaswani et al\. Transformer architecture.
+Vaswani et al.
+Curran Associates, Inc. 2017.
+
+<!-- fmt: abbreviations.add "al." scope=next -->
+We follow Smith et al. Their method is faster.
+-- stderr
+-- status
+0

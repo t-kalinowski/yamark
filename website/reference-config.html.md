@@ -30,6 +30,26 @@ markdown_horizontal_rule = "***"
 See [Formatting settings](reference-options.qmd) for built-in defaults and the
 other surfaces that expose these behaviors.
 
+### `[format.abbreviations]`
+
+```toml
+[format.abbreviations]
+add = ["Tab.", "Thm."]
+remove = ["Inc."]
+```
+
+| Key | Type | Effect |
+| --- | --- | --- |
+| `add` | Array of strings. | Treats each listed word as an abbreviation when wrapping: it does not end a sentence and stays on the same line as the following word. |
+| `remove` | Array of strings. | Treats each listed word as an ordinary word when wrapping, so its period ends a sentence. |
+
+Each word consists of letters, digits, and periods and ends with a period. A
+word in both lists is an error. A correction replaces the built-in
+[abbreviation rule](reference-options.qmd#wrapping-values) for its word. A
+[`fmt: abbreviations.add` or `fmt: abbreviations.remove`
+directive](reference-directives.qmd#markdown-targets-and-settings) that names
+the same word overrides the configured correction within the directive's scope.
+
 ## `[template]`
 
 Template delimiters mark regions Yamark must preserve because rendering can

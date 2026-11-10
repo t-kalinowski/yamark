@@ -383,6 +383,7 @@ fn apply_config_options(
     if let Some(marker) = config.format.markdown_horizontal_rule {
         options.markdown_horizontal_rule = marker;
     }
+    options.abbreviations = options.abbreviations.merged(config.format.abbreviations);
     if let Some(wrap) = execution.markdown_wrap_override {
         options.markdown_wrap = wrap;
     }

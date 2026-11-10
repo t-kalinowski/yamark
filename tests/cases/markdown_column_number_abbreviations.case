@@ -1,0 +1,17 @@
+-- args
+format --stdin-file-path input.md --skip-embedded-formatters --wrap 17
+-- stdin
+Wait for one sec. Then read all of sec. 3 again.
+
+A sample of size n. Then we take the mean.
+-- stdout
+Wait for one sec.
+Then read all of
+sec. 3 again.
+
+A sample of
+size n. Then we
+take the mean.
+-- stderr
+-- status
+0
