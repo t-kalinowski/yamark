@@ -156,10 +156,17 @@ impl Config {
             return false;
         };
         let relative = self.relative_formatted_path(path);
-        !relative.has_root()
-            && exclude
-                .matched_path_or_any_parents(&relative, false)
-                .is_ignore()
+        if relative.has_root() {
+            return false;
+        }
+        // As in Git, a `!` pattern cannot re-include a file below an excluded
+        // directory. Check ancestors before matching the file itself.
+        relative
+            .ancestors()
+            .skip(1)
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .any(|dir| exclude.matched(dir, true).is_ignore())
+            || exclude.matched(&relative, false).is_ignore()
     }
 
     fn relative_formatted_path(&self, path: &Path) -> PathBuf {

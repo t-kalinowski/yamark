@@ -1,0 +1,23 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"!early/keep.md\", \"early/\", \"late/\", \"!late/keep.md\"]\n",
+    "early/keep.md": "#   Early\n",
+    "late/keep.md": "#   Late\n",
+    "post.md": "#   Post\n"
+  }
+}
+-- args
+format --diff early/keep.md late/keep.md post.md
+-- stdin
+-- stdout
+--- post.md
++++ post.md
+@@ -1 +1 @@
+-#   Post
++# Post
+-- stderr
+3 files scanned, 1 formatted, 0 unchanged, 2 skipped, 0 failed
+-- status
+1

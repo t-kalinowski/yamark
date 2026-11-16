@@ -43,8 +43,10 @@ exclude = ["slides/", "*.generated.md", "/NEWS.md"]
 relative to the directory containing `yamark.toml` or the file passed with
 `--config`. A pattern without a slash matches at any depth. A leading slash
 anchors the pattern to the config directory, and a trailing slash matches a
-directory and everything below it. A later `!` pattern re-includes a file.
-Patterns never match a file outside the config directory.
+directory and everything below it. A later `!` pattern re-includes a file matched
+by a file-level pattern. As in Git, a `!` pattern cannot re-include a file below
+an excluded directory, regardless of pattern order. Patterns never match a file
+outside the config directory.
 
 Ignore files such as `.gitignore` and `.ignore` affect only directory traversal.
 `exclude` also applies to explicit paths and stdin:
