@@ -2,6 +2,9 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
 use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{AbbreviationOverrides, MarkdownTableWidths, MarkdownWrap};
@@ -26,6 +29,9 @@ pub struct FormatConfig {
     pub markdown_table_widths: Option<MarkdownTableWidths>,
     pub markdown_horizontal_rule: Option<&'static str>,
     pub abbreviations: AbbreviationOverrides,
+    /// Compiled `exclude` patterns, matched against paths relative to the
+    /// config directory.
+    pub(crate) exclude: Option<Arc<Gitignore>>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +149,57 @@ impl Config {
         config
     }
 
+    /// Whether `[format] exclude` matches `path`. Patterns are relative to the
+    /// config directory, so they never match a path outside it.
+    pub fn excludes(&self, path: &Path) -> bool {
+        let Some(exclude) = &self.format.exclude else {
+            return false;
+        };
+        let Some(relative) = self.written_path_below_config_dir(path) else {
+            return false;
+        };
+        // As in Git, a `!` pattern cannot re-include a file below an excluded
+        // directory. Check ancestors before matching the file itself.
+        relative
+            .ancestors()
+            .skip(1)
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .any(|dir| exclude.matched(dir, true).is_ignore())
+            || exclude.matched(&relative, false).is_ignore()
+    }
+
+    /// Returns the path below the config directory, or `None` outside it.
+    ///
+    /// As in Git, exclusions select names: names below the config directory are
+    /// kept as written, so a symlink matches by its own name rather than its
+    /// target's. The config directory is identified by its canonical path,
+    /// allowing symlinks above it and nonexistent virtual stdin paths.
+    /// `[paths]` keys instead match the resolved location of a file.
+    fn written_path_below_config_dir(&self, path: &Path) -> Option<PathBuf> {
+        let cwd = || fs::canonicalize(".").unwrap_or_else(|_| PathBuf::from("."));
+        let base = self.config_dir.clone().unwrap_or_else(cwd);
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd().join(path)
+        };
+        let path = resolve_parent_components(&path);
+        if let Ok(relative) = path.strip_prefix(&base) {
+            return Some(relative.to_path_buf());
+        }
+        // Use the outermost matching ancestor, consistent with the prefix match.
+        let ancestors = path.ancestors().skip(1).collect::<Vec<_>>();
+        ancestors
+            .into_iter()
+            .rev()
+            .find(|ancestor| fs::canonicalize(ancestor).is_ok_and(|dir| dir == base))
+            .map(|ancestor| {
+                path.strip_prefix(ancestor)
+                    .expect("an ancestor is a prefix of its path")
+                    .to_path_buf()
+            })
+    }
+
     fn relative_formatted_path(&self, path: &Path) -> PathBuf {
         let base = self.config_dir.as_deref().unwrap_or_else(|| Path::new("."));
         let path = absolute_normalized_path(path);
@@ -151,10 +208,27 @@ impl Config {
     }
 }
 
+/// Resolves an absolute `path` through its last `..` component using the
+/// filesystem when possible, keeping later names as written.
+///
+/// The filesystem resolves `..` after following symlinks, so collapsing it
+/// lexically could name a different file.
+fn resolve_parent_components(path: &Path) -> PathBuf {
+    let components = path.components().collect::<Vec<_>>();
+    let Some(last_parent) = components
+        .iter()
+        .rposition(|component| *component == Component::ParentDir)
+    else {
+        return push_normalized(PathBuf::new(), path);
+    };
+    let (resolved, written) = components.split_at(last_parent + 1);
+    push_normalized(
+        absolute_normalized_path(&resolved.iter().collect::<PathBuf>()),
+        &written.iter().collect::<PathBuf>(),
+    )
+}
+
 fn absolute_normalized_path(path: &Path) -> PathBuf {
-    if let Ok(path) = fs::canonicalize(path) {
-        return path;
-    }
     let path = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -162,22 +236,33 @@ fn absolute_normalized_path(path: &Path) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     };
-    normalize_path_components(&path)
+    // A virtual stdin path may not exist. Canonicalize its deepest existing
+    // ancestor so it can be compared with the canonical config directory,
+    // including through symlinks and on Windows.
+    for ancestor in path.ancestors() {
+        if let Ok(canonical) = fs::canonicalize(ancestor) {
+            let rest = path
+                .strip_prefix(ancestor)
+                .expect("an ancestor is a prefix of its path");
+            return push_normalized(canonical, rest);
+        }
+    }
+    push_normalized(PathBuf::new(), &path)
 }
 
-fn normalize_path_components(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
+/// Appends `path` to `base`, resolving `.` and `..` lexically.
+fn push_normalized(mut base: PathBuf, path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
-                normalized.pop();
+                base.pop();
             }
-            Component::Normal(part) => normalized.push(part),
-            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+            Component::Normal(part) => base.push(part),
+            Component::RootDir | Component::Prefix(_) => base.push(component.as_os_str()),
         }
     }
-    normalized
+    base
 }
 
 fn default_template_delimiters() -> Vec<TemplateDelimiter> {
@@ -247,7 +332,12 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
     for key in table.keys() {
         if !matches!(
             key.as_str(),
-            "compact" | "wrap" | "table_widths" | "markdown_horizontal_rule" | "abbreviations"
+            "compact"
+                | "wrap"
+                | "table_widths"
+                | "markdown_horizontal_rule"
+                | "abbreviations"
+                | "exclude"
         ) {
             return Err(YamarkError::new(format!(
                 "unknown format config key: format.{key}"
@@ -295,7 +385,33 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
     if let Some(value) = table.get("abbreviations") {
         format.abbreviations = parse_abbreviations(value)?;
     }
+    if let Some(value) = table.get("exclude") {
+        format.exclude = Some(Arc::new(parse_exclude(value)?));
+    }
     Ok(())
+}
+
+fn parse_exclude(value: &toml::Value) -> Result<Gitignore> {
+    let patterns = value
+        .as_array()
+        .and_then(|patterns| {
+            patterns
+                .iter()
+                .map(toml::Value::as_str)
+                .collect::<Option<Vec<_>>>()
+        })
+        .ok_or_else(|| YamarkError::new("format.exclude must be an array of strings"))?;
+    // The empty root matches patterns against paths that are already relative
+    // to the config directory, which is unknown while parsing TOML text.
+    let mut builder = GitignoreBuilder::new("");
+    for pattern in patterns {
+        builder
+            .add_line(None, pattern)
+            .map_err(|err| YamarkError::new(format!("format.exclude: {err}")))?;
+    }
+    builder
+        .build()
+        .map_err(|err| YamarkError::new(format!("format.exclude: {err}")))
 }
 
 fn parse_abbreviations(value: &toml::Value) -> Result<AbbreviationOverrides> {

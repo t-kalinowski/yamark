@@ -8,7 +8,7 @@ Yamark has one formatting engine in one Cargo package. The CLI, Git filter, Pyth
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `src/cli.rs` and `src/cli/`                                                           | Arguments, command dispatch, stdin, and Git filter integration.          |
 | `src/workspace.rs` and `src/workspace/`                                               | File traversal, config discovery, file writes, and diff presentation.    |
-| `src/config.rs`                                                                       | Configuration parsing, path overrides, and template delimiters.          |
+| `src/config.rs`                                                                       | Config parsing, path overrides, exclusions, and template delimiters.     |
 | `src/core/source.rs`                                                                  | Source storage, byte spans, and authored line endings.                   |
 | `src/core/document.rs` and `src/core/parser.rs`                                       | Document model, parse/prepare/emit orchestration, and verification.      |
 | `src/core/directives.rs`                                                              | Directive parsing, scopes, and effective formatting state.               |
@@ -95,6 +95,8 @@ Ordinary and compact block sequences share `parse_sequence_item_at` in `yaml/par
 ## Process and file boundaries
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.
+
+`[format] exclude` applies to each path after configuration discovery, so it covers explicit paths and stdin as well as directory walks. Excluded files are skipped before reading; excluded stdin is returned as bytes without decoding for editors and Git filters. Ignore files only prune directory walks. Patterns match names below the config directory as written, so a symbolic link matches by its own name, not its target's. They never exclude paths outside the config directory. `[paths]` keys match a file's resolved location.
 
 The plugin registry selects embedded formatters. External process code owns stdin/stdout exchange and diagnostics; recursive emitters own dedenting, reindenting, and restoring structural delimiters. Keep these responsibilities separate when changing an external formatter contract.
 

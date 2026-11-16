@@ -1,0 +1,24 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"deck.qmd\"]\n"
+  }
+}
+-- args
+format --stdin-file-path post.qmd
+-- stdin
+#   Post
+
+::: notes
+Speaker   notes.
+:::
+-- stdout
+# Post
+
+::: notes
+Speaker notes.
+:::
+-- stderr
+-- status
+0

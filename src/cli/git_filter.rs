@@ -14,7 +14,9 @@ use clap::Subcommand;
 
 use super::{parse_positive_usize, run_stdin};
 use crate::core::document::{FormatOptions, MarkdownWrap};
-use crate::workspace::{FormatExecutionOptions, format_source_for_path_with_overrides};
+use crate::workspace::{
+    FormatExecutionOptions, format_source_for_path_with_overrides, load_config_for_formatted_path,
+};
 use attributes::{
     append_missing_attribute_lines, count_yamark_filter_attribute_lines,
     git_filter_attribute_patterns, line_has_yamark_filter_attribute,
@@ -596,10 +598,17 @@ fn verify_roundtrip(
 ) -> Result<(), String> {
     let mut failures = Vec::new();
     for path in paths {
-        let blob = git_blob(repo_root, source, path)?;
         // Discover configuration beside the target file even when --repo
         // selects a repository outside the caller's working directory.
         let source_path = repo_root.join(path);
+        // Excluded files pass through the filters byte for byte.
+        let excluded = load_config_for_formatted_path(&source_path, None)
+            .map_err(|err| err.diagnostic.render())?
+            .excludes(&source_path);
+        if excluded {
+            continue;
+        }
+        let blob = git_blob(repo_root, source, path)?;
         let smudged =
             format_git_filter_text(&source_path, blob.clone(), MarkdownWrap::Column(width))?;
         let cleaned = format_git_filter_text(&source_path, smudged, MarkdownWrap::Sentence)?;
@@ -621,7 +630,8 @@ fn write_smudged_worktree(repo_root: &Path, paths: &[PathBuf]) -> Result<(), Str
     // Let Git apply text/eol attributes and core.autocrlf before the configured
     // smudge filter. Writing formatted blob bytes directly bypasses that step.
     for path in paths {
-        let smudged = git_stdout(
+        // Excluded files returned by the smudge filter may not be UTF-8.
+        let smudged = git_stdout_bytes(
             repo_root,
             [
                 OsString::from("cat-file"),

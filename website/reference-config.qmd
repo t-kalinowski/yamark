@@ -26,9 +26,43 @@ markdown_horizontal_rule = "***"
 | `table_widths` | String: `"fit"` or `"preserve"`. | Sizes Markdown table columns from their contents by default, or retains source widths. An explicit `--table-widths` overrides it; document settings and scoped directives override that base setting. |
 | `compact` | Boolean. | Enables or disables eligible YAML block-to-flow compaction. `--compact` still enables compact mode when this is `false`. |
 | `markdown_horizontal_rule` | String: `"---"` or `"***"`. | Chooses the marker Yamark emits for normalized Markdown horizontal rules. |
+| `exclude` | Array of strings: gitignore-style patterns. | Leaves matching files unformatted. See [Excluded files](#excluded-files). |
 
 See [Formatting settings](reference-options.qmd) for built-in defaults and the
 other surfaces that expose these behaviors.
+
+### Excluded files
+
+```toml
+[format]
+exclude = ["slides/", "*.generated.md", "/NEWS.md"]
+```
+
+`exclude` lists files that `yamark format` leaves unchanged. Patterns use
+[gitignore syntax](https://git-scm.com/docs/gitignore#_pattern_format) and are
+relative to the directory containing `yamark.toml` or the file passed with
+`--config`. Names below that directory are matched as written, so a symbolic
+link matches by its own name, not its target's. A pattern without a slash
+matches at any depth. A leading slash anchors the pattern to the config
+directory, and a trailing slash matches a directory and everything below it. A
+later `!` pattern re-includes a file matched by a file-level pattern. As in
+Git, a `!` pattern cannot re-include a file below an excluded directory,
+regardless of pattern order. Patterns never match a file outside the config
+directory.
+
+Ignore files such as `.gitignore` and `.ignore` affect only directory traversal.
+`exclude` also applies to explicit paths and stdin:
+
+| Selection | Result for an excluded file |
+| --- | --- |
+| Directory traversal or an explicit path | Counted as skipped. Yamark does not read or write the file. |
+| `--stdin-file-path` | Yamark writes stdin to stdout byte for byte without decoding it and exits with status 0. The input need not be UTF-8. |
+| Git clean and smudge filters | The content passes through byte for byte without decoding, so it need not be UTF-8. |
+
+[Editors](editors.qmd#excluded-files) format through `--stdin-file-path`, so
+Yamark leaves an excluded file unchanged during Format Document and
+format-on-save. A configured next formatter still runs.
+`yamark to-yaml` does not read `exclude`.
 
 ### `[format.abbreviations]`
 

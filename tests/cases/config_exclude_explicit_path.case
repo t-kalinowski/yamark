@@ -1,0 +1,16 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"deck.qmd\"]\n",
+    "deck.qmd": "#   Slide\n"
+  }
+}
+-- args
+format --check deck.qmd
+-- stdin
+-- stdout
+-- stderr
+1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed
+-- status
+0

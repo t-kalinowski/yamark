@@ -1,0 +1,20 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"NEWS.md\"]\n"
+  }
+}
+-- args
+git-filter clean --stdin-filename NEWS.md
+-- stdin
+#   News
+
+First sentence. Second sentence.
+-- stdout
+#   News
+
+First sentence. Second sentence.
+-- stderr
+-- status
+0

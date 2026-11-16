@@ -1,0 +1,37 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"slides/\", \"drafts/*.md\", \"!drafts/keep.md\", \"*.generated.md\", \"/README.md\"]\n",
+    "slides/nested/notes.md": "#   Notes\n",
+    "drafts/a.md": "#   Draft\n",
+    "drafts/keep.md": "#   Keep\n",
+    "drafts/nested/b.md": "#   Nested draft\n",
+    "docs/api.generated.md": "#   Api\n",
+    "README.md": "#   Readme\n",
+    "docs/README.md": "#   Docs readme\n"
+  }
+}
+-- args
+format --diff slides/nested/notes.md drafts/a.md drafts/keep.md drafts/nested/b.md docs/api.generated.md README.md docs/README.md
+-- stdin
+-- stdout
+--- drafts/keep.md
++++ drafts/keep.md
+@@ -1 +1 @@
+-#   Keep
++# Keep
+--- drafts/nested/b.md
++++ drafts/nested/b.md
+@@ -1 +1 @@
+-#   Nested draft
++# Nested draft
+--- docs/README.md
++++ docs/README.md
+@@ -1 +1 @@
+-#   Docs readme
++# Docs readme
+-- stderr
+7 files scanned, 3 formatted, 0 unchanged, 4 skipped, 0 failed
+-- status
+1

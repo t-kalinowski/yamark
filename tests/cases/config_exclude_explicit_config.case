@@ -1,0 +1,22 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "conf/yamark.toml": "[format]\nexclude = [\"deck.qmd\"]\n",
+    "conf/deck.qmd": "#   Inside\n",
+    "deck.qmd": "#   Outside\n"
+  }
+}
+-- args
+format --diff --config conf/yamark.toml conf/deck.qmd deck.qmd
+-- stdin
+-- stdout
+--- deck.qmd
++++ deck.qmd
+@@ -1 +1 @@
+-#   Outside
++# Outside
+-- stderr
+2 files scanned, 1 formatted, 0 unchanged, 1 skipped, 0 failed
+-- status
+1

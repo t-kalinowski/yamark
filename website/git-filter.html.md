@@ -200,7 +200,9 @@ git add NEWS.md
 ```
 
 Use `<!-- fmt: skip file -->` inside a Markdown file when the file should still
-pass through the filter but Yamark should preserve its contents.
+pass through the filter but Yamark should preserve its contents. A file matched
+by [`exclude`](reference-config.qmd#excluded-files) in `yamark.toml` also passes
+through the filter byte for byte, so it need not be UTF-8.
 
 ## Diff shape
 

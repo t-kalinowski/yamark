@@ -593,6 +593,199 @@ fn relative_explicit_config_applies_path_config_to_absolute_paths() {
     );
 }
 
+// A virtual stdin path may not exist, but it must still match the canonical
+// config directory. Canonicalization can change the path on Windows or when
+// the directory is reached through a symlink.
+#[test]
+fn path_config_applies_to_an_absolute_virtual_stdin_path() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[paths.\"docs\".template]\nadd_delimiters = [{ open = \"<<\", close = \">>\" }]\n",
+    )
+    .unwrap();
+    let path = dir.path().join("docs").join("new.md");
+    let input = "This << keep   this >> paragraph.\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", path.to_str().unwrap()],
+        input,
+    );
+    assert_eq!((status, stdout.as_str(), stderr.as_str()), (0, input, ""));
+}
+
+#[test]
+fn exclude_matches_an_absolute_virtual_stdin_path() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"deck.qmd\"]\n",
+    )
+    .unwrap();
+    let path = dir.path().join("deck.qmd");
+    let input = "#   Title\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", path.to_str().unwrap()],
+        input,
+    );
+    assert_eq!((status, stdout.as_str(), stderr.as_str()), (0, input, ""));
+}
+
+#[cfg(unix)]
+#[test]
+fn exclude_matches_a_virtual_stdin_path_below_a_symlinked_directory() {
+    let dir = tempdir().unwrap();
+    let real = dir.path().join("real");
+    fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
+    fs::write(real.join("yamark.toml"), "[format]\nexclude = [\"new/\"]\n").unwrap();
+    let path = dir.path().join("link").join("new").join("deck.qmd");
+    let input = "#   Title\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", path.to_str().unwrap()],
+        input,
+    );
+    assert_eq!((status, stdout.as_str(), stderr.as_str()), (0, input, ""));
+}
+
+#[test]
+fn exclude_matches_a_symlinked_file_by_its_own_name() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"NEWS.md\"]\n",
+    )
+    .unwrap();
+    let target = dir.path().join("source.md");
+    let input = "#   Title\n";
+    fs::write(&target, input).unwrap();
+    if !make_symlink(&target, &dir.path().join("NEWS.md")) {
+        return;
+    }
+
+    let output = yamark()
+        .current_dir(dir.path())
+        .args(["format", "NEWS.md"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_to_string(&target).unwrap(), input);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn exclude_matches_a_symlinked_directory_by_its_own_name() {
+    let dir = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"slides/\"]\n",
+    )
+    .unwrap();
+    let input = "#   Title\n";
+    fs::write(outside.path().join("deck.md"), input).unwrap();
+    std::os::unix::fs::symlink(outside.path(), dir.path().join("slides")).unwrap();
+
+    let output = yamark()
+        .current_dir(dir.path())
+        .args(["format", "slides/deck.md"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(outside.path().join("deck.md")).unwrap(),
+        input
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+    );
+}
+
+// The filesystem resolves `..` after following a symlink, so `alias/../keep.md`
+// names a file in the parent of the symlink's target.
+#[cfg(unix)]
+#[test]
+fn exclude_matches_a_path_with_a_parent_component_after_a_symlink() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("subdir")).unwrap();
+    fs::write(
+        project.join("yamark.toml"),
+        "[format]\nexclude = [\"keep.md\"]\n",
+    )
+    .unwrap();
+    let input = "#   Title\n";
+    fs::write(project.join("keep.md"), input).unwrap();
+    std::os::unix::fs::symlink(project.join("subdir"), dir.path().join("alias")).unwrap();
+    let path = dir.path().join("alias/../keep.md");
+
+    let output = yamark()
+        .args(["format", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_to_string(project.join("keep.md")).unwrap(), input);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+    );
+
+    assert_eq!(
+        run_stdin(
+            &["format", "--stdin-file-path", path.to_str().unwrap()],
+            input
+        ),
+        (0, input.to_owned(), String::new())
+    );
+}
+
+#[test]
+fn excluded_symlink_does_not_hide_its_target() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"NEWS.md\"]\n",
+    )
+    .unwrap();
+    let target = dir.path().join("source.md");
+    fs::write(&target, "#   Title\n").unwrap();
+    if !make_symlink(&target, &dir.path().join("NEWS.md")) {
+        return;
+    }
+
+    let output = yamark()
+        .current_dir(dir.path())
+        .args(["format", "NEWS.md", "source.md"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_to_string(&target).unwrap(), "# Title\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "2 files scanned, 1 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+    );
+}
+
 #[test]
 fn path_specific_embedded_markdown_template_config_preserves_targets() {
     let dir = tempdir().unwrap();

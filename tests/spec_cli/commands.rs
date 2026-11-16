@@ -112,6 +112,45 @@ fn stdin_encoding_errors_are_targeted() {
 }
 
 #[test]
+fn excluded_stdin_passes_through_without_decoding() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"NEWS.md\"]\n",
+    )
+    .unwrap();
+    let utf16 = [0xff, 0xfe, b'#', 0x00, b'\n', 0x00];
+    let invalid_utf8 = [b'#', b' ', 0xff, b'\n'];
+    for args in [
+        &["format", "--stdin-file-path", "NEWS.md"][..],
+        &["git-filter", "clean", "--stdin-filename", "NEWS.md"],
+        &["git-filter", "smudge", "--stdin-filename", "NEWS.md"],
+    ] {
+        for input in [&utf16[..], &invalid_utf8] {
+            let mut child = ProcessCommand::new(assert_cmd::cargo::cargo_bin("yamark"))
+                .current_dir(dir.path())
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.as_mut().unwrap().write_all(input).unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert_eq!(
+                (
+                    output.status.code(),
+                    output.stdout.as_slice(),
+                    String::from_utf8(output.stderr).unwrap().as_str()
+                ),
+                (Some(0), input, ""),
+                "{args:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn to_yaml_accepts_stdin_only() {
     let output = yamark()
         .args(["to-yaml", "--stdin-file-path", "input.json", "other.json"])
