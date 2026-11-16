@@ -713,6 +713,48 @@ fn exclude_matches_a_symlinked_directory_by_its_own_name() {
     );
 }
 
+// The filesystem resolves `..` after following a symlink, so `alias/../keep.md`
+// names a file in the parent of the symlink's target.
+#[cfg(unix)]
+#[test]
+fn exclude_matches_a_path_with_a_parent_component_after_a_symlink() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("subdir")).unwrap();
+    fs::write(
+        project.join("yamark.toml"),
+        "[format]\nexclude = [\"keep.md\"]\n",
+    )
+    .unwrap();
+    let input = "#   Title\n";
+    fs::write(project.join("keep.md"), input).unwrap();
+    std::os::unix::fs::symlink(project.join("subdir"), dir.path().join("alias")).unwrap();
+    let path = dir.path().join("alias/../keep.md");
+
+    let output = yamark()
+        .args(["format", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_to_string(project.join("keep.md")).unwrap(), input);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "1 files scanned, 0 formatted, 0 unchanged, 1 skipped, 0 failed\n"
+    );
+
+    assert_eq!(
+        run_stdin(
+            &["format", "--stdin-file-path", path.to_str().unwrap()],
+            input
+        ),
+        (0, input.to_owned(), String::new())
+    );
+}
+
 #[test]
 fn excluded_symlink_does_not_hide_its_target() {
     let dir = tempdir().unwrap();

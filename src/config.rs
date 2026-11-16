@@ -179,10 +179,11 @@ impl Config {
         let cwd = || fs::canonicalize(".").unwrap_or_else(|_| PathBuf::from("."));
         let base = self.config_dir.clone().unwrap_or_else(cwd);
         let path = if path.is_absolute() {
-            push_normalized(PathBuf::new(), path)
+            path.to_path_buf()
         } else {
-            push_normalized(cwd(), path)
+            cwd().join(path)
         };
+        let path = resolve_parent_components(&path);
         if let Ok(relative) = path.strip_prefix(&base) {
             return Some(relative.to_path_buf());
         }
@@ -205,6 +206,26 @@ impl Config {
         let base = absolute_normalized_path(base);
         path.strip_prefix(&base).unwrap_or(&path).to_path_buf()
     }
+}
+
+/// Resolves an absolute `path` through its last `..` component using the
+/// filesystem when possible, keeping later names as written.
+///
+/// The filesystem resolves `..` after following symlinks, so collapsing it
+/// lexically could name a different file.
+fn resolve_parent_components(path: &Path) -> PathBuf {
+    let components = path.components().collect::<Vec<_>>();
+    let Some(last_parent) = components
+        .iter()
+        .rposition(|component| *component == Component::ParentDir)
+    else {
+        return push_normalized(PathBuf::new(), path);
+    };
+    let (resolved, written) = components.split_at(last_parent + 1);
+    push_normalized(
+        absolute_normalized_path(&resolved.iter().collect::<PathBuf>()),
+        &written.iter().collect::<PathBuf>(),
+    )
 }
 
 fn absolute_normalized_path(path: &Path) -> PathBuf {
