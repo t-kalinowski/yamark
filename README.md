@@ -62,7 +62,7 @@ yamark to-yaml --stdin-file-path data.json5 < data.json5
 
 The path is not read or written. Its suffix selects the exact JSON dialect. This is a conversion, not source formatting.
 
-Directory traversal skips hidden paths and respects `.gitignore`, `.ignore`, and global Git ignore files by default. Pass a hidden path explicitly to format it. To leave a file unformatted however it is selected, including from an editor, list it under `exclude` in the `[format]` table of `yamark.toml`.
+Directory traversal skips hidden paths and respects `.gitignore`, `.ignore`, and global Git ignore files by default. Pass a hidden path explicitly to format it. To have Yamark skip a file even when it is passed explicitly or from an editor, list it under `exclude` in the `[format]` table of `yamark.toml`.
 
 While formatting is enabled, standalone `{{< ... >}}` and `{{% ... %}}` shortcode tokens are preserved, including multiline tokens and quoted arguments. Directive-looking text inside a recognized token is data. Yamark does not match shortcode names or interpret their bodies: Markdown between tokens formats normally. An unterminated token or quote preserves the rest of the enclosing Markdown document or fragment. This does not guarantee rendering equivalence for arbitrary Hugo or Jinja templates.
 

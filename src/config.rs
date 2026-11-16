@@ -149,7 +149,7 @@ impl Config {
         config
     }
 
-    /// Whether `[format] exclude` selects `path`. Patterns are relative to the
+    /// Whether `[format] exclude` matches `path`. Patterns are relative to the
     /// config directory, so they never match a path outside it.
     pub fn excludes(&self, path: &Path) -> bool {
         let Some(exclude) = &self.format.exclude else {

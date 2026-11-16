@@ -40,22 +40,24 @@ exclude = ["slides/", "*.generated.md", "/NEWS.md"]
 
 `exclude` lists files that `yamark format` leaves unchanged. Patterns use
 [gitignore syntax](https://git-scm.com/docs/gitignore#_pattern_format) and are
-relative to the directory containing `yamark.toml`. A pattern without a slash
-matches at any depth, a leading slash anchors the pattern to that directory, a
-trailing slash matches a directory and everything below it, and a later `!`
-pattern re-includes a file. Patterns never match a file outside that directory.
+relative to the directory containing `yamark.toml` or the file passed with
+`--config`. A pattern without a slash matches at any depth. A leading slash
+anchors the pattern to the config directory, and a trailing slash matches a
+directory and everything below it. A later `!` pattern re-includes a file.
+Patterns never match a file outside the config directory.
 
-Ignore files such as `.gitignore` affect only directory traversal. `exclude`
-applies however a file is selected:
+Ignore files such as `.gitignore` and `.ignore` affect only directory traversal.
+`exclude` also applies to explicit paths and stdin:
 
 | Selection | Result for an excluded file |
 | --- | --- |
 | Directory traversal or an explicit path | Counted as skipped. Yamark does not read or write the file. |
-| `--stdin-file-path` | Yamark writes stdin to stdout unchanged. |
+| `--stdin-file-path` | Yamark writes stdin to stdout unchanged and exits with status 0. |
 | Git clean and smudge filters | The content passes through unchanged. |
 
 [Editors](editors.qmd#excluded-files) format through `--stdin-file-path`, so
-Format Document and format-on-save leave an excluded file unchanged.
+Yamark leaves an excluded file unchanged during Format Document and
+format-on-save. A configured next formatter still runs.
 `yamark to-yaml` does not read `exclude`.
 
 ### `[format.abbreviations]`

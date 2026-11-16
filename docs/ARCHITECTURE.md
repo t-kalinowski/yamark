@@ -96,7 +96,7 @@ Ordinary and compact block sequences share `parse_sequence_item_at` in `yaml/par
 
 Workspace traversal owns configuration discovery and writes. Format stdin uses its virtual path for file kind and configuration without reading that path. The `to-yaml` command converts stdin according to its JSON-family suffix.
 
-`[format] exclude` is applied where a path's resolved configuration meets its source, not during traversal: a path candidate is skipped before it is read, and stdin formatting, which the editor extension and Git filters share, returns its input. Ignore files only prune directory walks. Patterns are compiled without a root and matched against the path relative to the config directory, so a path outside that directory is never excluded.
+`[format] exclude` applies to each path after configuration discovery, so it covers explicit paths and stdin as well as directory walks. Excluded files are skipped before reading; excluded stdin is returned unchanged for editors and Git filters. Ignore files only prune directory walks. Patterns match paths relative to the config directory and never exclude paths outside it.
 
 The plugin registry selects embedded formatters. External process code owns stdin/stdout exchange and diagnostics; recursive emitters own dedenting, reindenting, and restoring structural delimiters. Keep these responsibilities separate when changing an external formatter contract.
 

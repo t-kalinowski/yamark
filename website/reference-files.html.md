@@ -27,7 +27,7 @@ extensions are counted as skipped and do not make the run fail. An unsupported
 
 Directory traversal skips hidden paths and respects `.gitignore`, `.ignore`,
 and global Git ignore files. Passing a hidden path explicitly selects it. To
-leave a file unformatted however it is selected, including through
+have Yamark skip a file even when it is passed explicitly or through
 `--stdin-file-path`, list it under
 [`exclude`](reference-config.qmd#excluded-files) in `yamark.toml`.
 
