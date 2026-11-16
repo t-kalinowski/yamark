@@ -593,6 +593,60 @@ fn relative_explicit_config_applies_path_config_to_absolute_paths() {
     );
 }
 
+// A virtual stdin path may not exist, but it must still match the canonical
+// config directory. Canonicalization can change the path on Windows or when
+// the directory is reached through a symlink.
+#[test]
+fn path_config_applies_to_an_absolute_virtual_stdin_path() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[paths.\"docs\".template]\nadd_delimiters = [{ open = \"<<\", close = \">>\" }]\n",
+    )
+    .unwrap();
+    let path = dir.path().join("docs").join("new.md");
+    let input = "This << keep   this >> paragraph.\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", path.to_str().unwrap()],
+        input,
+    );
+    assert_eq!((status, stdout.as_str(), stderr.as_str()), (0, input, ""));
+}
+
+#[test]
+fn exclude_matches_an_absolute_virtual_stdin_path() {
+    let dir = tempdir().unwrap();
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"deck.qmd\"]\n",
+    )
+    .unwrap();
+    let path = dir.path().join("deck.qmd");
+    let input = "#   Title\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", path.to_str().unwrap()],
+        input,
+    );
+    assert_eq!((status, stdout.as_str(), stderr.as_str()), (0, input, ""));
+}
+
+#[cfg(unix)]
+#[test]
+fn exclude_matches_a_virtual_stdin_path_below_a_symlinked_directory() {
+    let dir = tempdir().unwrap();
+    let real = dir.path().join("real");
+    fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
+    fs::write(real.join("yamark.toml"), "[format]\nexclude = [\"new/\"]\n").unwrap();
+    let path = dir.path().join("link").join("new").join("deck.qmd");
+    let input = "#   Title\n";
+    let (status, stdout, stderr) = run_stdin(
+        &["format", "--stdin-file-path", path.to_str().unwrap()],
+        input,
+    );
+    assert_eq!((status, stdout.as_str(), stderr.as_str()), (0, input, ""));
+}
+
 #[test]
 fn path_specific_embedded_markdown_template_config_preserves_targets() {
     let dir = tempdir().unwrap();

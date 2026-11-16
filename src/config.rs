@@ -171,9 +171,6 @@ impl Config {
 }
 
 fn absolute_normalized_path(path: &Path) -> PathBuf {
-    if let Ok(path) = fs::canonicalize(path) {
-        return path;
-    }
     let path = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -181,22 +178,33 @@ fn absolute_normalized_path(path: &Path) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     };
-    normalize_path_components(&path)
+    // A virtual stdin path may not exist. Canonicalize its deepest existing
+    // ancestor so it can be compared with the canonical config directory,
+    // including through symlinks and on Windows.
+    for ancestor in path.ancestors() {
+        if let Ok(canonical) = fs::canonicalize(ancestor) {
+            let rest = path
+                .strip_prefix(ancestor)
+                .expect("an ancestor is a prefix of its path");
+            return push_normalized(canonical, rest);
+        }
+    }
+    push_normalized(PathBuf::new(), &path)
 }
 
-fn normalize_path_components(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
+/// Appends `path` to `base`, resolving `.` and `..` lexically.
+fn push_normalized(mut base: PathBuf, path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
-                normalized.pop();
+                base.pop();
             }
-            Component::Normal(part) => normalized.push(part),
-            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+            Component::Normal(part) => base.push(part),
+            Component::RootDir | Component::Prefix(_) => base.push(component.as_os_str()),
         }
     }
-    normalized
+    base
 }
 
 fn default_template_delimiters() -> Vec<TemplateDelimiter> {
