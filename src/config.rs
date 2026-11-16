@@ -155,10 +155,9 @@ impl Config {
         let Some(exclude) = &self.format.exclude else {
             return false;
         };
-        let relative = self.relative_formatted_path(path);
-        if relative.has_root() {
+        let Some(relative) = self.written_path_below_config_dir(path) else {
             return false;
-        }
+        };
         // As in Git, a `!` pattern cannot re-include a file below an excluded
         // directory. Check ancestors before matching the file itself.
         relative
@@ -167,6 +166,37 @@ impl Config {
             .filter(|dir| !dir.as_os_str().is_empty())
             .any(|dir| exclude.matched(dir, true).is_ignore())
             || exclude.matched(&relative, false).is_ignore()
+    }
+
+    /// Returns the path below the config directory, or `None` outside it.
+    ///
+    /// As in Git, exclusions select names: names below the config directory are
+    /// kept as written, so a symlink matches by its own name rather than its
+    /// target's. The config directory is identified by its canonical path,
+    /// allowing symlinks above it and nonexistent virtual stdin paths.
+    /// `[paths]` keys instead match the resolved location of a file.
+    fn written_path_below_config_dir(&self, path: &Path) -> Option<PathBuf> {
+        let cwd = || fs::canonicalize(".").unwrap_or_else(|_| PathBuf::from("."));
+        let base = self.config_dir.clone().unwrap_or_else(cwd);
+        let path = if path.is_absolute() {
+            push_normalized(PathBuf::new(), path)
+        } else {
+            push_normalized(cwd(), path)
+        };
+        if let Ok(relative) = path.strip_prefix(&base) {
+            return Some(relative.to_path_buf());
+        }
+        // Use the outermost matching ancestor, consistent with the prefix match.
+        let ancestors = path.ancestors().skip(1).collect::<Vec<_>>();
+        ancestors
+            .into_iter()
+            .rev()
+            .find(|ancestor| fs::canonicalize(ancestor).is_ok_and(|dir| dir == base))
+            .map(|ancestor| {
+                path.strip_prefix(ancestor)
+                    .expect("an ancestor is a prefix of its path")
+                    .to_path_buf()
+            })
     }
 
     fn relative_formatted_path(&self, path: &Path) -> PathBuf {

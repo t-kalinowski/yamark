@@ -22,6 +22,19 @@ struct FormatCandidate {
     path: PathBuf,
     kind: FileKind,
     config: Option<Config>,
+    excluded: bool,
+}
+
+impl FormatCandidate {
+    fn new(path: PathBuf, kind: FileKind, config: Option<Config>) -> Self {
+        let excluded = config.as_ref().is_some_and(|config| config.excludes(&path));
+        Self {
+            path,
+            kind,
+            config,
+            excluded,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -106,11 +119,7 @@ pub(super) fn format_single_explicit_file(
         } else {
             None
         };
-        let candidate = FormatCandidate {
-            path: path.clone(),
-            kind,
-            config,
-        };
+        let candidate = FormatCandidate::new(path.clone(), kind, config);
         Ok(format_candidate(0, &candidate, options, mode, execution))
     })();
     Some(result)
@@ -171,7 +180,7 @@ pub(super) fn format_streaming_candidates(
 struct CandidateProducer {
     explicit_config: Option<Config>,
     config_cache: BTreeMap<PathBuf, Config>,
-    seen: BTreeSet<PathBuf>,
+    seen: BTreeSet<(bool, PathBuf)>,
     sender: mpsc::SyncSender<FormatJob>,
     next_index: usize,
 }
@@ -240,23 +249,24 @@ impl CandidateProducer {
     }
 
     fn push_candidate(&mut self, path: PathBuf) -> Result<()> {
-        let key = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
-        if !self.seen.insert(key) {
-            return Ok(());
-        }
         let kind = FileKind::for_path(&path);
         let config = if kind.is_supported() {
             Some(self.config_for_path(&path)?)
         } else {
             None
         };
+        let candidate = FormatCandidate::new(path, kind, config);
+        // An exclusion matches a symlink by its own name, so an excluded
+        // symlink must not hide its target from the same run.
+        let canonical =
+            fs::canonicalize(&candidate.path).unwrap_or_else(|_| candidate.path.clone());
+        if !self.seen.insert((candidate.excluded, canonical)) {
+            return Ok(());
+        }
         let index = self.next_index;
         self.next_index += 1;
         self.sender
-            .send(FormatJob {
-                index,
-                candidate: FormatCandidate { path, kind, config },
-            })
+            .send(FormatJob { index, candidate })
             .map_err(|_| YamarkError::new("formatter worker queue closed"))?;
         Ok(())
     }
@@ -292,11 +302,7 @@ fn format_candidate(
     execution: FormatExecutionOptions,
 ) -> IndexedOutcome {
     let path = candidate.path.clone();
-    let excluded = candidate
-        .config
-        .as_ref()
-        .is_some_and(|config| config.excludes(&candidate.path));
-    let result = if !candidate.kind.is_supported() || excluded {
+    let result = if !candidate.kind.is_supported() || candidate.excluded {
         FileFormatResult::Skipped
     } else {
         match read_utf8_file(&candidate.path) {
