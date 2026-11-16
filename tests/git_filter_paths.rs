@@ -144,6 +144,70 @@ fn git_filter_preserves_native_paths_through_adopt_check_and_join() {
     }
 }
 
+#[test]
+fn git_filter_adopts_a_repository_with_an_excluded_non_utf8_file() {
+    let dir = tempdir().unwrap();
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(args)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone()
+    };
+    let utf16 = [0xff, 0xfe, b'#', 0x00, b'\n', 0x00];
+    git(&["init", "-q"]);
+    git(&["config", "user.name", "Git Filter Test"]);
+    git(&["config", "user.email", "git-filter@example.test"]);
+    git(&["config", "commit.gpgSign", "false"]);
+    git(&["config", "core.autocrlf", "false"]);
+    fs::write(
+        dir.path().join("yamark.toml"),
+        "[format]\nexclude = [\"NEWS.md\"]\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("NEWS.md"), utf16).unwrap();
+    fs::write(
+        dir.path().join("post.md"),
+        "First sentence. Second sentence?\n",
+    )
+    .unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "fixture"]);
+
+    Command::cargo_bin("yamark")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["git-filter", "adopt", "--markdown-wrap-at-column", "32"])
+        .assert()
+        .success()
+        .stderr("");
+    assert_eq!(git(&["show", ":NEWS.md"]), utf16);
+    assert_eq!(fs::read(dir.path().join("NEWS.md")).unwrap(), utf16);
+    assert_eq!(
+        git(&["show", ":post.md"]),
+        b"First sentence.\nSecond sentence?\n"
+    );
+    git(&["commit", "-q", "-m", "adopt"]);
+
+    Command::cargo_bin("yamark")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["git-filter", "check", "--markdown-wrap-at-column", "32"])
+        .assert()
+        .success()
+        .stdout("yamark Git filter check passed for 2 Markdown file(s).\n")
+        .stderr("");
+
+    // Staging a new revision runs the clean filter on the excluded file.
+    let revised = [0xff, 0xfe, b'#', 0x00, b'#', 0x00, b'\n', 0x00];
+    fs::write(dir.path().join("NEWS.md"), revised).unwrap();
+    git(&["add", "NEWS.md"]);
+    assert_eq!(git(&["show", ":NEWS.md"]), revised);
+}
+
 fn check_git_filter_paths(paths: &[&str]) {
     let dir = tempdir().unwrap();
     let git = |args: &[&str]| {

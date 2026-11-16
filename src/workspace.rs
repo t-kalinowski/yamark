@@ -182,7 +182,7 @@ pub(crate) fn format_source_for_path_with_overrides(
     format_source_with_config(path, input, options, &config, execution)
 }
 
-fn format_source_with_config(
+pub(crate) fn format_source_with_config(
     path: &Path,
     input: String,
     options: FormatOptions,
@@ -366,7 +366,10 @@ fn sort_diagnostics(diagnostics: &mut [Diagnostic]) {
     });
 }
 
-fn load_config_for_formatted_path(path: &Path, explicit: Option<&Path>) -> Result<Config> {
+pub(crate) fn load_config_for_formatted_path(
+    path: &Path,
+    explicit: Option<&Path>,
+) -> Result<Config> {
     if let Some(config_path) = explicit {
         return Config::from_path(config_path).map(|config| config.for_formatted_path(path));
     }

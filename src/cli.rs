@@ -6,7 +6,7 @@ use git_filter::GitFilterCommand;
 
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::builder::styling::{AnsiColor, Styles};
@@ -17,7 +17,7 @@ use clap::{
 use crate::core::document::{FormatOptions, MarkdownTableWidths, MarkdownWrap};
 use crate::workspace::{
     FormatExecutionOptions, FormatMode, format_paths_with_trace_and_overrides,
-    format_source_for_path_with_overrides, project_source_to_yaml,
+    format_source_with_config, load_config_for_formatted_path, project_source_to_yaml,
 };
 
 const HELP_STYLES: Styles = Styles::styled()
@@ -408,37 +408,56 @@ fn run_stdin(
     options: FormatOptions,
     execution: FormatExecutionOptions,
 ) -> ExitCode {
-    let input = match read_stdin_utf8() {
+    let input = match read_stdin() {
         Ok(input) => input,
         Err(message) => {
             eprintln!("{}:1:1: error: {message}", path.display());
             return ExitCode::from(1);
         }
     };
-    let formatted =
-        format_source_for_path_with_overrides(&path, input, options, config.as_deref(), execution);
-    match formatted {
+    let config = match load_config_for_formatted_path(&path, config.as_deref()) {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("{}", err.diagnostic.render());
+            return ExitCode::from(1);
+        }
+    };
+    // Editors and Git filters need excluded input back without decoding.
+    if config.excludes(&path) {
+        return write_stdout(&path, &input);
+    }
+    let input = match decode_utf8(input) {
+        Ok(input) => input,
+        Err(message) => {
+            eprintln!("{}:1:1: error: {message}", path.display());
+            return ExitCode::from(1);
+        }
+    };
+    match format_source_with_config(&path, input, options, &config, execution) {
         Ok(formatted) => {
             if execution.collect_trace {
                 for diagnostic in &formatted.diagnostics {
                     eprintln!("{}", diagnostic.render());
                 }
             }
-            let mut stdout = io::stdout().lock();
-            if let Err(err) = stdout.write_all(formatted.output.as_bytes()) {
-                eprintln!(
-                    "{}:1:1: error: failed to write stdout: {err}",
-                    path.display()
-                );
-                return ExitCode::from(1);
-            }
-            ExitCode::SUCCESS
+            write_stdout(&path, formatted.output.as_bytes())
         }
         Err(err) => {
             eprintln!("{}", err.diagnostic.render());
             ExitCode::from(1)
         }
     }
+}
+
+fn write_stdout(path: &Path, output: &[u8]) -> ExitCode {
+    if let Err(err) = io::stdout().lock().write_all(output) {
+        eprintln!(
+            "{}:1:1: error: failed to write stdout: {err}",
+            path.display()
+        );
+        return ExitCode::from(1);
+    }
+    ExitCode::SUCCESS
 }
 
 fn run_to_yaml(
@@ -483,10 +502,18 @@ fn run_to_yaml(
 }
 
 fn read_stdin_utf8() -> std::result::Result<String, String> {
+    decode_utf8(read_stdin()?)
+}
+
+fn read_stdin() -> std::result::Result<Vec<u8>, String> {
     let mut input = Vec::new();
     io::stdin()
         .read_to_end(&mut input)
         .map_err(|err| format!("failed to read stdin: {err}"))?;
+    Ok(input)
+}
+
+fn decode_utf8(input: Vec<u8>) -> std::result::Result<String, String> {
     if input.starts_with(&[0xff, 0xfe]) || input.starts_with(&[0xfe, 0xff]) {
         return Err("unsupported encoding: UTF-16 BOM".to_owned());
     }
