@@ -292,7 +292,11 @@ fn format_candidate(
     execution: FormatExecutionOptions,
 ) -> IndexedOutcome {
     let path = candidate.path.clone();
-    let result = if !candidate.kind.is_supported() {
+    let excluded = candidate
+        .config
+        .as_ref()
+        .is_some_and(|config| config.excludes(&candidate.path));
+    let result = if !candidate.kind.is_supported() || excluded {
         FileFormatResult::Skipped
     } else {
         match read_utf8_file(&candidate.path) {

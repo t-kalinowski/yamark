@@ -1,0 +1,24 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"slides/\"]\n",
+    "slides/deck.qmd": "#   Deck\n",
+    "slides/nested/notes.md": "#   Notes\n",
+    "post.md": "#   Post\n"
+  }
+}
+-- args
+format .
+-- stdin
+-- stdout
+4 files scanned, 1 formatted, 0 unchanged, 3 skipped, 0 failed
+-- stderr
+-- git-worktree
+{
+  "slides/deck.qmd": "#   Deck\n",
+  "slides/nested/notes.md": "#   Notes\n",
+  "post.md": "# Post\n"
+}
+-- status
+0

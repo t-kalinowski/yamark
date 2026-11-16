@@ -2,6 +2,9 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
 use crate::core::directives::TemplateDelimiter;
 use crate::core::document::{AbbreviationOverrides, MarkdownTableWidths, MarkdownWrap};
@@ -26,6 +29,9 @@ pub struct FormatConfig {
     pub markdown_table_widths: Option<MarkdownTableWidths>,
     pub markdown_horizontal_rule: Option<&'static str>,
     pub abbreviations: AbbreviationOverrides,
+    /// Compiled `exclude` patterns, matched against paths relative to the
+    /// config directory.
+    pub(crate) exclude: Option<Arc<Gitignore>>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +149,19 @@ impl Config {
         config
     }
 
+    /// Whether `[format] exclude` selects `path`. Patterns are relative to the
+    /// config directory, so they never match a path outside it.
+    pub fn excludes(&self, path: &Path) -> bool {
+        let Some(exclude) = &self.format.exclude else {
+            return false;
+        };
+        let relative = self.relative_formatted_path(path);
+        !relative.has_root()
+            && exclude
+                .matched_path_or_any_parents(&relative, false)
+                .is_ignore()
+    }
+
     fn relative_formatted_path(&self, path: &Path) -> PathBuf {
         let base = self.config_dir.as_deref().unwrap_or_else(|| Path::new("."));
         let path = absolute_normalized_path(path);
@@ -247,7 +266,12 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
     for key in table.keys() {
         if !matches!(
             key.as_str(),
-            "compact" | "wrap" | "table_widths" | "markdown_horizontal_rule" | "abbreviations"
+            "compact"
+                | "wrap"
+                | "table_widths"
+                | "markdown_horizontal_rule"
+                | "abbreviations"
+                | "exclude"
         ) {
             return Err(YamarkError::new(format!(
                 "unknown format config key: format.{key}"
@@ -295,7 +319,33 @@ fn apply_format_layer(value: &toml::Value, format: &mut FormatConfig) -> Result<
     if let Some(value) = table.get("abbreviations") {
         format.abbreviations = parse_abbreviations(value)?;
     }
+    if let Some(value) = table.get("exclude") {
+        format.exclude = Some(Arc::new(parse_exclude(value)?));
+    }
     Ok(())
+}
+
+fn parse_exclude(value: &toml::Value) -> Result<Gitignore> {
+    let patterns = value
+        .as_array()
+        .and_then(|patterns| {
+            patterns
+                .iter()
+                .map(toml::Value::as_str)
+                .collect::<Option<Vec<_>>>()
+        })
+        .ok_or_else(|| YamarkError::new("format.exclude must be an array of strings"))?;
+    // The empty root matches patterns against paths that are already relative
+    // to the config directory, which is unknown while parsing TOML text.
+    let mut builder = GitignoreBuilder::new("");
+    for pattern in patterns {
+        builder
+            .add_line(None, pattern)
+            .map_err(|err| YamarkError::new(format!("format.exclude: {err}")))?;
+    }
+    builder
+        .build()
+        .map_err(|err| YamarkError::new(format!("format.exclude: {err}")))
 }
 
 fn parse_abbreviations(value: &toml::Value) -> Result<AbbreviationOverrides> {

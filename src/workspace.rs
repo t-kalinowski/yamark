@@ -170,6 +170,15 @@ pub(crate) fn format_source_for_path_with_overrides(
     execution: FormatExecutionOptions,
 ) -> Result<FormattedSource> {
     let config = load_config_for_formatted_path(path, config_path)?;
+    if config.excludes(path) {
+        // Stdin callers such as editors and Git filters replace the document
+        // with the output, so an excluded path returns its input.
+        return Ok(FormattedSource {
+            output: input,
+            changed: false,
+            diagnostics: Vec::new(),
+        });
+    }
     format_source_with_config(path, input, options, &config, execution)
 }
 

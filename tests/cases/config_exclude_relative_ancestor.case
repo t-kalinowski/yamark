@@ -1,0 +1,18 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "cwd": "nested",
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"/nested/deck.qmd\"]\n",
+    "nested/deck.qmd": ""
+  }
+}
+-- args
+format --stdin-file-path deck.qmd
+-- stdin
+#   Slide
+-- stdout
+#   Slide
+-- stderr
+-- status
+0

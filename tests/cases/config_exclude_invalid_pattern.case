@@ -1,0 +1,16 @@
+-- git-fixture
+{
+  "config": {"core.autocrlf": "false"},
+  "files": {
+    "yamark.toml": "[format]\nexclude = [\"{deck.qmd\"]\n"
+  }
+}
+-- args
+format --config yamark.toml --stdin-file-path input.md
+-- stdin
+#   Title
+-- stdout
+-- stderr
+yamark.toml:1:1: error: format.exclude: error parsing glob '{deck.qmd': unclosed alternate group; missing '}' (maybe escape '{' with '[{]'?)
+-- status
+1
