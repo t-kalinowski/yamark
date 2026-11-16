@@ -53,7 +53,9 @@ yamark format --wrap sentence:88 docs/
 
 Directory traversal skips hidden paths and respects `.gitignore`,
 `.ignore`, and global Git ignore files by default. Pass a hidden path
-explicitly to format it.
+explicitly to format it. To leave a file unformatted however it is
+selected, including from an editor, list it under
+[`exclude`](reference-config.qmd#excluded-files) in `yamark.toml`.
 
 ## CI and stdin
 

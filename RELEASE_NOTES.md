@@ -1,1 +1,3 @@
 <!-- Draft notes for the next release here as user-facing changes land. See RELEASE.md. -->
+
+`yamark.toml` accepts `exclude` in the `[format]` table: a list of gitignore-style patterns, relative to the directory containing `yamark.toml`, for files that `yamark format` leaves unchanged. Unlike `.gitignore` and `.ignore`, which affect only directory traversal, `exclude` also applies to explicit paths, `--stdin-file-path`, and the Git clean and smudge filters. Explicit and traversed paths are counted as skipped; stdin is written to stdout unchanged. Editor Format Document and format-on-save therefore leave an excluded file unchanged.

@@ -26,9 +26,37 @@ markdown_horizontal_rule = "***"
 | `table_widths` | String: `"fit"` or `"preserve"`. | Sizes Markdown table columns from their contents by default, or retains source widths. An explicit `--table-widths` overrides it; document settings and scoped directives override that base setting. |
 | `compact` | Boolean. | Enables or disables eligible YAML block-to-flow compaction. `--compact` still enables compact mode when this is `false`. |
 | `markdown_horizontal_rule` | String: `"---"` or `"***"`. | Chooses the marker Yamark emits for normalized Markdown horizontal rules. |
+| `exclude` | Array of strings: gitignore-style patterns. | Leaves matching files unformatted. See [Excluded files](#excluded-files). |
 
 See [Formatting settings](reference-options.qmd) for built-in defaults and the
 other surfaces that expose these behaviors.
+
+### Excluded files
+
+```toml
+[format]
+exclude = ["slides/", "*.generated.md", "/NEWS.md"]
+```
+
+`exclude` lists files that `yamark format` leaves unchanged. Patterns use
+[gitignore syntax](https://git-scm.com/docs/gitignore#_pattern_format) and are
+relative to the directory containing `yamark.toml`. A pattern without a slash
+matches at any depth, a leading slash anchors the pattern to that directory, a
+trailing slash matches a directory and everything below it, and a later `!`
+pattern re-includes a file. Patterns never match a file outside that directory.
+
+Ignore files such as `.gitignore` affect only directory traversal. `exclude`
+applies however a file is selected:
+
+| Selection | Result for an excluded file |
+| --- | --- |
+| Directory traversal or an explicit path | Counted as skipped. Yamark does not read or write the file. |
+| `--stdin-file-path` | Yamark writes stdin to stdout unchanged. |
+| Git clean and smudge filters | The content passes through unchanged. |
+
+[Editors](editors.qmd#excluded-files) format through `--stdin-file-path`, so
+Format Document and format-on-save leave an excluded file unchanged.
+`yamark to-yaml` does not read `exclude`.
 
 ### `[format.abbreviations]`
 

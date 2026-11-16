@@ -115,6 +115,24 @@ surrounding source code. To format the whole source document as well,
 configure a follow-up formatter; see "Composing with native formatters"
 below.
 
+## Excluding files
+
+`yamark.enabledFileExtensions` selects by extension. To keep individual
+files or directories out of `Format Document` and format-on-save, list
+them in `yamark.toml`:
+
+```toml
+[format]
+exclude = ["slides/", "NEWS.md"]
+```
+
+Patterns use gitignore syntax and are relative to the directory
+containing `yamark.toml`. Yamark returns an excluded file unchanged; a
+configured next formatter still runs. `Yamark: Format Selection as
+Markdown` formats the selection as `<file>.md`, so a pattern that
+matches that path, such as a directory pattern, also leaves the
+selection unchanged.
+
 ## Yamark config for embedded formatters
 
 `yamark.toml` can configure the formatter used for an explicit embedded

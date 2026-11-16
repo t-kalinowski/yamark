@@ -126,6 +126,24 @@ For `.r` and `.py`, Yamark formats explicitly marked embedded Markdown comment
 blocks and string literals. It does not format surrounding source code unless
 you configure a second formatter.
 
+## Excluded files
+
+`yamark.enabledFileExtensions` selects by extension. To keep individual files or
+directories out of Format Document and format-on-save, list them in
+`yamark.toml`:
+
+```toml
+[format]
+exclude = ["slides/", "NEWS.md"]
+```
+
+Patterns use gitignore syntax and are relative to the directory containing
+`yamark.toml`. Yamark returns an excluded file unchanged; a configured next
+formatter still runs. `Yamark: Format Selection as Markdown` formats the
+selection as `<file>.md`, so a pattern that matches that path, such as a
+directory pattern, also leaves the selection unchanged. See
+[Excluded files](reference-config.qmd#excluded-files) for the pattern rules.
+
 ## Format on save
 
 Set Yamark as the default formatter for each language it should handle:
